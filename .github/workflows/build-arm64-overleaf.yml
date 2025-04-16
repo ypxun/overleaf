@@ -1,0 +1,95 @@
+name: Build ARM64 Overleaf Images
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每日午夜运行
+  workflow_dispatch:  # 允许手动触发
+  push:
+    paths:
+      - 'server-ce/Dockerfile*'
+      - '.github/workflows/build-arm64-overleaf.yml'
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    outputs:
+      update_needed: ${{ steps.check.outputs.update_needed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Setup upstream remote
+        run: |
+          git remote add upstream https://github.com/overleaf/overleaf.git
+          git fetch upstream
+
+      - name: Check for updates
+        id: check
+        run: |
+          UPSTREAM_LATEST=$(git rev-parse upstream/main)
+          FORK_LATEST=$(git rev-parse HEAD)
+          if [ "$UPSTREAM_LATEST" != "$FORK_LATEST" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            # 合并上游更改
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git merge upstream/main --no-edit
+            git push origin main
+          else
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-arm64-images:
+    needs: check-upstream
+    if: ${{ needs.check-upstream.outputs.update_needed == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./server-ce
+          file: ./server-ce/Dockerfile-base
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sharelatex-base:arm64-latest
+            ghcr.io/${{ github.repository_owner }}/sharelatex-base:arm64-${{ steps.date.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push community image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./server-ce/Dockerfile
+          platforms: linux/arm64
+          build-args: |
+            OVERLEAF_BASE_TAG=ghcr.io/${{ github.repository_owner }}/sharelatex-base:arm64-latest
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sharelatex:arm64-latest
+            ghcr.io/${{ github.repository_owner }}/sharelatex:arm64-${{ steps.date.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
