@@ -1,3 +1,4 @@
+import '@/utils/abortsignal-polyfill'
 import * as PDFJS from 'pdfjs-dist'
 import type { DocumentInitParameters } from 'pdfjs-dist/types/src/display/api'
 
@@ -10,6 +11,8 @@ PDFJS.GlobalWorkerOptions.workerPort = new Worker(
 
 export const imageResourcesPath = '/images/pdfjs-dist/'
 const cMapUrl = '/js/pdfjs-dist/cmaps/'
+const wasmUrl = '/js/pdfjs-dist/wasm/'
+const iccUrl = '/js/pdfjs-dist/iccs/'
 const standardFontDataUrl = '/fonts/pdfjs-dist/'
 
 const params = new URLSearchParams(window.location.search)
@@ -23,6 +26,8 @@ export const loadPdfDocumentFromUrl = (
   PDFJS.getDocument({
     url,
     cMapUrl,
+    wasmUrl,
+    iccUrl,
     standardFontDataUrl,
     disableFontFace,
     disableAutoFetch: true, // only fetch the data needed for the displayed pages
