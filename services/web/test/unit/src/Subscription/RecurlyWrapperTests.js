@@ -1,4 +1,4 @@
-const { expect } = require('chai')
+const { assert, expect } = require('chai')
 const sinon = require('sinon')
 const modulePath = '../../../../app/src/Features/Subscription/RecurlyWrapper'
 const SandboxedModule = require('sandboxed-module')
@@ -294,7 +294,7 @@ describe('RecurlyWrapper', function () {
   })
 
   describe('updateAccountEmailAddress, with invalid XML', function () {
-    beforeEach(async function (done) {
+    beforeEach(async function () {
       this.recurlyAccountId = 'account-id-123'
       this.newEmail = '\uD800@example.com'
       this.apiRequest = sinon
@@ -307,22 +307,24 @@ describe('RecurlyWrapper', function () {
             body: fixtures['accounts/104'],
           }
         })
-      done()
     })
 
     afterEach(function () {
       this.RecurlyWrapper.promises.apiRequest.restore()
     })
 
-    it('should produce an error', function (done) {
-      this.RecurlyWrapper.promises
-        .updateAccountEmailAddress(this.recurlyAccountId, this.newEmail)
-        .catch(error => {
-          expect(error).to.exist
-          expect(error.message.startsWith('Invalid character')).to.equal(true)
-          expect(this.apiRequest.called).to.equal(false)
-          done()
-        })
+    it('should produce an error', async function () {
+      try {
+        await this.RecurlyWrapper.promises.updateAccountEmailAddress(
+          this.recurlyAccountId,
+          this.newEmail
+        )
+        assert.fail('Expected error not thrown')
+      } catch (error) {
+        expect(error).to.have.property('message')
+        expect(error.message.startsWith('Invalid character')).to.be.true
+        expect(this.apiRequest.called).to.equal(false)
+      }
     })
   })
 
@@ -702,19 +704,27 @@ describe('RecurlyWrapper', function () {
         })
       })
 
-      it('should produce an error', function (done) {
-        this.call().catch(err => {
-          expect(err).to.be.instanceof(
-            SubscriptionErrors.RecurlyTransactionError
-          )
-          expect(err.info.public.message).to.be.equal(
-            'Your card must be authenticated with 3D Secure before continuing.'
-          )
-          expect(err.info.public.threeDSecureActionTokenId).to.be.equal(
-            'mock_three_d_secure_action_token'
-          )
-          done()
-        })
+      it('should produce an error', async function () {
+        const promise = this.call()
+        let error
+
+        try {
+          await promise
+        } catch (err) {
+          error = err
+        }
+
+        expect(error).to.be.instanceOf(
+          SubscriptionErrors.RecurlyTransactionError
+        )
+        expect(error).to.have.nested.property(
+          'info.public.message',
+          'Your card must be authenticated with 3D Secure before continuing.'
+        )
+        expect(error).to.have.nested.property(
+          'info.public.threeDSecureActionTokenId',
+          'mock_three_d_secure_action_token'
+        )
       })
     })
 
