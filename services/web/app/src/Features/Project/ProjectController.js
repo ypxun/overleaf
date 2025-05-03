@@ -356,6 +356,7 @@ const _ProjectController = {
       'overleaf-assist-bundle',
       'wf-feature-rebrand',
       'word-count-client',
+      'editor-popup-ux-survey',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -937,7 +938,7 @@ const _ProjectController = {
     return plansData
   },
 
-  async _getAddonPrices(req, res, addonPlans = ['assistBundle']) {
+  async _getAddonPrices(req, res, addonPlans = ['assistant']) {
     const plansData = {}
 
     const locale = req.i18n.language
