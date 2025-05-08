@@ -1,10 +1,6 @@
 const Path = require('node:path')
-const http = require('node:http')
-const https = require('node:https')
 const os = require('node:os')
 
-http.globalAgent.keepAlive = false
-https.globalAgent.keepAlive = false
 const isPreEmptible = process.env.PREEMPTIBLE === 'TRUE'
 const CLSI_SERVER_ID = os.hostname().replace('-ctr', '')
 
@@ -60,9 +56,16 @@ module.exports = {
       }`,
     },
     clsiCache: {
-      enabled: !!process.env.CLSI_CACHE_HOST,
+      enabled: !!(process.env.CLSI_CACHE_SHARDS || process.env.CLSI_CACHE_HOST),
       url: `http://${process.env.CLSI_CACHE_HOST}:3044`,
-      downloadURL: `http://${process.env.CLSI_CACHE_NGINX_HOST || process.env.CLSI_CACHE_HOST}:8080`,
+      shards: process.env.CLSI_CACHE_SHARDS
+        ? JSON.parse(process.env.CLSI_CACHE_SHARDS)
+        : [
+            {
+              url: `http://${process.env.CLSI_CACHE_HOST}:3044`,
+              shard: 'cache',
+            },
+          ],
     },
   },
 

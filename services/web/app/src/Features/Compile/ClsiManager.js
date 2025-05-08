@@ -207,6 +207,7 @@ async function _sendBuiltRequest(projectId, userId, req, options, callback) {
     stats: compile.stats,
     timings: compile.timings,
     outputUrlPrefix: compile.outputUrlPrefix,
+    clsiCacheShard: compile.clsiCacheShard,
   }
 }
 
@@ -780,6 +781,7 @@ function _finaliseRequest(projectId, options, project, docs, files) {
         imageName: project.imageName,
         draft: Boolean(options.draft),
         stopOnFirstError: Boolean(options.stopOnFirstError),
+        clsiCacheSharded: Boolean(options.clsiCacheSharded),
         check: options.check,
         syncType: options.syncType,
         syncState: options.syncState,
@@ -853,6 +855,7 @@ module.exports = {
     'timings',
     'outputUrlPrefix',
     'buildId',
+    'clsiCacheShard',
   ]),
   sendExternalRequest: callbackifyMultiResult(sendExternalRequest, [
     'status',
