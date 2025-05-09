@@ -338,8 +338,7 @@ const _ProjectController = {
       'external-socket-heartbeat',
       'full-project-search',
       'null-test-share-modal',
-      'fall-back-to-clsi-cache',
-      'initial-compile-from-clsi-cache',
+      'populate-clsi-cache',
       'pdf-caching-cached-url-lookup',
       'pdf-caching-mode',
       'pdf-caching-prefetch-large',
@@ -354,7 +353,6 @@ const _ProjectController = {
       'editor-redesign',
       'paywall-change-compile-timeout',
       'overleaf-assist-bundle',
-      'wf-feature-rebrand',
       'word-count-client',
       'editor-popup-ux-survey',
     ].filter(Boolean)

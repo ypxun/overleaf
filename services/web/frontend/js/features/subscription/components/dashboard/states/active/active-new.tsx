@@ -10,13 +10,12 @@ import { ConfirmChangePlanModal } from './change-plan/modals/confirm-change-plan
 import { KeepCurrentPlanModal } from './change-plan/modals/keep-current-plan-modal'
 import { ChangeToGroupModal } from './change-plan/modals/change-to-group-modal'
 import { CancelAiAddOnModal } from '@/features/subscription/components/dashboard/states/active/change-plan/modals/cancel-ai-add-on-modal'
-import { WritefullBundleManagementModal } from '@/features/subscription/components/dashboard/states/active/change-plan/modals/writefull-bundle-management-modal'
 import OLButton from '@/features/ui/components/ol/ol-button'
 import isInFreeTrial from '../../../../util/is-in-free-trial'
 import AddOns from '@/features/subscription/components/dashboard/states/active/add-ons'
 import {
   AI_ADD_ON_CODE,
-  AI_STANDALONE_PLAN_CODE,
+  AI_ASSIST_STANDALONE_MONTHLY_PLAN_CODE,
   isStandaloneAiPlanCode,
 } from '@/features/subscription/data/add-on-codes'
 import getMeta from '@/utils/meta'
@@ -72,9 +71,12 @@ export function ActiveSubscriptionNew({
   }
 
   const handlePlanChange = () => setModalIdShown('change-plan')
-  const handleManageOnWritefull = () => setModalIdShown('manage-on-writefull')
   const handleCancelClick = (addOnCode: string) => {
-    if ([AI_STANDALONE_PLAN_CODE, AI_ADD_ON_CODE].includes(addOnCode)) {
+    if (
+      [AI_ASSIST_STANDALONE_MONTHLY_PLAN_CODE, AI_ADD_ON_CODE].includes(
+        addOnCode
+      )
+    ) {
       setModalIdShown('cancel-ai-add-on')
     }
   }
@@ -262,7 +264,6 @@ export function ActiveSubscriptionNew({
         subscription={subscription}
         onStandalonePlan={onStandalonePlan}
         handleCancelClick={handleCancelClick}
-        handleManageOnWritefull={handleManageOnWritefull}
       />
 
       <ChangePlanModal />
@@ -270,7 +271,6 @@ export function ActiveSubscriptionNew({
       <KeepCurrentPlanModal />
       <ChangeToGroupModal />
       <CancelAiAddOnModal />
-      <WritefullBundleManagementModal />
       <PauseSubscriptionModal />
     </>
   )

@@ -72,13 +72,6 @@ async function _getSplitTestOptions(req, res) {
   // Lookup the clsi-cache flag in the backend.
   // We may need to turn off the feature on a short notice, without requiring
   //  all users to reload their editor page to disable the feature.
-  const { variant: compileFromClsiCacheVariant } =
-    await SplitTestHandler.promises.getAssignment(
-      editorReq,
-      res,
-      'compile-from-clsi-cache'
-    )
-  const compileFromClsiCache = compileFromClsiCacheVariant === 'enabled'
   const { variant: populateClsiCacheVariant } =
     await SplitTestHandler.promises.getAssignment(
       editorReq,
@@ -86,6 +79,7 @@ async function _getSplitTestOptions(req, res) {
       'populate-clsi-cache'
     )
   const populateClsiCache = populateClsiCacheVariant === 'enabled'
+  const compileFromClsiCache = populateClsiCache // use same split-test
 
   const pdfDownloadDomain = Settings.pdfDownloadDomain
 
@@ -216,7 +210,7 @@ const _CompileController = {
           ownerAnalyticsId: limits.ownerAnalyticsId,
           status,
           compileTime: timings?.compileE2E,
-          timeout: limits.timeout === 60 ? 'short' : 'long',
+          timeout: limits.timeout,
           server: clsiServerId?.includes('-c2d-') ? 'faster' : 'normal',
           isAutoCompile,
           isInitialCompile: stats?.isInitialCompile === 1,
