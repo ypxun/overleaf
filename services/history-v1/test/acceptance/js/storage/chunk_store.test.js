@@ -18,7 +18,8 @@ const {
   EditFileOperation,
   TextOperation,
 } = require('overleaf-editor-core')
-const { chunkStore, historyStore } = require('../../../../storage')
+const { chunkStore, historyStore, BlobStore } = require('../../../../storage')
+const redisBackend = require('../../../../storage/lib/chunk_store/redis')
 
 describe('chunkStore', function () {
   beforeEach(cleanup.everything)
@@ -42,6 +43,7 @@ describe('chunkStore', function () {
     describe(scenario.description, function () {
       let projectId
       let projectRecord
+      let blobStore
 
       beforeEach(async function () {
         projectId = await scenario.createProject()
@@ -49,6 +51,7 @@ describe('chunkStore', function () {
         projectRecord = await projects.insertOne({
           overleaf: { history: { id: scenario.idMapping(projectId) } },
         })
+        blobStore = new BlobStore(projectId)
       })
 
       it('loads empty latest chunk for a new project', async function () {
@@ -62,10 +65,11 @@ describe('chunkStore', function () {
         const pendingChangeTimestamp = new Date('2014-01-01T00:00:00')
         const lastChangeTimestamp = new Date('2015-01-01T00:00:00')
         beforeEach(async function () {
+          const blob = await blobStore.putString('abc')
           const chunk = makeChunk(
             [
               makeChange(
-                Operation.addFile('main.tex', File.fromString('abc')),
+                Operation.addFile('main.tex', File.createLazyFromBlobs(blob)),
                 lastChangeTimestamp
               ),
             ],
@@ -98,8 +102,11 @@ describe('chunkStore', function () {
         beforeEach(async function () {
           const chunk = await chunkStore.loadLatest(projectId)
           const oldEndVersion = chunk.getEndVersion()
+          const blob = await blobStore.putString('')
           const changes = [
-            makeChange(Operation.addFile(testPathname, File.fromString(''))),
+            makeChange(
+              Operation.addFile(testPathname, File.createLazyFromBlobs(blob))
+            ),
             makeChange(Operation.editFile(testPathname, testTextOperation)),
           ]
           lastChangeTimestamp = changes[1].getTimestamp()
@@ -113,8 +120,9 @@ describe('chunkStore', function () {
         })
 
         it('records the correct metadata in db readOnly=false', async function () {
-          const raw = await chunkStore.loadLatestRaw(projectId)
-          expect(raw).to.deep.include({
+          const chunkMetadata =
+            await chunkStore.getLatestChunkMetadata(projectId)
+          expect(chunkMetadata).to.deep.include({
             startVersion: 0,
             endVersion: 2,
             endTimestamp: lastChangeTimestamp,
@@ -122,10 +130,11 @@ describe('chunkStore', function () {
         })
 
         it('records the correct metadata in db readOnly=true', async function () {
-          const raw = await chunkStore.loadLatestRaw(projectId, {
-            readOnly: true,
-          })
-          expect(raw).to.deep.include({
+          const chunkMetadata = await chunkStore.getLatestChunkMetadata(
+            projectId,
+            { readOnly: true }
+          )
+          expect(chunkMetadata).to.deep.include({
             startVersion: 0,
             endVersion: 2,
             endTimestamp: lastChangeTimestamp,
@@ -181,14 +190,15 @@ describe('chunkStore', function () {
         let firstChunk, secondChunk, thirdChunk
 
         beforeEach(async function () {
+          const blob = await blobStore.putString('')
           firstChunk = makeChunk(
             [
               makeChange(
-                Operation.addFile('foo.tex', File.fromString('')),
+                Operation.addFile('foo.tex', File.createLazyFromBlobs(blob)),
                 new Date(firstChunkTimestamp - 5000)
               ),
               makeChange(
-                Operation.addFile('bar.tex', File.fromString('')),
+                Operation.addFile('bar.tex', File.createLazyFromBlobs(blob)),
                 firstChunkTimestamp
               ),
             ],
@@ -205,11 +215,11 @@ describe('chunkStore', function () {
           secondChunk = makeChunk(
             [
               makeChange(
-                Operation.addFile('baz.tex', File.fromString('')),
+                Operation.addFile('baz.tex', File.createLazyFromBlobs(blob)),
                 new Date(secondChunkTimestamp - 5000)
               ),
               makeChange(
-                Operation.addFile('qux.tex', File.fromString('')),
+                Operation.addFile('qux.tex', File.createLazyFromBlobs(blob)),
                 secondChunkTimestamp
               ),
             ],
@@ -221,7 +231,7 @@ describe('chunkStore', function () {
           thirdChunk = makeChunk(
             [
               makeChange(
-                Operation.addFile('quux.tex', File.fromString('')),
+                Operation.addFile('quux.tex', File.createLazyFromBlobs(blob)),
                 thirdChunkTimestamp
               ),
             ],
@@ -317,11 +327,15 @@ describe('chunkStore', function () {
           let newChunk
 
           beforeEach(async function () {
+            const blob = await blobStore.putString('')
             newChunk = makeChunk(
               [
                 ...thirdChunk.getChanges(),
                 makeChange(
-                  Operation.addFile('onemore.tex', File.fromString('')),
+                  Operation.addFile(
+                    'onemore.tex',
+                    File.createLazyFromBlobs(blob)
+                  ),
                   thirdChunkTimestamp
                 ),
               ],
@@ -365,6 +379,79 @@ describe('chunkStore', function () {
             expect(project.overleaf.backup.pendingChangeAt).to.deep.equal(
               pendingChangeTimestamp
             )
+          })
+        })
+
+        describe('with changes queued in the Redis buffer', function () {
+          let queuedChanges
+
+          beforeEach(async function () {
+            const snapshot = thirdChunk.getSnapshot()
+            snapshot.applyAll(thirdChunk.getChanges())
+            const blob = await blobStore.putString('zzz')
+            queuedChanges = [
+              makeChange(
+                Operation.addFile(
+                  'in-redis.tex',
+                  File.createLazyFromBlobs(blob)
+                ),
+                new Date()
+              ),
+            ]
+            await redisBackend.queueChanges(
+              projectId,
+              snapshot,
+              thirdChunk.getEndVersion(),
+              queuedChanges
+            )
+          })
+
+          it('includes the queued changes when getting the latest chunk', async function () {
+            const chunk = await chunkStore.loadLatest(projectId)
+            const expectedChanges = thirdChunk
+              .getChanges()
+              .concat(queuedChanges)
+            expect(chunk.getChanges()).to.deep.equal(expectedChanges)
+          })
+
+          it('includes the queued changes when getting the latest chunk by timestamp', async function () {
+            const chunk = await chunkStore.loadAtTimestamp(
+              projectId,
+              thirdChunkTimestamp
+            )
+            const expectedChanges = thirdChunk
+              .getChanges()
+              .concat(queuedChanges)
+            expect(chunk.getChanges()).to.deep.equal(expectedChanges)
+          })
+
+          it("doesn't include the queued changes when getting another chunk by timestamp", async function () {
+            const chunk = await chunkStore.loadAtTimestamp(
+              projectId,
+              secondChunkTimestamp
+            )
+            const expectedChanges = secondChunk.getChanges()
+            expect(chunk.getChanges()).to.deep.equal(expectedChanges)
+          })
+
+          it('includes the queued changes when getting the latest chunk by version', async function () {
+            const chunk = await chunkStore.loadAtVersion(
+              projectId,
+              thirdChunk.getEndVersion()
+            )
+            const expectedChanges = thirdChunk
+              .getChanges()
+              .concat(queuedChanges)
+            expect(chunk.getChanges()).to.deep.equal(expectedChanges)
+          })
+
+          it("doesn't include the queued changes when getting another chunk by version", async function () {
+            const chunk = await chunkStore.loadAtVersion(
+              projectId,
+              secondChunk.getEndVersion()
+            )
+            const expectedChanges = secondChunk.getChanges()
+            expect(chunk.getChanges()).to.deep.equal(expectedChanges)
           })
         })
 
@@ -470,8 +557,11 @@ describe('chunkStore', function () {
           let chunk = await chunkStore.loadLatest(projectId)
           expect(chunk.getEndVersion()).to.equal(oldEndVersion)
 
+          const blob = await blobStore.putString('')
           const changes = [
-            makeChange(Operation.addFile(testPathname, File.fromString(''))),
+            makeChange(
+              Operation.addFile(testPathname, File.createLazyFromBlobs(blob))
+            ),
             makeChange(Operation.editFile(testPathname, testTextOperation)),
           ]
           chunk.pushChanges(changes)
@@ -487,9 +577,12 @@ describe('chunkStore', function () {
       describe('version checks', function () {
         beforeEach(async function () {
           // Create a chunk with start version 0, end version 3
+          const blob = await blobStore.putString('abc')
           const chunk = makeChunk(
             [
-              makeChange(Operation.addFile('main.tex', File.fromString('abc'))),
+              makeChange(
+                Operation.addFile('main.tex', File.createLazyFromBlobs(blob))
+              ),
               makeChange(
                 Operation.editFile(
                   'main.tex',
@@ -509,8 +602,13 @@ describe('chunkStore', function () {
         })
 
         it('refuses to create a chunk with the same start version', async function () {
+          const blob = await blobStore.putString('abc')
           const chunk = makeChunk(
-            [makeChange(Operation.addFile('main.tex', File.fromString('abc')))],
+            [
+              makeChange(
+                Operation.addFile('main.tex', File.createLazyFromBlobs(blob))
+              ),
+            ],
             0
           )
           await expect(chunkStore.create(projectId, chunk)).to.be.rejectedWith(
@@ -519,8 +617,13 @@ describe('chunkStore', function () {
         })
 
         it("allows creating chunks that don't have version conflicts", async function () {
+          const blob = await blobStore.putString('abc')
           const chunk = makeChunk(
-            [makeChange(Operation.addFile('main.tex', File.fromString('abc')))],
+            [
+              makeChange(
+                Operation.addFile('main.tex', File.createLazyFromBlobs(blob))
+              ),
+            ],
             3
           )
           await chunkStore.create(projectId, chunk)

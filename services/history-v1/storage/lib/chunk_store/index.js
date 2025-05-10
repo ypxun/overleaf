@@ -32,7 +32,15 @@ const { BlobStore } = require('../blob_store')
 const { historyStore } = require('../history_store')
 const mongoBackend = require('./mongo')
 const postgresBackend = require('./postgres')
-const { ChunkVersionConflictError } = require('./errors')
+const redisBackend = require('./redis')
+const {
+  ChunkVersionConflictError,
+  VersionOutOfBoundsError,
+} = require('./errors')
+
+/**
+ * @import { Change } from 'overleaf-editor-core'
+ */
 
 const DEFAULT_DELETE_BATCH_SIZE = parseInt(config.get('maxDeleteKeys'), 10)
 const DEFAULT_DELETE_TIMEOUT_SECS = 3000 // 50 minutes
@@ -88,37 +96,53 @@ async function lazyLoadHistoryFiles(history, batchBlobStore) {
  * @param {boolean} [opts.readOnly]
  * @return {Promise<{id: string, startVersion: number, endVersion: number, endTimestamp: Date}>}
  */
-async function loadLatestRaw(projectId, opts) {
+async function getLatestChunkMetadata(projectId, opts) {
   assert.projectId(projectId, 'bad projectId')
 
   const backend = getBackend(projectId)
-  const chunkRecord = await backend.getLatestChunk(projectId, opts)
-  if (chunkRecord == null) {
+  const chunkMetadata = await backend.getLatestChunk(projectId, opts)
+  if (chunkMetadata == null) {
     throw new Chunk.NotFoundError(projectId)
   }
-  return chunkRecord
+  return chunkMetadata
 }
 
 /**
  * Load the latest Chunk stored for a project, including blob metadata.
  *
  * @param {string} projectId
- * @return {Promise.<Chunk>}
+ * @param {object} [opts]
+ * @param {boolean} [opts.persistedOnly] - only include persisted changes
+ * @return {Promise<Chunk>}
  */
-async function loadLatest(projectId) {
-  const chunkRecord = await loadLatestRaw(projectId)
-  const rawHistory = await historyStore.loadRaw(projectId, chunkRecord.id)
+async function loadLatest(projectId, opts = {}) {
+  const chunkMetadata = await getLatestChunkMetadata(projectId)
+  const rawHistory = await historyStore.loadRaw(projectId, chunkMetadata.id)
   const history = History.fromRaw(rawHistory)
+
+  if (!opts.persistedOnly) {
+    const nonPersistedChanges = await getChunkExtension(
+      projectId,
+      chunkMetadata.endVersion
+    )
+    history.pushChanges(nonPersistedChanges)
+  }
+
   const blobStore = new BlobStore(projectId)
   const batchBlobStore = new BatchBlobStore(blobStore)
   await lazyLoadHistoryFiles(history, batchBlobStore)
-  return new Chunk(history, chunkRecord.startVersion)
+  return new Chunk(history, chunkMetadata.startVersion)
 }
 
 /**
  * Load the the chunk that contains the given version, including blob metadata.
+ *
+ * @param {string} projectId
+ * @param {number} version
+ * @param {object} [opts]
+ * @param {boolean} [opts.persistedOnly] - only include persisted changes
  */
-async function loadAtVersion(projectId, version) {
+async function loadAtVersion(projectId, version, opts = {}) {
   assert.projectId(projectId, 'bad projectId')
   assert.integer(version, 'bad version')
 
@@ -129,6 +153,15 @@ async function loadAtVersion(projectId, version) {
   const chunkRecord = await backend.getChunkForVersion(projectId, version)
   const rawHistory = await historyStore.loadRaw(projectId, chunkRecord.id)
   const history = History.fromRaw(rawHistory)
+
+  if (!opts.persistedOnly) {
+    const nonPersistedChanges = await getChunkExtension(
+      projectId,
+      chunkRecord.endVersion
+    )
+    history.pushChanges(nonPersistedChanges)
+  }
+
   await lazyLoadHistoryFiles(history, batchBlobStore)
   return new Chunk(history, chunkRecord.endVersion - history.countChanges())
 }
@@ -136,8 +169,13 @@ async function loadAtVersion(projectId, version) {
 /**
  * Load the chunk that contains the version that was current at the given
  * timestamp, including blob metadata.
+ *
+ * @param {string} projectId
+ * @param {Date} timestamp
+ * @param {object} [opts]
+ * @param {boolean} [opts.persistedOnly] - only include persisted changes
  */
-async function loadAtTimestamp(projectId, timestamp) {
+async function loadAtTimestamp(projectId, timestamp, opts = {}) {
   assert.projectId(projectId, 'bad projectId')
   assert.date(timestamp, 'bad timestamp')
 
@@ -148,6 +186,15 @@ async function loadAtTimestamp(projectId, timestamp) {
   const chunkRecord = await backend.getChunkForTimestamp(projectId, timestamp)
   const rawHistory = await historyStore.loadRaw(projectId, chunkRecord.id)
   const history = History.fromRaw(rawHistory)
+
+  if (!opts.persistedOnly) {
+    const nonPersistedChanges = await getChunkExtension(
+      projectId,
+      chunkRecord.endVersion
+    )
+    history.pushChanges(nonPersistedChanges)
+  }
+
   await lazyLoadHistoryFiles(history, batchBlobStore)
   return new Chunk(history, chunkRecord.endVersion - history.countChanges())
 }
@@ -307,7 +354,7 @@ async function loadByChunkRecord(projectId, chunkRecord) {
  */
 async function* getProjectChunksFromVersion(projectId, version) {
   const backend = getBackend(projectId)
-  const latestChunkMetadata = await loadLatestRaw(projectId)
+  const latestChunkMetadata = await getLatestChunkMetadata(projectId)
   if (!latestChunkMetadata || version > latestChunkMetadata.endVersion) {
     return
   }
@@ -418,6 +465,31 @@ function getBackend(projectId) {
   }
 }
 
+/**
+ * Gets non-persisted changes that could extend a chunk
+ *
+ * @param {string} projectId
+ * @param {number} chunkEndVersion - end version of the chunk to extend
+ *
+ * @return {Promise<Change[]>}
+ */
+async function getChunkExtension(projectId, chunkEndVersion) {
+  try {
+    const changes = await redisBackend.getNonPersistedChanges(
+      projectId,
+      chunkEndVersion
+    )
+    return changes
+  } catch (err) {
+    if (err instanceof VersionOutOfBoundsError) {
+      // If we can't extend the chunk, simply return an empty list
+      return []
+    } else {
+      throw err
+    }
+  }
+}
+
 class AlreadyInitialized extends OError {
   constructor(projectId) {
     super('Project is already initialized', { projectId })
@@ -428,7 +500,7 @@ module.exports = {
   getBackend,
   initializeProject,
   loadLatest,
-  loadLatestRaw,
+  getLatestChunkMetadata,
   loadAtVersion,
   loadAtTimestamp,
   loadByChunkRecord,

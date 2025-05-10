@@ -82,6 +82,7 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
 
   let originalEndVersion
   let changesToPersist
+  let resyncNeeded = false
 
   limits = limits || {}
   _.defaults(limits, {
@@ -166,12 +167,14 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
         const actualHash = content != null ? getContentHash(content) : null
         logger.debug({ expectedHash, actualHash }, 'validating content hash')
         if (actualHash !== expectedHash) {
-          throw new InvalidChangeError('content hash mismatch', {
-            projectId,
-            path,
-            expectedHash,
-            actualHash,
-          })
+          // only log a warning on the first mismatch in each persistChanges call
+          if (!resyncNeeded) {
+            logger.warn(
+              { projectId, path, expectedHash, actualHash },
+              'content hash mismatch'
+            )
+          }
+          resyncNeeded = true
         }
 
         // Remove the content hash from the change before storing it in the chunk.
@@ -182,7 +185,9 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
   }
 
   async function loadLatestChunk() {
-    const latestChunk = await chunkStore.loadLatest(projectId)
+    const latestChunk = await chunkStore.loadLatest(projectId, {
+      persistedOnly: true,
+    })
 
     currentChunk = latestChunk
     originalEndVersion = latestChunk.getEndVersion()
@@ -203,7 +208,7 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
     // doesn't really need a blobStore, but its signature still requires it.
     const blobStore = new BlobStore(projectId)
     await hollowSnapshot.loadFiles('hollow', blobStore)
-    hollowSnapshot.applyAll(changesToPersist)
+    hollowSnapshot.applyAll(changesToPersist, { strict: true })
     const baseVersion = currentChunk.getEndVersion()
     await redisBackend.queueChanges(
       projectId,
@@ -214,8 +219,11 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
   }
 
   async function fakePersistRedisChanges() {
-    const nonPersistedChanges =
-      await redisBackend.getNonPersistedChanges(projectId)
+    const baseVersion = currentChunk.getEndVersion()
+    const nonPersistedChanges = await redisBackend.getNonPersistedChanges(
+      projectId,
+      baseVersion
+    )
 
     if (
       serializeChanges(nonPersistedChanges) ===
@@ -229,7 +237,6 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
       })
     }
 
-    const baseVersion = currentChunk.getEndVersion()
     const persistedVersion = baseVersion + nonPersistedChanges.length
     await redisBackend.setPersistedVersion(projectId, persistedVersion)
   }
@@ -300,6 +307,7 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
       numberOfChangesPersisted: numberOfChangesToPersist,
       originalEndVersion,
       currentChunk,
+      resyncNeeded,
     }
   } else {
     return null
