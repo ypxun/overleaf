@@ -15,7 +15,6 @@ const metrics = require('@overleaf/metrics')
 const { User } = require('../../models/User')
 const SubscriptionLocator = require('../Subscription/SubscriptionLocator')
 const LimitationsManager = require('../Subscription/LimitationsManager')
-const FeaturesHelper = require('../Subscription/FeaturesHelper')
 const Settings = require('@overleaf/settings')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
 const InactiveProjectManager = require('../InactiveData/InactiveProjectManager')
@@ -753,16 +752,7 @@ const _ProjectController = {
 
       let fullFeatureSet = user?.features
       if (!anonymous) {
-        // generate users feature set including features added, or overriden via modules
-        const moduleFeatures =
-          (await Modules.promises.hooks.fire(
-            'getModuleProvidedFeatures',
-            userId
-          )) || []
-        fullFeatureSet = FeaturesHelper.computeFeatureSet([
-          user.features,
-          ...moduleFeatures,
-        ])
+        fullFeatureSet = await UserGetter.promises.getUserFeatures(userId)
       }
 
       const isPaywallChangeCompileTimeoutEnabled =
@@ -949,9 +939,17 @@ const _ProjectController = {
       const annualPrice = Settings.localizedAddOnsPricing[currency][plan].annual
       const monthlyPrice =
         Settings.localizedAddOnsPricing[currency][plan].monthly
+      const annualDividedByTwelve =
+        Settings.localizedAddOnsPricing[currency][plan].annualDividedByTwelve
 
       plansData[plan] = {
         annual: formatCurrency(annualPrice, currency, locale, true),
+        annualDividedByTwelve: formatCurrency(
+          annualDividedByTwelve,
+          currency,
+          locale,
+          true
+        ),
         monthly: formatCurrency(monthlyPrice, currency, locale, true),
       }
     })
