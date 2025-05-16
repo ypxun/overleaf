@@ -2,7 +2,7 @@ name: Build ARM64 Overleaf Images
 
 on:
   schedule:
-    - cron: '0 0 1 * *'  # 每月1日运行
+    - cron: '0 0 1,15 * *'  # 每月1日、15日运行
   workflow_dispatch:  # 允许手动触发
   push:
     paths:
