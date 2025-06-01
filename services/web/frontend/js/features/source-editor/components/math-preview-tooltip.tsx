@@ -13,7 +13,7 @@ import OLModal, {
 } from '@/features/ui/components/ol/ol-modal'
 import MaterialIcon from '@/shared/components/material-icon'
 import useEventListener from '@/shared/hooks/use-event-listener'
-import { FC, useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { FC, useCallback, useState } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import {
   useCodeMirrorStateContext,
@@ -23,6 +23,7 @@ import { mathPreviewStateField } from '../extensions/math-preview'
 import { getTooltip } from '@codemirror/view'
 import ReactDOM from 'react-dom'
 import OLDropdownMenuItem from '@/features/ui/components/ol/ol-dropdown-menu-item'
+import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
 
 const MathPreviewTooltipContainer: FC = () => {
   const state = useCodeMirrorStateContext()
@@ -34,9 +35,9 @@ const MathPreviewTooltipContainer: FC = () => {
     return null
   }
 
-  const { tooltip, mathContent } = mathPreviewState
+  const { tooltip } = mathPreviewState
 
-  if (!tooltip || !mathContent) {
+  if (!tooltip) {
     return null
   }
 
@@ -46,16 +47,19 @@ const MathPreviewTooltipContainer: FC = () => {
     return null
   }
 
-  return ReactDOM.createPortal(
-    <MathPreviewTooltip mathContent={mathContent} />,
-    tooltipView.dom
-  )
+  const inner = tooltipView.dom.querySelector('#ol-cm-math-tooltip')
+
+  if (!inner) {
+    return null
+  }
+
+  return ReactDOM.createPortal(<MathPreviewTooltipMenu />, inner)
 }
 
-const MathPreviewTooltip: FC<{ mathContent: HTMLDivElement }> = ({
-  mathContent,
-}) => {
+const MathPreviewTooltipMenu: FC = () => {
   const { t } = useTranslation()
+
+  const newEditor = useIsNewEditorEnabled()
 
   const [showDisableModal, setShowDisableModal] = useState(false)
   const { setMathPreview } = useProjectSettingsContext()
@@ -65,8 +69,6 @@ const MathPreviewTooltip: FC<{ mathContent: HTMLDivElement }> = ({
   const onHide = useCallback(() => {
     window.dispatchEvent(new Event('editor:hideMathTooltip'))
   }, [])
-
-  const mathRef = useRef<HTMLSpanElement>(null)
 
   const keyDownListener = useCallback(
     (event: KeyboardEvent) => {
@@ -79,50 +81,40 @@ const MathPreviewTooltip: FC<{ mathContent: HTMLDivElement }> = ({
 
   useEventListener('keydown', keyDownListener)
 
-  useLayoutEffect(() => {
-    if (mathRef.current) {
-      mathRef.current.replaceChildren(mathContent)
-    }
-  }, [mathContent])
-
   return (
     <>
-      <div className="ol-cm-math-tooltip">
-        <span ref={mathRef} />
-
-        <Dropdown align="end">
-          <DropdownToggle
-            id="some-id"
-            className="math-tooltip-options-toggle"
-            variant="secondary"
-            size="sm"
+      <Dropdown align="end">
+        <DropdownToggle
+          id="some-id"
+          className="math-tooltip-options-toggle"
+          variant="secondary"
+          size="sm"
+        >
+          <MaterialIcon
+            type="more_vert"
+            accessibilityLabel={t('more_options')}
+          />
+        </DropdownToggle>
+        <DropdownMenu flip={false}>
+          <OLDropdownMenuItem
+            onClick={onHide}
+            description={t('temporarily_hides_the_preview')}
+            trailingIcon={
+              <span className="math-tooltip-options-keyboard-shortcut">
+                Esc
+              </span>
+            }
           >
-            <MaterialIcon
-              type="more_vert"
-              accessibilityLabel={t('more_options')}
-            />
-          </DropdownToggle>
-          <DropdownMenu flip={false}>
-            <OLDropdownMenuItem
-              onClick={onHide}
-              description={t('temporarily_hides_the_preview')}
-              trailingIcon={
-                <span className="math-tooltip-options-keyboard-shortcut">
-                  Esc
-                </span>
-              }
-            >
-              {t('hide')}
-            </OLDropdownMenuItem>
-            <OLDropdownMenuItem
-              onClick={openDisableModal}
-              description={t('permanently_disables_the_preview')}
-            >
-              {t('disable')}
-            </OLDropdownMenuItem>
-          </DropdownMenu>
-        </Dropdown>
-      </div>
+            {t('hide')}
+          </OLDropdownMenuItem>
+          <OLDropdownMenuItem
+            onClick={openDisableModal}
+            description={t('permanently_disables_the_preview')}
+          >
+            {t('disable')}
+          </OLDropdownMenuItem>
+        </DropdownMenu>
+      </Dropdown>
 
       {showDisableModal && (
         <OLModal show onHide={closeDisableModal}>
@@ -133,10 +125,17 @@ const MathPreviewTooltip: FC<{ mathContent: HTMLDivElement }> = ({
           <OLModalBody>
             {t('disable_equation_preview_confirm')}
             <br />
-            <Trans
-              i18nKey="disable_equation_preview_enable"
-              components={{ b: <strong /> }}
-            />
+            {newEditor ? (
+              <Trans
+                i18nKey="disable_equation_preview_enable_in_settings"
+                components={{ b: <strong /> }}
+              />
+            ) : (
+              <Trans
+                i18nKey="disable_equation_preview_enable"
+                components={{ b: <strong /> }}
+              />
+            )}
           </OLModalBody>
 
           <OLModalFooter>

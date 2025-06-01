@@ -12,11 +12,37 @@ const Features = require('../../infrastructure/Features')
 const UserAuditLogHandler = require('../User/UserAuditLogHandler')
 const AccountMappingHelper = require('../Analytics/AccountMappingHelper')
 const { SSOConfig } = require('../../models/SSOConfig')
+const mongoose = require('../../infrastructure/Mongoose')
+const Modules = require('../../infrastructure/Modules')
 
 /**
  * @typedef {import('../../../../types/subscription/dashboard/subscription').Subscription} Subscription
  * @typedef {import('../../../../types/subscription/dashboard/subscription').PaymentProvider} PaymentProvider
+ * @typedef {import('../../../../types/group-management/group-audit-log').GroupAuditLog} GroupAuditLog
+ * @import { AddOn } from '../../../../types/subscription/plan'
  */
+
+/**
+ *
+ * @param {GroupAuditLog} auditLog
+ */
+async function subscriptionUpdateWithAuditLog(dbFilter, dbUpdate, auditLog) {
+  const session = await mongoose.startSession()
+
+  try {
+    await session.withTransaction(async () => {
+      await Subscription.updateOne(dbFilter, dbUpdate, { session }).exec()
+
+      await Modules.promises.hooks.fire(
+        'addGroupAuditLogEntry',
+        auditLog,
+        session
+      )
+    })
+  } finally {
+    await session.endSession()
+  }
+}
 
 /**
  * Change the admin of the given subscription.
@@ -65,7 +91,7 @@ async function syncSubscription(
   )
 }
 
-async function addUserToGroup(subscriptionId, userId) {
+async function addUserToGroup(subscriptionId, userId, auditLog) {
   await UserAuditLogHandler.promises.addEntry(
     userId,
     'join-group-subscription',
@@ -73,10 +99,18 @@ async function addUserToGroup(subscriptionId, userId) {
     undefined,
     { subscriptionId }
   )
-  await Subscription.updateOne(
+
+  await subscriptionUpdateWithAuditLog(
     { _id: subscriptionId },
-    { $addToSet: { member_ids: userId } }
-  ).exec()
+    { $addToSet: { member_ids: userId } },
+    {
+      initiatorId: auditLog?.initiatorId,
+      ipAddress: auditLog?.ipAddress,
+      groupId: subscriptionId,
+      operation: 'join-group',
+    }
+  )
+
   await FeaturesUpdater.promises.refreshFeatures(userId, 'add-to-group')
   await _sendUserGroupPlanCodeUserProperty(userId)
   await _sendSubscriptionEvent(
@@ -86,7 +120,7 @@ async function addUserToGroup(subscriptionId, userId) {
   )
 }
 
-async function removeUserFromGroup(subscriptionId, userId) {
+async function removeUserFromGroup(subscriptionId, userId, auditLog) {
   await UserAuditLogHandler.promises.addEntry(
     userId,
     'leave-group-subscription',
@@ -94,6 +128,19 @@ async function removeUserFromGroup(subscriptionId, userId) {
     undefined,
     { subscriptionId }
   )
+
+  await subscriptionUpdateWithAuditLog(
+    { _id: subscriptionId },
+    { $pull: { member_ids: userId } },
+    {
+      initiatorId: auditLog?.initiatorId,
+      ipAddress: auditLog?.ipAddress,
+      groupId: subscriptionId,
+      operation: 'leave-group',
+      info: { userIdRemoved: userId },
+    }
+  )
+
   await Subscription.updateOne(
     { _id: subscriptionId },
     { $pull: { member_ids: userId } }
@@ -440,6 +487,53 @@ async function _sendSubscriptionEventForAllMembers(subscriptionId, event) {
   }
 }
 
+/**
+ * Sets the plan code and addon state to revert the plan to in case of failed upgrades, or clears the last restore point if it was used/ voided
+ * @param {ObjectId} subscriptionId the mongo ID of the subscription to set the restore point for
+ * @param {string} planCode the plan code to revert to
+ * @param {Array<AddOn>} addOns the addOns to revert to
+ * @param {Boolean} consumed whether the restore point was used to revert a subscription
+ */
+async function setRestorePoint(subscriptionId, planCode, addOns, consumed) {
+  const update = {
+    $set: {
+      'lastSuccesfulSubscription.planCode': planCode,
+      'lastSuccesfulSubscription.addOns': addOns,
+    },
+  }
+
+  if (consumed) {
+    update.$inc = { revertedDueToFailedPayment: 1 }
+  }
+
+  await Subscription.updateOne({ _id: subscriptionId }, update).exec()
+}
+
+/**
+ * Clears the restore point for a given subscription, and signals that the subscription was sucessfully reverted.
+ *
+ * @async
+ * @function setSubscriptionWasReverted
+ * @param {ObjectId} subscriptionId the mongo ID of the subscription to set the restore point for
+ * @returns {Promise<void>} Resolves when the restore point has been cleared.
+ */
+async function setSubscriptionWasReverted(subscriptionId) {
+  // consume the backup and flag that the subscription was reverted due to failed payment
+  await setRestorePoint(subscriptionId, null, null, true)
+}
+
+/**
+ * Clears the restore point for a given subscription, and signals that the subscription was not reverted.
+ *
+ * @async
+ * @function voidRestorePoint
+ * @param {string} subscriptionId - The unique identifier of the subscription.
+ * @returns {Promise<void>} Resolves when the restore point has been cleared.
+ */
+async function voidRestorePoint(subscriptionId) {
+  await setRestorePoint(subscriptionId, null, null, false)
+}
+
 module.exports = {
   updateAdmin: callbackify(updateAdmin),
   syncSubscription: callbackify(syncSubscription),
@@ -454,6 +548,9 @@ module.exports = {
   restoreSubscription: callbackify(restoreSubscription),
   updateSubscriptionFromRecurly: callbackify(updateSubscriptionFromRecurly),
   scheduleRefreshFeatures: callbackify(scheduleRefreshFeatures),
+  setSubscriptionRestorePoint: callbackify(setRestorePoint),
+  setSubscriptionWasReverted: callbackify(setSubscriptionWasReverted),
+  voidRestorePoint: callbackify(voidRestorePoint),
   promises: {
     updateAdmin,
     syncSubscription,
@@ -468,5 +565,8 @@ module.exports = {
     restoreSubscription,
     updateSubscriptionFromRecurly,
     scheduleRefreshFeatures,
+    setRestorePoint,
+    setSubscriptionWasReverted,
+    voidRestorePoint,
   },
 }

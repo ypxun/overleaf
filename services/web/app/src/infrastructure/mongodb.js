@@ -33,7 +33,6 @@ addConnectionDrainer('mongodb', async () => {
 const internalDb = mongoClient.db()
 const db = {
   contacts: internalDb.collection('contacts'),
-  deletedFiles: internalDb.collection('deletedFiles'),
   deletedProjects: internalDb.collection('deletedProjects'),
   deletedSubscriptions: internalDb.collection('deletedSubscriptions'),
   deletedUsers: internalDb.collection('deletedUsers'),
@@ -131,10 +130,15 @@ async function getCollectionInternal(name) {
   return internalDb.collection(name)
 }
 
+async function waitForDb() {
+  await connectionPromise
+}
+
 module.exports = {
   db,
   ObjectId,
   connectionPromise,
+  waitForDb,
   getCollectionNames,
   getCollectionInternal,
   cleanupTestDatabase,

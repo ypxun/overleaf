@@ -64,19 +64,24 @@ async function importInvite(subscription, inviterName, email, token, sentAt) {
   return subscription.save()
 }
 
-async function acceptInvite(token, userId) {
+async function acceptInvite(token, userId, auditLog) {
   const { invite, subscription } = await getInvite(token)
   if (!invite) {
     throw new Errors.NotFoundError('invite not found')
   }
 
-  await SubscriptionUpdater.promises.addUserToGroup(subscription._id, userId)
+  await SubscriptionUpdater.promises.addUserToGroup(
+    subscription._id,
+    userId,
+    auditLog
+  )
 
   if (subscription.managedUsersEnabled) {
     await Modules.promises.hooks.fire(
       'enrollInManagedSubscription',
       userId,
-      subscription
+      subscription,
+      auditLog
     )
   }
   if (subscription.ssoConfig) {
@@ -146,9 +151,11 @@ async function _createInvite(subscription, email, inviter) {
     emailData => emailData.email === email
   )
   if (isInvitingSelf) {
+    const auditLog = { initiatorId: inviter._id }
     await SubscriptionUpdater.promises.addUserToGroup(
       subscription._id,
-      inviter._id
+      inviter._id,
+      auditLog
     )
 
     // legacy: remove any invite that might have been created in the past

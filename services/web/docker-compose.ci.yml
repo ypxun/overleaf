@@ -21,6 +21,7 @@ services:
       OVERLEAF_CONFIG:
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
+      VITEST_NO_CACHE: true
     depends_on:
       - mongo
 
@@ -88,7 +89,7 @@ services:
     image: redis
 
   mongo:
-    image: mongo:6.0.13
+    image: mongo:7.0.20
     logging:
       driver: none
     command: --replSet overleaf

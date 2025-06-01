@@ -1,9 +1,5 @@
 const Path = require('node:path')
 const os = require('node:os')
-const stream = require('node:stream')
-
-// TODO(24011): remove this after node 22 update
-stream.setDefaultHighWaterMark(false, 64 * 1024)
 
 const isPreEmptible = process.env.PREEMPTIBLE === 'TRUE'
 const CLSI_SERVER_ID = os.hostname().replace('-ctr', '')
@@ -60,16 +56,8 @@ module.exports = {
       }`,
     },
     clsiCache: {
-      enabled: !!(process.env.CLSI_CACHE_SHARDS || process.env.CLSI_CACHE_HOST),
-      url: `http://${process.env.CLSI_CACHE_HOST}:3044`,
-      shards: process.env.CLSI_CACHE_SHARDS
-        ? JSON.parse(process.env.CLSI_CACHE_SHARDS)
-        : [
-            {
-              url: `http://${process.env.CLSI_CACHE_HOST}:3044`,
-              shard: 'cache',
-            },
-          ],
+      enabled: !!process.env.CLSI_CACHE_SHARDS,
+      shards: JSON.parse(process.env.CLSI_CACHE_SHARDS || '[]'),
     },
   },
 
@@ -153,9 +141,11 @@ if ((process.env.DOCKER_RUNNER || process.env.SANDBOXED_COMPILES) === 'true') {
   let seccompProfilePath
   try {
     seccompProfilePath = Path.resolve(__dirname, '../seccomp/clsi-profile.json')
-    module.exports.clsi.docker.seccomp_profile = JSON.stringify(
-      JSON.parse(require('node:fs').readFileSync(seccompProfilePath))
-    )
+    module.exports.clsi.docker.seccomp_profile =
+      process.env.SECCOMP_PROFILE ||
+      JSON.stringify(
+        JSON.parse(require('node:fs').readFileSync(seccompProfilePath))
+      )
   } catch (error) {
     console.error(
       error,

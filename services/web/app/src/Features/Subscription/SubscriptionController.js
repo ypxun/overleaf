@@ -26,6 +26,7 @@ const { AI_ADD_ON_CODE } = require('./PaymentProviderEntities')
 const PlansLocator = require('./PlansLocator')
 const PaymentProviderEntities = require('./PaymentProviderEntities')
 const { User } = require('../../models/User')
+const UserGetter = require('../User/UserGetter')
 
 /**
  * @import { SubscriptionChangeDescription } from '../../../../types/subscription/subscription-change-preview'
@@ -86,7 +87,7 @@ async function userSubscriptionPage(req, res) {
 
   const groupPlansDataForDash = formatGroupPlansDataForDash()
 
-  // display the Group Settings button only to admins of group subscriptions with either/or the Managed Users or Group SSO feature available
+  // display the Group settings button only to admins of group subscriptions with either/or the Managed Users or Group SSO feature available
   let groupSettingsEnabledFor
   try {
     const managedGroups = await async.filter(
@@ -154,9 +155,10 @@ async function userSubscriptionPage(req, res) {
       'Failed to list groups with group settings enabled for advertising'
     )
   }
-
-  const hasAiAssistViaWritefull =
-    await FeaturesUpdater.promises.hasFeaturesViaWritefull(user._id)
+  const {
+    isPremium: hasAiAssistViaWritefull,
+    premiumSource: aiAssistViaWritefullSource,
+  } = await UserGetter.promises.getWritefullData(user._id)
 
   const data = {
     title: 'your_subscription',
@@ -181,6 +183,7 @@ async function userSubscriptionPage(req, res) {
     isManagedAccount: !!req.managedBy,
     userRestrictions: Array.from(req.userRestrictions || []),
     hasAiAssistViaWritefull,
+    aiAssistViaWritefullSource,
   }
   res.render('subscriptions/dashboard-react', data)
 }
@@ -335,15 +338,19 @@ async function previewAddonPurchase(req, res) {
     return HttpErrorHandler.notFound(req, res, `Unknown add-on: ${addOnCode}`)
   }
 
-  const paymentMethod = await RecurlyClient.promises.getPaymentMethod(userId)
+  /** @type {PaymentMethod[]} */
+  const paymentMethod = await Modules.promises.hooks.fire(
+    'getPaymentMethod',
+    userId
+  )
 
   let subscriptionChange
   try {
     subscriptionChange =
       await SubscriptionHandler.promises.previewAddonPurchase(userId, addOnCode)
 
-    const hasAiAssistViaWritefull =
-      await FeaturesUpdater.promises.hasFeaturesViaWritefull(userId)
+    const { isPremium: hasAiAssistViaWritefull } =
+      await UserGetter.promises.getWritefullData(userId)
     const isAiUpgrade =
       PaymentProviderEntities.subscriptionChangeIsAiAssistUpgrade(
         subscriptionChange
@@ -376,7 +383,13 @@ async function previewAddonPurchase(req, res) {
       },
     },
     subscriptionChange,
-    paymentMethod
+    paymentMethod[0]
+  )
+
+  await SplitTestHandler.promises.getAssignment(
+    req,
+    res,
+    'overleaf-assist-bundle'
   )
 
   res.render('subscriptions/preview-change', {
@@ -397,6 +410,8 @@ async function purchaseAddon(req, res, next) {
 
   logger.debug({ userId: user._id, addOnCode }, 'purchasing add-ons')
   try {
+    // set a restore point in the case of a failed payment for the upgrade (Recurly only)
+    await SubscriptionHandler.promises.setSubscriptionRestorePoint(user._id)
     await SubscriptionHandler.promises.purchaseAddon(
       user._id,
       addOnCode,
@@ -468,6 +483,7 @@ async function previewSubscription(req, res, next) {
   if (!planCode) {
     return HttpErrorHandler.notFound(req, res, 'Missing plan code')
   }
+  // TODO: use PaymentService to fetch plan information
   const plan = await RecurlyClient.promises.getPlan(planCode)
   const userId = SessionManager.getLoggedInUserId(req.session)
   const subscriptionChange =
@@ -475,14 +491,18 @@ async function previewSubscription(req, res, next) {
       userId,
       planCode
     )
-  const paymentMethod = await RecurlyClient.promises.getPaymentMethod(userId)
+  /** @type {PaymentMethod[]} */
+  const paymentMethod = await Modules.promises.hooks.fire(
+    'getPaymentMethod',
+    userId
+  )
   const changePreview = makeChangePreview(
     {
       type: 'premium-subscription',
       plan: { code: plan.code, name: plan.name },
     },
     subscriptionChange,
-    paymentMethod
+    paymentMethod[0]
   )
 
   res.render('subscriptions/preview-change', { changePreview })
@@ -556,7 +576,35 @@ function recurlyCallback(req, res, next) {
     )
   )
 
-  if (
+  // this is a recurly only case which is required since Recurly does not have a reliable way to check credit info pre-upgrade purchase
+  if (event === 'failed_payment_notification') {
+    if (!Settings.planReverts?.enabled) {
+      return res.sendStatus(200)
+    }
+
+    SubscriptionHandler.getSubscriptionRestorePoint(
+      eventData.transaction.subscription_id,
+      function (err, lastSubscription) {
+        if (err) {
+          return next(err)
+        }
+        // if theres no restore point it could be a failed renewal, or no restore set. Either way it will be handled through dunning automatically
+        if (!lastSubscription || !lastSubscription?.planCode) {
+          return res.sendStatus(200)
+        }
+        SubscriptionHandler.revertPlanChange(
+          eventData.transaction.subscription_id,
+          lastSubscription,
+          function (err) {
+            if (err) {
+              return next(err)
+            }
+            return res.sendStatus(200)
+          }
+        )
+      }
+    )
+  } else if (
     [
       'new_subscription_notification',
       'updated_subscription_notification',

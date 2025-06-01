@@ -26,6 +26,20 @@ function EmailsSectionContent() {
   // Only show the "add email" button if the user has permission to add a secondary email
   const hideAddSecondaryEmail = getMeta('ol-cannot-add-secondary-email')
 
+  // Sort emails: primary first, then confirmed secondary emails, then unconfirmed secondary emails
+  const sortedUserEmails = [...userEmails].sort((a, b) => {
+    // Primary email comes first
+    if (a.default) return -1
+    if (b.default) return 1
+
+    // Then sort by confirmation status
+    if (a.confirmedAt && !b.confirmedAt) return -1
+    if (!a.confirmedAt && b.confirmedAt) return 1
+
+    // If both have the same status, sort by email string
+    return a.email.localeCompare(b.email)
+  })
+
   return (
     <>
       <h2 className="h3">{t('emails_and_affiliations_title')}</h2>
@@ -40,7 +54,6 @@ function EmailsSectionContent() {
             <a
               href="/learn/how-to/Managing_your_Overleaf_emails"
               target="_blank"
-              aria-label={t('learn_more_about_managing_email')}
             />,
           ]}
         />
@@ -55,7 +68,7 @@ function EmailsSectionContent() {
           </div>
         ) : (
           <>
-            {userEmails?.map(userEmail => (
+            {sortedUserEmails.map(userEmail => (
               <Fragment key={userEmail.email}>
                 <EmailsRow userEmailData={userEmail} primary={primary} />
                 <div className="horizontal-divider" />

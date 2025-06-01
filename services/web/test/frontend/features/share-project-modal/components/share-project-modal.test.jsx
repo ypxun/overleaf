@@ -94,7 +94,6 @@ describe('<ShareProjectModal/>', function () {
     fetchMock.get('/user/contacts', { contacts })
     window.metaAttributesCache.set('ol-user', { allowedFreeTrial: true })
     window.metaAttributesCache.set('ol-showUpgradePrompt', true)
-    window.metaAttributesCache.set('ol-isReviewerRoleEnabled', true)
     window.metaAttributesCache.set('ol-preventCompileOnLoad', true)
   })
 
@@ -182,7 +181,7 @@ describe('<ShareProjectModal/>', function () {
     await screen.findByText(
       'This project is public and can be edited by anyone with the URL.'
     )
-    await screen.findByRole('button', { name: 'Make Private' })
+    await screen.findByRole('button', { name: 'Make private' })
   })
 
   it('handles legacy access level "readOnly"', async function () {
@@ -193,7 +192,7 @@ describe('<ShareProjectModal/>', function () {
     await screen.findByText(
       'This project is public and can be viewed but not edited by anyone with the URL'
     )
-    await screen.findByRole('button', { name: 'Make Private' })
+    await screen.findByRole('button', { name: 'Make private' })
   })
 
   it('displays actions for project-owners', async function () {

@@ -1,9 +1,6 @@
 const http = require('node:http')
 const https = require('node:https')
-const stream = require('node:stream')
 
-// TODO(24011): remove this after node 22 update
-stream.setDefaultHighWaterMark(false, 64 * 1024)
 http.globalAgent.keepAlive = false
 https.globalAgent.keepAlive = false
 
@@ -187,4 +184,8 @@ module.exports = {
   smoothingOffset: process.env.SMOOTHING_OFFSET || 1000, // milliseconds
   gracefulShutdownDelayInMs:
     parseInt(process.env.GRACEFUL_SHUTDOWN_DELAY_SECONDS ?? '10', 10) * 1000,
+
+  shortHistoryQueues: (process.env.SHORT_HISTORY_QUEUES || '')
+    .split(',')
+    .filter(s => !!s),
 }

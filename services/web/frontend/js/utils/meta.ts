@@ -59,6 +59,7 @@ export interface Meta {
     string,
     { annual: string; monthly: string; annualDividedByTwelve: string }
   >
+  'ol-aiAssistViaWritefullSource': string
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
   'ol-allowedExperiments': string[]
   'ol-allowedImageNames': AllowedImageName[]
@@ -81,6 +82,7 @@ export interface Meta {
   'ol-cannot-reactivate-subscription': boolean
   'ol-cannot-use-ai': boolean
   'ol-chatEnabled': boolean
+
   'ol-compilesUserContentDomain': string
   'ol-countryCode': PricingFormState['country']
   'ol-couponCode': PricingFormState['coupon']
@@ -140,7 +142,6 @@ export interface Meta {
   'ol-isProfessional': boolean
   'ol-isRegisteredViaGoogle': boolean
   'ol-isRestrictedTokenMember': boolean
-  'ol-isReviewerRoleEnabled': boolean
   'ol-isSaas': boolean
   'ol-itm_campaign': string
   'ol-itm_content': string

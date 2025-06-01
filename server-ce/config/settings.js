@@ -79,6 +79,7 @@ const settings = {
       host: process.env.OVERLEAF_REDIS_HOST || 'dockerhost',
       port: process.env.OVERLEAF_REDIS_PORT || '6379',
       password: process.env.OVERLEAF_REDIS_PASS || undefined,
+      tls: process.env.OVERLEAF_REDIS_TLS === 'true' ? {} : undefined,
       key_schema: {
         // document-updater
         blockingKey({ doc_id }) {
@@ -139,6 +140,7 @@ const settings = {
     api: redisConfig,
     pubsub: redisConfig,
     project_history: redisConfig,
+    references: redisConfig,
 
     project_history_migration: {
       host: redisConfig.host,

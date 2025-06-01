@@ -284,7 +284,7 @@ describe('<EmailsSection />', function () {
       target: { value: 'user@autocomplete.edu' },
     })
 
-    await screen.findByRole('button', { name: 'Link Accounts and Add Email' })
+    await screen.findByRole('button', { name: 'Link accounts and add email' })
   })
 
   it('adds new email address with existing institution and custom departments', async function () {
@@ -384,7 +384,7 @@ describe('<EmailsSection />', function () {
       department: customDepartment,
     })
 
-    screen.getByText(
+    await screen.findByText(
       `Enter the 6-digit confirmation code sent to ${userEmailData.email}.`
     )
 

@@ -1,4 +1,4 @@
-import { Dropdown } from 'react-bootstrap-5'
+import { Dropdown } from 'react-bootstrap'
 import { useTranslation } from 'react-i18next'
 import getMeta from '@/utils/meta'
 import type { NavbarSessionUser } from '@/features/ui/components/types/navbar'
@@ -25,7 +25,7 @@ export function AccountMenuItems({
       </Dropdown.Item>
       <NavDropdownDivider />
       <NavDropdownLinkItem href="/user/settings">
-        {t('Account Settings')}
+        {t('account_settings')}
       </NavDropdownLinkItem>
       {showSubscriptionLink ? (
         <NavDropdownLinkItem href="/user/subscription">

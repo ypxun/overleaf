@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { sendMB } from '@/infrastructure/event-tracking'
 import { useTranslation } from 'react-i18next'
-import { Button, Container, Nav, Navbar } from 'react-bootstrap-5'
+import { Button, Container, Nav, Navbar } from 'react-bootstrap'
 import useWaitForI18n from '@/shared/hooks/use-wait-for-i18n'
 import AdminMenu from '@/features/ui/components/bootstrap-5/navbar/admin-menu'
 import type { DefaultNavbarMetadata } from '@/features/ui/components/types/default-navbar-metadata'
@@ -34,19 +34,14 @@ function DefaultNavbar(props: DefaultNavbarMetadata) {
     items,
   } = props
   const { t } = useTranslation()
-  const { isReady } = useWaitForI18n()
   const [expanded, setExpanded] = useState(false)
 
-  // The Contact Us modal is rendered at this level rather than inside the nav
+  // The Contact us modal is rendered at this level rather than inside the nav
   // bar because otherwise the help wiki search results dropdown doesn't show up
   const { modal: contactUsModal, showModal: showContactUsModal } =
     useContactUsModal({
       autofillProjectUrl: false,
     })
-
-  if (!isReady) {
-    return null
-  }
 
   return (
     <>
@@ -140,6 +135,16 @@ function DefaultNavbar(props: DefaultNavbarMetadata) {
       <UserProvider>{contactUsModal}</UserProvider>
     </>
   )
+}
+
+export const DefaultNavbarRoot = (props: DefaultNavbarMetadata) => {
+  const { isReady } = useWaitForI18n()
+
+  if (!isReady) {
+    return null
+  }
+
+  return <DefaultNavbar {...props} />
 }
 
 export default DefaultNavbar

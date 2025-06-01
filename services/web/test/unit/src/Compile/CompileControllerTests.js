@@ -251,7 +251,6 @@ describe('CompileController', function () {
             fileLineErrors: false,
             stopOnFirstError: false,
             editorId: undefined,
-            clsiCacheSharded: false,
           }
         )
       })
@@ -294,7 +293,6 @@ describe('CompileController', function () {
             fileLineErrors: false,
             stopOnFirstError: false,
             editorId: undefined,
-            clsiCacheSharded: false,
           }
         )
       })
@@ -319,7 +317,6 @@ describe('CompileController', function () {
             fileLineErrors: false,
             stopOnFirstError: false,
             editorId: undefined,
-            clsiCacheSharded: false,
           }
         )
       })
@@ -343,7 +340,6 @@ describe('CompileController', function () {
             fileLineErrors: false,
             stopOnFirstError: false,
             editorId: 'the-editor-id',
-            clsiCacheSharded: false,
           }
         )
       })
@@ -542,7 +538,7 @@ describe('CompileController', function () {
   describe('getFileFromClsiWithoutUser', function () {
     beforeEach(function () {
       this.submission_id = 'sub-1234'
-      this.file = 'project.pdf'
+      this.file = 'output.pdf'
       this.req.params = {
         submission_id: this.submission_id,
         build_id: this.build_id,

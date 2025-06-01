@@ -36,10 +36,15 @@ async function createInvite(req, res, next) {
   }
 
   try {
+    const auditLog = {
+      initiatorId: teamManagerId,
+      ipAddress: req.ip,
+    }
     const invitedUserData = await TeamInvitesHandler.promises.createInvite(
       teamManagerId,
       subscription,
-      email
+      email,
+      auditLog
     )
     return res.json({ user: invitedUserData })
   } catch (err) {
@@ -197,7 +202,8 @@ async function acceptInvite(req, res, next) {
 
   const subscription = await TeamInvitesHandler.promises.acceptInvite(
     token,
-    userId
+    userId,
+    { initiatorId: userId, ipAddress: req.ip }
   )
   const groupSSOActive = (
     await Modules.promises.hooks.fire('hasGroupSSOEnabled', subscription)
