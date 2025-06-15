@@ -24,26 +24,58 @@ describe('Getting all docs', function () {
       {
         _id: new ObjectId(),
         lines: ['one', 'two', 'three'],
-        ranges: { mock: 'one' },
+        ranges: {
+          comments: [
+            { id: new ObjectId().toString(), op: { t: 'thread-id-1' } },
+          ],
+          changes: [
+            {
+              id: new ObjectId().toString(),
+              metadata: { user_id: 'user-id-1' },
+            },
+          ],
+        },
         rev: 2,
       },
       {
         _id: new ObjectId(),
         lines: ['aaa', 'bbb', 'ccc'],
-        ranges: { mock: 'two' },
+        ranges: {
+          changes: [
+            {
+              id: new ObjectId().toString(),
+              metadata: { user_id: 'user-id-2' },
+            },
+          ],
+        },
         rev: 4,
       },
       {
         _id: new ObjectId(),
         lines: ['111', '222', '333'],
-        ranges: { mock: 'three' },
+        ranges: {
+          comments: [
+            { id: new ObjectId().toString(), op: { t: 'thread-id-2' } },
+          ],
+          changes: [
+            {
+              id: new ObjectId().toString(),
+              metadata: { user_id: 'anonymous-user' },
+            },
+          ],
+        },
         rev: 6,
       },
     ]
     this.deleted_doc = {
       _id: new ObjectId(),
       lines: ['deleted'],
-      ranges: { mock: 'four' },
+      ranges: {
+        comments: [{ id: new ObjectId().toString(), op: { t: 'thread-id-3' } }],
+        changes: [
+          { id: new ObjectId().toString(), metadata: { user_id: 'user-id-3' } },
+        ],
+      },
       rev: 8,
     }
     const version = 42
@@ -96,7 +128,7 @@ describe('Getting all docs', function () {
     })
   })
 
-  return it('getAllRanges should return all the (non-deleted) doc ranges', function (done) {
+  it('getAllRanges should return all the (non-deleted) doc ranges', function (done) {
     return DocstoreClient.getAllRanges(this.project_id, (error, res, docs) => {
       if (error != null) {
         throw error
@@ -108,5 +140,34 @@ describe('Getting all docs', function () {
       }
       return done()
     })
+  })
+
+  it('getTrackedChangesUserIds should return all the user ids from (non-deleted) ranges', function (done) {
+    DocstoreClient.getTrackedChangesUserIds(
+      this.project_id,
+      (error, res, userIds) => {
+        if (error != null) {
+          throw error
+        }
+        userIds.should.deep.equal(['user-id-1', 'user-id-2'])
+        done()
+      }
+    )
+  })
+
+  it('getCommentThreadIds should return all the thread ids from (non-deleted) ranges', function (done) {
+    DocstoreClient.getCommentThreadIds(
+      this.project_id,
+      (error, res, threadIds) => {
+        if (error != null) {
+          throw error
+        }
+        threadIds.should.deep.equal({
+          [this.docs[0]._id.toString()]: ['thread-id-1'],
+          [this.docs[2]._id.toString()]: ['thread-id-2'],
+        })
+        done()
+      }
+    )
   })
 })

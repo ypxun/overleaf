@@ -2,6 +2,7 @@
 
 const SessionManager = require('../Authentication/SessionManager')
 const SubscriptionHandler = require('./SubscriptionHandler')
+const SubscriptionHelper = require('./SubscriptionHelper')
 const SubscriptionViewModelBuilder = require('./SubscriptionViewModelBuilder')
 const LimitationsManager = require('./LimitationsManager')
 const RecurlyWrapper = require('./RecurlyWrapper')
@@ -15,7 +16,11 @@ const AnalyticsManager = require('../Analytics/AnalyticsManager')
 const RecurlyEventHandler = require('./RecurlyEventHandler')
 const { expressify } = require('@overleaf/promise-utils')
 const OError = require('@overleaf/o-error')
-const { DuplicateAddOnError, AddOnNotPresentError } = require('./Errors')
+const {
+  DuplicateAddOnError,
+  AddOnNotPresentError,
+  PaymentActionRequiredError,
+} = require('./Errors')
 const SplitTestHandler = require('../SplitTests/SplitTestHandler')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
 const Modules = require('../../infrastructure/Modules')
@@ -27,6 +32,10 @@ const PlansLocator = require('./PlansLocator')
 const PaymentProviderEntities = require('./PaymentProviderEntities')
 const { User } = require('../../models/User')
 const UserGetter = require('../User/UserGetter')
+const PermissionsManager = require('../Authorization/PermissionsManager')
+const {
+  sanitizeSessionUserForFrontEnd,
+} = require('../../infrastructure/FrontEndUser')
 
 /**
  * @import { SubscriptionChangeDescription } from '../../../../types/subscription/subscription-change-preview'
@@ -258,7 +267,8 @@ async function pauseSubscription(req, res, next) {
       {
         pause_length: pauseCycles,
         plan_code: subscription?.planCode,
-        subscriptionId: subscription?.recurlySubscription_id,
+        subscriptionId:
+          SubscriptionHelper.getPaymentProviderSubscriptionId(subscription),
       }
     )
 
@@ -311,7 +321,9 @@ function cancelSubscription(req, res, next) {
 async function canceledSubscription(req, res, next) {
   return res.render('subscriptions/canceled-subscription-react', {
     title: 'subscription_canceled',
-    user: SessionManager.getSessionUser(req.session),
+    user: sanitizeSessionUserForFrontEnd(
+      SessionManager.getSessionUser(req.session)
+    ),
   })
 }
 
@@ -330,12 +342,23 @@ function cancelV1Subscription(req, res, next) {
 }
 
 async function previewAddonPurchase(req, res) {
-  const userId = SessionManager.getLoggedInUserId(req.session)
+  const user = SessionManager.getSessionUser(req.session)
+  const userId = user._id
   const addOnCode = req.params.addOnCode
   const purchaseReferrer = req.query.purchaseReferrer
 
   if (addOnCode !== AI_ADD_ON_CODE) {
     return HttpErrorHandler.notFound(req, res, `Unknown add-on: ${addOnCode}`)
+  }
+
+  const canUseAi = await PermissionsManager.promises.checkUserPermissions(
+    user,
+    ['use-ai']
+  )
+  if (!canUseAi) {
+    return res.redirect(
+      '/user/subscription?redirect-reason=ai-assist-unavailable'
+    )
   }
 
   /** @type {PaymentMethod[]} */
@@ -410,8 +433,6 @@ async function purchaseAddon(req, res, next) {
 
   logger.debug({ userId: user._id, addOnCode }, 'purchasing add-ons')
   try {
-    // set a restore point in the case of a failed payment for the upgrade (Recurly only)
-    await SubscriptionHandler.promises.setSubscriptionRestorePoint(user._id)
     await SubscriptionHandler.promises.purchaseAddon(
       user._id,
       addOnCode,
@@ -425,6 +446,11 @@ async function purchaseAddon(req, res, next) {
         'Your subscription already includes this add-on',
         { addon: addOnCode }
       )
+    } else if (err instanceof PaymentActionRequiredError) {
+      return res.status(402).json({
+        message: 'Payment action required',
+        clientSecret: err.info.clientSecret,
+      })
     } else {
       if (err instanceof Error) {
         OError.tag(err, 'something went wrong purchasing add-ons', {
@@ -526,18 +552,18 @@ function cancelPendingSubscriptionChange(req, res, next) {
   })
 }
 
-function updateAccountEmailAddress(req, res, next) {
+async function updateAccountEmailAddress(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
-  RecurlyWrapper.updateAccountEmailAddress(
-    user._id,
-    user.email,
-    function (error) {
-      if (error) {
-        return next(error)
-      }
-      res.sendStatus(200)
-    }
-  )
+  try {
+    await Modules.promises.hooks.fire(
+      'updateAccountEmailAddress',
+      user._id,
+      user.email
+    )
+    return res.sendStatus(200)
+  } catch (error) {
+    return next(error)
+  }
 }
 
 function reactivateSubscription(req, res, next) {
@@ -695,7 +721,7 @@ async function getRecommendedCurrency(req, res) {
     ip = req.query.ip
   }
   const currencyLookup = await GeoIpLookup.promises.getCurrencyCode(ip)
-  let countryCode = currencyLookup.countryCode
+  const countryCode = currencyLookup.countryCode
   const recommendedCurrency = currencyLookup.currencyCode
 
   let currency = null
@@ -704,13 +730,6 @@ async function getRecommendedCurrency(req, res) {
     currency = queryCurrency
   } else if (recommendedCurrency) {
     currency = recommendedCurrency
-  }
-
-  const queryCountryCode = req.query.countryCode?.toUpperCase()
-
-  // only enable countryCode testing flag on staging or dev environments
-  if (queryCountryCode && process.env.NODE_ENV !== 'production') {
-    countryCode = queryCountryCode
   }
 
   return {
@@ -850,7 +869,7 @@ module.exports = {
   cancelV1Subscription,
   previewSubscription: expressify(previewSubscription),
   cancelPendingSubscriptionChange,
-  updateAccountEmailAddress,
+  updateAccountEmailAddress: expressify(updateAccountEmailAddress),
   reactivateSubscription,
   recurlyCallback,
   extendTrial: expressify(extendTrial),

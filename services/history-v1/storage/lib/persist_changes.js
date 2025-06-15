@@ -4,7 +4,6 @@
 
 const _ = require('lodash')
 const logger = require('@overleaf/logger')
-const metrics = require('@overleaf/metrics')
 
 const core = require('overleaf-editor-core')
 const Chunk = core.Chunk
@@ -15,7 +14,6 @@ const chunkStore = require('./chunk_store')
 const { BlobStore } = require('./blob_store')
 const { InvalidChangeError } = require('./errors')
 const { getContentHash } = require('./content_hash')
-const redisBackend = require('./chunk_store/redis')
 
 function countChangeBytes(change) {
   // Note: This is not quite accurate, because the raw change may contain raw
@@ -202,45 +200,6 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
     currentSnapshot.applyAll(currentChunk.getChanges())
   }
 
-  async function queueChangesInRedis() {
-    const hollowSnapshot = currentSnapshot.clone()
-    // We're transforming a lazy snapshot to a hollow snapshot, so loadFiles()
-    // doesn't really need a blobStore, but its signature still requires it.
-    const blobStore = new BlobStore(projectId)
-    await hollowSnapshot.loadFiles('hollow', blobStore)
-    hollowSnapshot.applyAll(changesToPersist, { strict: true })
-    const baseVersion = currentChunk.getEndVersion()
-    await redisBackend.queueChanges(
-      projectId,
-      hollowSnapshot,
-      baseVersion,
-      changesToPersist
-    )
-  }
-
-  async function fakePersistRedisChanges() {
-    const baseVersion = currentChunk.getEndVersion()
-    const nonPersistedChanges = await redisBackend.getNonPersistedChanges(
-      projectId,
-      baseVersion
-    )
-
-    if (
-      serializeChanges(nonPersistedChanges) ===
-      serializeChanges(changesToPersist)
-    ) {
-      metrics.inc('persist_redis_changes_verification', 1, { status: 'match' })
-    } else {
-      logger.warn({ projectId }, 'mismatch of non-persisted changes from Redis')
-      metrics.inc('persist_redis_changes_verification', 1, {
-        status: 'mismatch',
-      })
-    }
-
-    const persistedVersion = baseVersion + nonPersistedChanges.length
-    await redisBackend.setPersistedVersion(projectId, persistedVersion)
-  }
-
   async function extendLastChunkIfPossible() {
     const timer = new Timer()
     const changesPushed = await fillChunk(currentChunk, changesToPersist)
@@ -289,12 +248,6 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
     const numberOfChangesToPersist = oldChanges.length
 
     await loadLatestChunk()
-    try {
-      await queueChangesInRedis()
-      await fakePersistRedisChanges()
-    } catch (err) {
-      logger.error({ err }, 'Chunk buffer verification failed')
-    }
     await extendLastChunkIfPossible()
     await createNewChunksAsNeeded()
 
@@ -307,13 +260,6 @@ async function persistChanges(projectId, allChanges, limits, clientEndVersion) {
   } else {
     return null
   }
-}
-
-/**
- * @param {core.Change[]} changes
- */
-function serializeChanges(changes) {
-  return JSON.stringify(changes.map(change => change.toRaw()))
 }
 
 module.exports = persistChanges

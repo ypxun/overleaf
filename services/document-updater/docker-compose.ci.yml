@@ -28,12 +28,15 @@ services:
       MOCHA_GREP: ${MOCHA_GREP}
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
+    volumes:
+      - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
     depends_on:
       mongo:
         condition: service_started
       redis:
         condition: service_healthy
     user: node
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=0 --
     command: npm run test:acceptance
 
 
@@ -45,7 +48,7 @@ services:
     command: tar -czf /tmp/build/build.tar.gz --exclude=build.tar.gz --exclude-vcs .
     user: root
   redis:
-    image: redis
+    image: redis:7.4.3
     healthcheck:
       test: ping="$$(redis-cli ping)" && [ "$$ping" = 'PONG' ]
       interval: 1s

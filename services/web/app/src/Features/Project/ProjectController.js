@@ -14,6 +14,7 @@ const ProjectHelper = require('./ProjectHelper')
 const metrics = require('@overleaf/metrics')
 const { User } = require('../../models/User')
 const SubscriptionLocator = require('../Subscription/SubscriptionLocator')
+const { isPaidSubscription } = require('../Subscription/SubscriptionHelper')
 const LimitationsManager = require('../Subscription/LimitationsManager')
 const Settings = require('@overleaf/settings')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
@@ -352,6 +353,7 @@ const _ProjectController = {
       'overleaf-assist-bundle',
       'word-count-client',
       'editor-popup-ux-survey',
+      'new-editor-error-logs-redesign',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -654,17 +656,12 @@ const _ProjectController = {
         }
       }
 
-      const hasNonRecurlySubscription =
-        subscription && !subscription.recurlySubscription_id
+      const hasPaidSubscription = isPaidSubscription(subscription)
       const hasManuallyCollectedSubscription =
         subscription?.collectionMethod === 'manual'
-      const canPurchaseAddons = !(
-        hasNonRecurlySubscription || hasManuallyCollectedSubscription
-      )
       const assistantDisabled = user.aiErrorAssistant?.enabled === false // the assistant has been manually disabled by the user
       const canUseErrorAssistant =
-        (user.features?.aiErrorAssistant || canPurchaseAddons) &&
-        !assistantDisabled
+        !hasManuallyCollectedSubscription && !assistantDisabled
 
       let featureUsage = {}
 
@@ -768,6 +765,12 @@ const _ProjectController = {
         isOverleafAssistBundleEnabled &&
         (await ProjectController._getAddonPrices(req, res))
 
+      const reducedTimeoutWarning =
+        await SplitTestHandler.promises.getAssignmentForUser(
+          project.owner_ref,
+          '10s-timeout-warning'
+        )
+
       let planCode = subscription?.planCode
       if (!planCode && !userInNonIndividualSub) {
         planCode = 'personal'
@@ -791,7 +794,7 @@ const _ProjectController = {
           referal_id: user.referal_id,
           signUpDate: user.signUpDate,
           allowedFreeTrial,
-          hasRecurlySubscription: subscription?.recurlySubscription_id != null,
+          hasPaidSubscription,
           featureSwitches: user.featureSwitches,
           features: fullFeatureSet,
           featureUsage,
@@ -824,6 +827,7 @@ const _ProjectController = {
           lineHeight: user.ace.lineHeight || 'normal',
           overallTheme: user.ace.overallTheme,
           mathPreview: user.ace.mathPreview,
+          breadcrumbs: user.ace.breadcrumbs,
           referencesSearchMode: user.ace.referencesSearchMode,
           enableNewEditor: user.ace.enableNewEditor ?? true,
         },
@@ -881,6 +885,10 @@ const _ProjectController = {
         paywallPlans,
         customerIoEnabled,
         addonPrices,
+        compileSettings: {
+          reducedTimeoutWarning: reducedTimeoutWarning?.variant,
+          compileTimeout: ownerFeatures?.compileTimeout,
+        },
       })
       timer.done()
     } catch (err) {

@@ -20,6 +20,7 @@ import getMeta from '@/utils/meta'
 import MaterialIcon from '@/shared/components/material-icon'
 import DropdownListItem from '@/features/ui/components/bootstrap-5/dropdown-list-item'
 import { Spinner } from 'react-bootstrap'
+import { sendMB } from '@/infrastructure/event-tracking'
 
 type resendInviteResponse = {
   success: boolean
@@ -28,6 +29,7 @@ type resendInviteResponse = {
 type ManagedUserDropdownButtonProps = {
   user: User
   openOffboardingModalForUser: (user: User) => void
+  openRemoveModalForUser: (user: User) => void
   openUnlinkUserModal: (user: User) => void
   groupId: string
   setGroupUserAlert: Dispatch<SetStateAction<GroupUserAlert>>
@@ -36,6 +38,7 @@ type ManagedUserDropdownButtonProps = {
 export default function DropdownButton({
   user,
   openOffboardingModalForUser,
+  openRemoveModalForUser,
   openUnlinkUserModal,
   groupId,
   setGroupUserAlert,
@@ -57,7 +60,8 @@ export default function DropdownButton({
 
   const managedUsersActive = getMeta('ol-managedUsersActive')
   const groupSSOActive = getMeta('ol-groupSSOActive')
-
+  const userId = getMeta('ol-user_id')
+  const isUserGroupManager = getMeta('ol-isUserGroupManager')
   const userPending = user.invite
   const isGroupSSOLinked =
     !userPending && user.enrollment?.sso?.some(sso => sso.groupId === groupId)
@@ -169,7 +173,13 @@ export default function DropdownButton({
   }
 
   const onDeleteUserClick = () => {
+    sendMB('delete-managed-user-selected')
     openOffboardingModalForUser(user)
+  }
+
+  const onReleaseUserClick = () => {
+    sendMB('remove-managed-user-selected')
+    openRemoveModalForUser(user)
   }
 
   const onRemoveFromGroup = () => {
@@ -229,15 +239,27 @@ export default function DropdownButton({
       </MenuItemButton>
     )
   }
-  if (isUserManaged && !user.isEntityAdmin) {
+  if (
+    isUserManaged &&
+    !user.isEntityAdmin &&
+    (!isUserGroupManager || userId !== user._id)
+  ) {
     buttons.push(
       <MenuItemButton
-        className="delete-user-action"
         key="delete-user-action"
         data-testid="delete-user-action"
         onClick={onDeleteUserClick}
       >
         {t('delete_user')}
+      </MenuItemButton>
+    )
+    buttons.push(
+      <MenuItemButton
+        key="release-user-action"
+        data-testid="release-user-action"
+        onClick={onReleaseUserClick}
+      >
+        {t('remove_user')}
       </MenuItemButton>
     )
   } else if (!isUserManaged) {
@@ -246,7 +268,6 @@ export default function DropdownButton({
         key="remove-user-action"
         data-testid="remove-user-action"
         onClick={onRemoveFromGroup}
-        className="delete-user-action"
         variant="danger"
       >
         {t('remove_from_group')}
@@ -256,7 +277,7 @@ export default function DropdownButton({
 
   if (buttons.length === 0) {
     buttons.push(
-      <DropdownListItem>
+      <DropdownListItem key="no-actions-available">
         <DropdownItem
           as="button"
           tabIndex={-1}
@@ -291,7 +312,6 @@ type MenuItemButtonProps = {
 function MenuItemButton({
   children,
   onClick,
-  className,
   isLoading,
   variant,
   'data-testid': dataTestId,

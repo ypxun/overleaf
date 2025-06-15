@@ -6,6 +6,7 @@ const MockResponse = require('../helpers/MockResponse')
 const modulePath =
   '../../../../app/src/Features/Subscription/SubscriptionController'
 const SubscriptionErrors = require('../../../../app/src/Features/Subscription/Errors')
+const SubscriptionHelper = require('../../../../app/src/Features/Subscription/SubscriptionHelper')
 
 const mockSubscriptions = {
   'subscription-123-active': {
@@ -77,7 +78,6 @@ describe('SubscriptionController', function () {
       buildPlansList: sinon.stub(),
       promises: {
         buildUsersSubscriptionViewModel: sinon.stub().resolves({}),
-        getBestSubscription: sinon.stub().resolves({}),
       },
       buildPlansListForSubscriptionDash: sinon
         .stub()
@@ -146,14 +146,16 @@ describe('SubscriptionController', function () {
         '../SplitTests/SplitTestHandler': this.SplitTestV2Hander,
         '../Authentication/SessionManager': this.SessionManager,
         './SubscriptionHandler': this.SubscriptionHandler,
-        './SubscriptionHelper': this.SubscriptionHelper,
+        './SubscriptionHelper': SubscriptionHelper,
         './SubscriptionViewModelBuilder': this.SubscriptionViewModelBuilder,
         './LimitationsManager': this.LimitationsManager,
         '../../infrastructure/GeoIpLookup': this.GeoIpLookup,
         '@overleaf/settings': this.settings,
         '../User/UserGetter': this.UserGetter,
         './RecurlyWrapper': (this.RecurlyWrapper = {
-          updateAccountEmailAddress: sinon.stub().yields(),
+          promises: {
+            updateAccountEmailAddress: sinon.stub().resolves(),
+          },
         }),
         './RecurlyEventHandler': {
           sendRecurlyAnalyticsEvent: sinon.stub().resolves(),
@@ -309,31 +311,50 @@ describe('SubscriptionController', function () {
   })
 
   describe('updateAccountEmailAddress via put', function () {
-    it('should send the user and subscriptionId to RecurlyWrapper', function () {
-      this.res.sendStatus = sinon.spy()
-      this.SubscriptionController.updateAccountEmailAddress(this.req, this.res)
-      this.RecurlyWrapper.updateAccountEmailAddress
-        .calledWith(this.user._id, this.user.email)
-        .should.equal(true)
+    beforeEach(function () {
+      this.req.body = {
+        account_email: 'current_account_email@overleaf.com',
+      }
     })
 
-    it('should respond with 200', function () {
+    it('should send the user and subscriptionId to "updateAccountEmailAddress" hooks', async function () {
       this.res.sendStatus = sinon.spy()
-      this.SubscriptionController.updateAccountEmailAddress(this.req, this.res)
+
+      await this.SubscriptionController.updateAccountEmailAddress(
+        this.req,
+        this.res
+      )
+
+      expect(this.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'updateAccountEmailAddress',
+        this.user._id,
+        this.user.email
+      )
+    })
+
+    it('should respond with 200', async function () {
+      this.res.sendStatus = sinon.spy()
+      await this.SubscriptionController.updateAccountEmailAddress(
+        this.req,
+        this.res
+      )
       this.res.sendStatus.calledWith(200).should.equal(true)
     })
 
-    it('should send the error to the next handler when updating recurly account email fails', function (done) {
-      this.RecurlyWrapper.updateAccountEmailAddress.yields(new Error())
+    it('should send the error to the next handler when updating recurly account email fails', async function () {
+      this.Modules.promises.hooks.fire
+        .withArgs('updateAccountEmailAddress', this.user._id, this.user.email)
+        .rejects(new Error())
+
       this.next = sinon.spy(error => {
-        expect(error).instanceOf(Error)
-        done()
+        expect(error).to.be.instanceOf(Error)
       })
-      this.SubscriptionController.updateAccountEmailAddress(
+      await this.SubscriptionController.updateAccountEmailAddress(
         this.req,
         this.res,
         this.next
       )
+      expect(this.next.calledOnce).to.be.true
     })
   })
 

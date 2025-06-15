@@ -12,9 +12,12 @@ import PdfPreviewHybridToolbarNew from '@/features/ide-redesign/components/pdf-p
 import PdfErrorState from '@/features/ide-redesign/components/pdf-preview/pdf-error-state'
 import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
+import PdfCodeCheckFailedBanner from '@/features/ide-redesign/components/pdf-preview/pdf-code-check-failed-banner'
+import getMeta from '@/utils/meta'
 
 function PdfPreviewPane() {
-  const { pdfUrl, hasShortCompileTimeout } = useCompileContext()
+  const { pdfUrl } = useCompileContext()
+  const { compileTimeout } = getMeta('ol-compileSettings')
   const classes = classNames('pdf', 'full-size', {
     'pdf-empty': !pdfUrl,
   })
@@ -32,8 +35,9 @@ function PdfPreviewPane() {
         ) : (
           <PdfHybridPreviewToolbar />
         )}
+        {newEditor && <PdfCodeCheckFailedBanner />}
         <PdfPreviewMessages>
-          {hasShortCompileTimeout && <CompileTimeWarningUpgradePrompt />}
+          {compileTimeout < 60 && <CompileTimeWarningUpgradePrompt />}
         </PdfPreviewMessages>
         <Suspense fallback={<FullSizeLoadingSpinner delay={500} />}>
           <div className="pdf-viewer">

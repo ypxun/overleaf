@@ -6,7 +6,7 @@ import MaterialIcon, {
 } from '@/shared/components/material-icon'
 import { Panel } from 'react-resizable-panels'
 import { useLayoutContext } from '@/shared/context/layout-context'
-import { ErrorIndicator, ErrorPane } from './errors'
+import ErrorIndicator from './error-logs/error-indicator'
 import {
   RailModalKey,
   RailTabKey,
@@ -34,6 +34,15 @@ import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
 import OLIconButton from '@/features/ui/components/ol/ol-icon-button'
 import { useChatContext } from '@/features/chat/context/chat-context'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
+import {
+  FullProjectSearchPanel,
+  hasFullProjectSearch,
+} from './full-project-search-panel'
+import { sendSearchEvent } from '@/features/event-tracking/search-events'
+import ErrorLogsPanel from './error-logs/error-logs-panel'
+import { useDetachCompileContext as useCompileContext } from '@/shared/context/detach-compile-context'
+import OldErrorPane from './error-logs/old-error-pane'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
 
 type RailElement = {
   icon: AvailableUnfilledIcon
@@ -42,6 +51,7 @@ type RailElement = {
   indicator?: ReactElement
   title: string
   hide?: boolean
+  disabled?: boolean
 }
 
 type RailActionButton = {
@@ -91,12 +101,16 @@ export const RailLayout = () => {
     togglePane,
     setResizing,
   } = useRailContext()
+  const { logEntries } = useCompileContext()
+  const errorLogsDisabled = !logEntries
 
   const { view, setLeftMenuShown } = useLayoutContext()
 
   const { markMessagesAsRead } = useChatContext()
 
   const isHistoryView = view === 'history'
+
+  const newErrorlogs = useFeatureFlag('new-editor-error-logs-redesign')
 
   const railTabs: RailElement[] = useMemo(
     () => [
@@ -105,6 +119,13 @@ export const RailLayout = () => {
         icon: 'description',
         title: t('file_tree'),
         component: <FileTreeOutlinePanel />,
+      },
+      {
+        key: 'full-project-search',
+        icon: 'search',
+        title: t('project_search'),
+        component: <FullProjectSearchPanel />,
+        hide: !hasFullProjectSearch,
       },
       {
         key: 'integrations',
@@ -130,11 +151,12 @@ export const RailLayout = () => {
         key: 'errors',
         icon: 'report',
         title: t('error_log'),
-        component: <ErrorPane />,
+        component: newErrorlogs ? <ErrorLogsPanel /> : <OldErrorPane />,
         indicator: <ErrorIndicator />,
+        disabled: errorLogsDisabled,
       },
     ],
-    [t]
+    [t, errorLogsDisabled, newErrorlogs]
   )
 
   const railActions: RailAction[] = useMemo(
@@ -170,10 +192,17 @@ export const RailLayout = () => {
           // Attempting to open a non-existent tab
           return
         }
-        const keyOrDefault = key ?? 'file-tree'
+        const keyOrDefault = (key ?? 'file-tree') as RailTabKey
         // Change the selected tab and make sure it's open
-        openTab(keyOrDefault as RailTabKey)
+        openTab(keyOrDefault)
         sendEvent('rail-click', { tab: keyOrDefault })
+        if (keyOrDefault === 'full-project-search') {
+          sendSearchEvent('search-open', {
+            searchType: 'full-project',
+            method: 'button',
+            location: 'rail',
+          })
+        }
 
         if (key === 'chat') {
           markMessagesAsRead()
@@ -198,7 +227,7 @@ export const RailLayout = () => {
         <Nav activeKey={selectedTab} className="ide-rail-tabs-nav">
           {railTabs
             .filter(({ hide }) => !hide)
-            .map(({ icon, key, indicator, title }) => (
+            .map(({ icon, key, indicator, title, disabled }) => (
               <RailTab
                 open={isOpen && selectedTab === key}
                 key={key}
@@ -206,6 +235,7 @@ export const RailLayout = () => {
                 icon={icon}
                 indicator={indicator}
                 title={title}
+                disabled={disabled}
               />
             ))}
           <div className="flex-grow-1" />
@@ -215,7 +245,11 @@ export const RailLayout = () => {
         </Nav>
       </div>
       <Panel
-        id="ide-redesign-sidebar-panel"
+        id={
+          newErrorlogs
+            ? `ide-redesign-sidebar-panel-${selectedTab}`
+            : 'ide-redesign-sidebar-panel'
+        }
         className={classNames({ hidden: isReviewPanelOpen })}
         order={1}
         defaultSize={15}
@@ -232,7 +266,7 @@ export const RailLayout = () => {
             hidden: isHistoryView,
           })}
         >
-          <Tab.Content>
+          <Tab.Content className="ide-rail-tab-content">
             {railTabs
               .filter(({ hide }) => !hide)
               .map(({ key, component }) => (
@@ -272,12 +306,14 @@ const RailTab = ({
   open,
   indicator,
   title,
+  disabled = false,
 }: {
   icon: AvailableUnfilledIcon
   eventKey: string
   open: boolean
   indicator?: ReactElement
   title: string
+  disabled?: boolean
 }) => {
   return (
     <OLTooltip
@@ -290,6 +326,7 @@ const RailTab = ({
         className={classNames('ide-rail-tab-link', {
           'open-rail': open,
         })}
+        disabled={disabled}
       >
         {open ? (
           <MaterialIcon
@@ -361,23 +398,6 @@ const RailActionElement = ({ action }: { action: RailAction }) => {
       </OLTooltip>
     )
   }
-}
-
-export const RailPanelHeader: FC<{ title: string }> = ({ title }) => {
-  const { t } = useTranslation()
-  const { handlePaneCollapse } = useRailContext()
-  return (
-    <header className="rail-panel-header">
-      <h4 className="rail-panel-title">{title}</h4>
-      <OLIconButton
-        onClick={handlePaneCollapse}
-        className="rail-panel-header-button-subdued"
-        icon="close"
-        accessibilityLabel={t('close')}
-        size="sm"
-      />
-    </header>
-  )
 }
 
 const RailHelpDropdown = () => {

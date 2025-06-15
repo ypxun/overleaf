@@ -4,14 +4,13 @@ const ProjectGetter = require('../Project/ProjectGetter')
 const AuthorizationManager = require('../Authorization/AuthorizationManager')
 const ProjectEditorHandler = require('../Project/ProjectEditorHandler')
 const Metrics = require('@overleaf/metrics')
-const CollaboratorsGetter = require('../Collaborators/CollaboratorsGetter')
 const CollaboratorsInviteGetter = require('../Collaborators/CollaboratorsInviteGetter')
-const CollaboratorsHandler = require('../Collaborators/CollaboratorsHandler')
 const PrivilegeLevels = require('../Authorization/PrivilegeLevels')
 const SessionManager = require('../Authentication/SessionManager')
 const Errors = require('../Errors/Errors')
 const { expressify } = require('@overleaf/promise-utils')
 const Settings = require('@overleaf/settings')
+const { ProjectAccess } = require('../Collaborators/CollaboratorsGetter')
 
 module.exports = {
   joinProject: expressify(joinProject),
@@ -43,12 +42,6 @@ async function joinProject(req, res, next) {
   if (!project) {
     return res.sendStatus(403)
   }
-  // Hide sensitive data if the user is restricted
-  if (isRestrictedUser) {
-    project.owner = { _id: project.owner._id }
-    project.members = []
-    project.invites = []
-  }
   // Only show the 'renamed or deleted' message once
   if (project.deletedByExternalDataSource) {
     await ProjectDeleter.promises.unmarkAsDeletedByExternalSource(projectId)
@@ -75,42 +68,43 @@ async function _buildJoinProjectView(req, projectId, userId) {
   if (project == null) {
     throw new Errors.NotFoundError('project not found')
   }
-  const members =
-    await CollaboratorsGetter.promises.getInvitedMembersWithPrivilegeLevels(
-      projectId
-    )
+  const projectAccess = new ProjectAccess(project)
   const token = req.body.anonymousAccessToken
   const privilegeLevel =
-    await AuthorizationManager.promises.getPrivilegeLevelForProject(
+    await AuthorizationManager.promises.getPrivilegeLevelForProjectWithProjectAccess(
       userId,
       projectId,
-      token
+      token,
+      projectAccess
     )
   if (privilegeLevel == null || privilegeLevel === PrivilegeLevels.NONE) {
     return { project: null, privilegeLevel: null, isRestrictedUser: false }
   }
-  const invites =
-    await CollaboratorsInviteGetter.promises.getAllInvites(projectId)
-  const isTokenMember = await CollaboratorsHandler.promises.userIsTokenMember(
-    userId,
-    projectId
-  )
-  const isInvitedMember =
-    await CollaboratorsGetter.promises.isUserInvitedMemberOfProject(
-      userId,
-      projectId
-    )
+  const isTokenMember = projectAccess.isUserTokenMember(userId)
+  const isInvitedMember = projectAccess.isUserInvitedMember(userId)
   const isRestrictedUser = AuthorizationManager.isRestrictedUser(
     userId,
     privilegeLevel,
     isTokenMember,
     isInvitedMember
   )
+  let ownerMember
+  let members = []
+  let invites = []
+  if (isRestrictedUser) {
+    ownerMember = await projectAccess.loadOwner()
+  } else {
+    ;({ ownerMember, members } =
+      await projectAccess.loadOwnerAndInvitedMembers())
+    invites = await CollaboratorsInviteGetter.promises.getAllInvites(projectId)
+  }
   return {
     project: ProjectEditorHandler.buildProjectModelView(
       project,
+      ownerMember,
       members,
-      invites
+      invites,
+      isRestrictedUser
     ),
     privilegeLevel,
     isTokenMember,

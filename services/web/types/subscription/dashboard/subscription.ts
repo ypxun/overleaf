@@ -64,7 +64,6 @@ export type Subscription = {
   membersLimit: number
   teamInvites: object[]
   planCode: string
-  recurlySubscription_id: string
   plan: Plan
   pendingPlan?: PendingPaymentProviderPlan
   addOns?: AddOn[]
@@ -103,7 +102,7 @@ export type MemberGroupSubscription = Omit<GroupSubscription, 'admin_id'> & {
   admin_id: User
 }
 
-type PaymentProviderService = 'stripe' | 'recurly'
+type PaymentProviderService = 'stripe-us' | 'stripe-uk' | 'recurly'
 
 export type PaymentProvider = {
   service: PaymentProviderService

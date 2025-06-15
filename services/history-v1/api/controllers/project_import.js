@@ -21,10 +21,34 @@ const BatchBlobStore = storage.BatchBlobStore
 const BlobStore = storage.BlobStore
 const chunkStore = storage.chunkStore
 const HashCheckBlobStore = storage.HashCheckBlobStore
-const persistChanges = storage.persistChanges
+const commitChanges = storage.commitChanges
+const persistBuffer = storage.persistBuffer
 const InvalidChangeError = storage.InvalidChangeError
 
 const render = require('./render')
+
+const config = require('config')
+// The history buffer level is used to determine whether to queue changes
+// in Redis or persist them directly to the chunk store.
+// If defaults to 0 (no queuing) if not set.
+const historyBufferLevel = config.has('historyBufferLevel')
+  ? parseInt(config.historyBufferLevel, 10)
+  : 0
+// The forcePersistBuffer flag will ensure the buffer is fully persisted before
+// any persist operation. Set this to true if you want to make the persisted-version
+// in Redis match the endVersion of the latest chunk. This should be set to true
+// when downgrading from a history buffer level that queues changes in Redis
+// without persisting them immediately.
+const forcePersistBuffer = config.has('forcePersistBuffer')
+  ? config.get('forcePersistBuffer') === 'true'
+  : false
+
+logger.info(
+  { historyBufferLevel, forcePersistBuffer },
+  historyBufferLevel > 0 || forcePersistBuffer
+    ? 'using history buffer'
+    : 'history buffer disabled'
+)
 
 async function importSnapshot(req, res) {
   const projectId = req.swagger.params.project_id.value
@@ -35,6 +59,7 @@ async function importSnapshot(req, res) {
   try {
     snapshot = Snapshot.fromRaw(rawSnapshot)
   } catch (err) {
+    logger.warn({ err, projectId }, 'failed to import snapshot')
     return render.unprocessableEntity(res)
   }
 
@@ -43,6 +68,7 @@ async function importSnapshot(req, res) {
     historyId = await chunkStore.initializeProject(projectId, snapshot)
   } catch (err) {
     if (err instanceof chunkStore.AlreadyInitialized) {
+      logger.warn({ err, projectId }, 'already initialized')
       return render.conflict(res)
     } else {
       throw err
@@ -108,7 +134,10 @@ async function importChanges(req, res, next) {
 
   let result
   try {
-    result = await persistChanges(projectId, changes, limits, endVersion)
+    result = await commitChanges(projectId, changes, limits, endVersion, {
+      historyBufferLevel,
+      forcePersistBuffer,
+    })
   } catch (err) {
     if (
       err instanceof Chunk.ConflictingEndVersion ||
@@ -141,5 +170,28 @@ async function importChanges(req, res, next) {
   }
 }
 
+async function flushChanges(req, res, next) {
+  const projectId = req.swagger.params.project_id.value
+  // Use the same limits importChanges, since these are passed to persistChanges
+  const farFuture = new Date()
+  farFuture.setTime(farFuture.getTime() + 7 * 24 * 3600 * 1000)
+  const limits = {
+    maxChanges: 0,
+    minChangeTimestamp: farFuture,
+    maxChangeTimestamp: farFuture,
+  }
+  try {
+    await persistBuffer(projectId, limits)
+    res.status(HTTPStatus.OK).end()
+  } catch (err) {
+    if (err instanceof Chunk.NotFoundError) {
+      render.notFound(res)
+    } else {
+      throw err
+    }
+  }
+}
+
 exports.importSnapshot = expressify(importSnapshot)
 exports.importChanges = expressify(importChanges)
+exports.flushChanges = expressify(flushChanges)

@@ -8,11 +8,13 @@
 const OError = require('@overleaf/o-error')
 const { DuplicateAddOnError, AddOnNotPresentError } = require('./Errors')
 const PlansLocator = require('./PlansLocator')
-const SubscriptionHelper = require('./SubscriptionHelper')
 
-const AI_ADD_ON_CODE = 'assistant'
+let SubscriptionHelper = null // Work around circular import (loaded at the bottom of the file)
+
 const MEMBERS_LIMIT_ADD_ON_CODE = 'additional-license'
-const STANDALONE_AI_ADD_ON_CODES = ['assistant', 'assistant-annual']
+const AI_ASSIST_STANDALONE_MONTHLY_PLAN_CODE = 'assistant'
+const AI_ASSIST_STANDALONE_ANNUAL_PLAN_CODE = 'assistant-annual'
+const AI_ADD_ON_CODE = 'assistant'
 
 class PaymentProviderSubscription {
   /**
@@ -587,7 +589,10 @@ class PaymentProviderAccount {
  * @param {string} planCode
  */
 function isStandaloneAiAddOnPlanCode(planCode) {
-  return STANDALONE_AI_ADD_ON_CODES.includes(planCode)
+  return (
+    planCode === AI_ASSIST_STANDALONE_MONTHLY_PLAN_CODE ||
+    planCode === AI_ASSIST_STANDALONE_ANNUAL_PLAN_CODE
+  )
 }
 
 /**
@@ -618,7 +623,8 @@ function subscriptionChangeIsAiAssistUpgrade(subscriptionChange) {
 module.exports = {
   AI_ADD_ON_CODE,
   MEMBERS_LIMIT_ADD_ON_CODE,
-  STANDALONE_AI_ADD_ON_CODES,
+  AI_ASSIST_STANDALONE_MONTHLY_PLAN_CODE,
+  AI_ASSIST_STANDALONE_ANNUAL_PLAN_CODE,
   PaymentProviderSubscription,
   PaymentProviderSubscriptionAddOn,
   PaymentProviderSubscriptionChange,
@@ -636,3 +642,5 @@ module.exports = {
   subscriptionChangeIsAiAssistUpgrade,
   PaymentProviderImmediateCharge,
 }
+
+SubscriptionHelper = require('./SubscriptionHelper')

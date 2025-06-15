@@ -1,6 +1,5 @@
-import { vi } from 'vitest'
+import { expect, vi } from 'vitest'
 import sinon from 'sinon'
-import { expect } from 'chai'
 import MockRequest from '../helpers/MockRequest.js'
 import MockResponse from '../helpers/MockResponse.js'
 import EntityConfigs from '../../../../app/src/Features/UserMembership/UserMembershipEntityConfigs.js'
@@ -185,6 +184,7 @@ describe('UserMembershipController', function () {
           expect(viewParams.users).to.deep.equal(ctx.users)
           expect(viewParams.groupSize).to.equal(ctx.subscription.membersLimit)
           expect(viewParams.managedUsersActive).to.equal(true)
+          expect(viewParams.isUserGroupManager).to.equal(false)
         },
       })
     })

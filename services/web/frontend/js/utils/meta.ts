@@ -34,6 +34,7 @@ import {
 import { SplitTestInfo } from '../../../types/split-test'
 import { ValidationStatus } from '../../../types/group-management/validation'
 import { ManagedInstitution } from '../../../types/subscription/dashboard/managed-institution'
+import { OnboardingFormData } from '../../../types/onboarding'
 import { GroupSSOTestResult } from '../../../modules/group-settings/frontend/js/utils/types'
 import {
   AccessToken,
@@ -53,12 +54,15 @@ import { DefaultNavbarMetadata } from '@/features/ui/components/types/default-na
 import { FooterMetadata } from '@/features/ui/components/types/footer-metadata'
 import type { ScriptLogType } from '../../../modules/admin-panel/frontend/js/features/script-logs/script-log'
 import { ActiveExperiment } from './labs-utils'
+import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
+
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
   'ol-addonPrices': Record<
     string,
     { annual: string; monthly: string; annualDividedByTwelve: string }
   >
+  'ol-adminSubscription': AdminSubscription
   'ol-aiAssistViaWritefullSource': string
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
   'ol-allowedExperiments': string[]
@@ -82,7 +86,10 @@ export interface Meta {
   'ol-cannot-reactivate-subscription': boolean
   'ol-cannot-use-ai': boolean
   'ol-chatEnabled': boolean
-
+  'ol-compileSettings': {
+    reducedTimeoutWarning: string
+    compileTimeout: number
+  }
   'ol-compilesUserContentDomain': string
   'ol-countryCode': PricingFormState['country']
   'ol-couponCode': PricingFormState['coupon']
@@ -123,9 +130,10 @@ export interface Meta {
   'ol-groupsAndEnterpriseBannerVariant': GroupsAndEnterpriseBannerVariant
   'ol-hasAiAssistViaWritefull': boolean
   'ol-hasGroupSSOFeature': boolean
-  'ol-hasIndividualRecurlySubscription': boolean
+  'ol-hasIndividualPaidSubscription': boolean
   'ol-hasManagedUsersFeature': boolean
   'ol-hasPassword': boolean
+  'ol-hasSplitTestWriteAccess': boolean
   'ol-hasSubscription': boolean
   'ol-hasTrackChangesFeature': boolean
   'ol-hideLinkingWidgets': boolean // CI only
@@ -143,6 +151,7 @@ export interface Meta {
   'ol-isRegisteredViaGoogle': boolean
   'ol-isRestrictedTokenMember': boolean
   'ol-isSaas': boolean
+  'ol-isUserGroupManager': boolean
   'ol-itm_campaign': string
   'ol-itm_content': string
   'ol-itm_referrer': string
@@ -170,6 +179,7 @@ export interface Meta {
   'ol-notifications': NotificationType[]
   'ol-notificationsInstitution': InstitutionType[]
   'ol-oauthProviders': OAuthProviders
+  'ol-odcData': OnboardingFormData
   'ol-odcRole': string
   'ol-overallThemes': OverallThemeMeta[]
   'ol-pages': number
@@ -187,6 +197,7 @@ export interface Meta {
   'ol-preventCompileOnLoad'?: boolean
   'ol-primaryEmail': { email: string; confirmed: boolean }
   'ol-project': any // TODO
+  'ol-projectEntityCounts'?: { files: number; docs: number }
   'ol-projectHistoryBlobsEnabled': boolean
   'ol-projectName': string
   'ol-projectOwnerHasPremiumOnPageLoad': boolean
@@ -197,6 +208,16 @@ export interface Meta {
   'ol-recommendedCurrency': CurrencyCode
   'ol-reconfirmationRemoveEmail': string
   'ol-reconfirmedViaSAML': string
+  'ol-recurlyAccount':
+    | {
+        code: string
+        error?: undefined
+      }
+    | {
+        error: boolean
+        code?: undefined
+      }
+    | undefined
   'ol-recurlyApiKey': string
   'ol-recurlySubdomain': string
   'ol-ro-mirror-on-client-no-local-storage': boolean
@@ -221,9 +242,12 @@ export interface Meta {
   'ol-showUpgradePrompt': boolean
   'ol-skipUrl': string
   'ol-splitTestInfo': { [name: string]: SplitTestInfo }
+  'ol-splitTestName': string
   'ol-splitTestVariants': { [name: string]: string }
   'ol-ssoDisabled': boolean
   'ol-ssoErrorMessage': string
+  'ol-stripeCustomerId': string
+  'ol-stripeUKApiKey': string
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
   'ol-subscriptionId': string
@@ -250,6 +274,7 @@ export interface Meta {
   'ol-users': ManagedUser[]
   'ol-usersBestSubscription': ProjectDashboardSubscription | undefined
   'ol-usersEmail': string | undefined
+  'ol-usersSubscription': { personal: boolean; group: boolean }
   'ol-validationStatus': ValidationStatus
   'ol-wikiEnabled': boolean
   'ol-writefullCssUrl': string

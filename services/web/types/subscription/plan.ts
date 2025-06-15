@@ -85,15 +85,22 @@ export type RecurlyPlanCode =
   | 'group_professional_educational'
   | 'group_collaborator'
   | 'group_collaborator_educational'
+  | 'assistant'
+  | 'assistant-annual'
+
+export type RecurlyAddOnCode = 'assistant'
 
 export type StripeLookupKey =
-  | 'standard_monthly'
-  | 'standard_annual'
-  | 'professional_monthly'
-  | 'professional_annual'
-  | 'student_monthly'
-  | 'student_annual'
+  | 'collaborator_may2025'
+  | 'collaborator_annual_may2025'
+  | 'professional_may2025'
+  | 'professional_annual_may2025'
+  | 'student_may2025'
+  | 'student_annual_may2025'
+  // TODO: change all group plans' lookup_keys to match the UK account after they have been added
   | 'group_standard_enterprise'
   | 'group_professional_enterprise'
   | 'group_standard_educational'
   | 'group_professional_educational'
+  | 'assistant_annual_may2025'
+  | 'assistant_may2025'

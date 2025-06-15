@@ -196,9 +196,13 @@ export class DocumentContainer extends EventEmitter {
     return this.doc?.hasBufferedOps()
   }
 
-  setTrackingChanges(track_changes: boolean) {
+  setTrackChangesUserId(userId: string | null) {
+    this.track_changes_as = userId
     if (this.doc) {
-      this.doc.track_changes = track_changes
+      this.doc.setTrackChangesUserId(userId)
+    }
+    if (this.cm6) {
+      this.cm6.setTrackChangesUserId(userId)
     }
   }
 
@@ -595,7 +599,7 @@ export class DocumentContainer extends EventEmitter {
     this.doc.on('remoteop', (...ops: AnyOperation[]) => {
       return this.trigger('remoteop', ...ops)
     })
-    this.doc.on('op:sent', (op: AnyOperation) => {
+    this.doc.on('op:sent', () => {
       return this.trigger('op:sent')
     })
     this.doc.on('op:acknowledged', (op: AnyOperation) => {
@@ -605,7 +609,7 @@ export class DocumentContainer extends EventEmitter {
       })
       return this.trigger('op:acknowledged')
     })
-    this.doc.on('op:timeout', (op: AnyOperation) => {
+    this.doc.on('op:timeout', () => {
       this.trigger('op:timeout')
       return this.onError(new Error('op timed out'))
     })

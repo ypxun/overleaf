@@ -4,12 +4,14 @@
 // You may need to hard reload your browser window to see the changes.
 
 export default /** @type {const} */ ([
+  'auto_delete',
   'book_5',
   'brush',
   'code',
   'create_new_folder',
   'delete',
   'description',
+  'error',
   'experiment',
   'forum',
   'help',
@@ -20,10 +22,10 @@ export default /** @type {const} */ ([
   'picture_as_pdf',
   'rate_review',
   'report',
+  'search',
   'settings',
   'space_dashboard',
   'table_chart',
   'upload_file',
   'web_asset',
-  'error',
 ])
