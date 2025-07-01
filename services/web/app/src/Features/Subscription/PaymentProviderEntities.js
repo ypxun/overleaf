@@ -2,6 +2,7 @@
 
 /**
  * @import { PaymentProvider } from '../../../../types/subscription/dashboard/subscription'
+ * @import { CurrencyCode, StripeCurrencyCode } from '../../../../types/subscription/currency'
  * @import { AddOn } from '../../../../types/subscription/plan'
  */
 
@@ -28,7 +29,8 @@ class PaymentProviderSubscription {
    * @param {number} props.subtotal
    * @param {number} [props.taxRate]
    * @param {number} [props.taxAmount]
-   * @param {string} props.currency
+   * // Recurly uses uppercase currency codes, but Stripe uses lowercase
+   * @param {CurrencyCode | StripeCurrencyCode} props.currency
    * @param {number} props.total
    * @param {Date} props.periodStart
    * @param {Date} props.periodEnd
@@ -54,7 +56,7 @@ class PaymentProviderSubscription {
     this.subtotal = props.subtotal
     this.taxRate = props.taxRate ?? 0
     this.taxAmount = props.taxAmount ?? 0
-    this.currency = props.currency
+    this.currency = props.currency.toUpperCase() // ensure that currency codes are always uppercase
     this.total = props.total
     this.periodStart = props.periodStart
     this.periodEnd = props.periodEnd
@@ -134,9 +136,11 @@ class PaymentProviderSubscription {
     if (newPlan == null) {
       throw new OError('Unable to find plan in settings', { planCode })
     }
+    const isInTrial = SubscriptionHelper.isInTrial(this.trialPeriodEnd)
     const shouldChangeAtTermEnd = SubscriptionHelper.shouldPlanChangeAtTermEnd(
       currentPlan,
-      newPlan
+      newPlan,
+      isInTrial
     )
 
     const changeRequest = new PaymentProviderSubscriptionChangeRequest({
@@ -250,9 +254,10 @@ class PaymentProviderSubscription {
     const addOnUpdates = this.addOns
       .filter(addOn => addOn.code !== code)
       .map(addOn => addOn.toAddOnUpdate())
+    const isInTrial = SubscriptionHelper.isInTrial(this.trialPeriodEnd)
     return new PaymentProviderSubscriptionChangeRequest({
       subscription: this,
-      timeframe: 'term_end',
+      timeframe: isInTrial ? 'now' : 'term_end',
       addOnUpdates,
     })
   }
@@ -436,7 +441,7 @@ class PaymentProviderSubscriptionAddOnUpdate {
    */
   constructor(props) {
     this.code = props.code
-    this.quantity = props.quantity ?? null
+    this.quantity = props.quantity
     this.unitPrice = props.unitPrice ?? null
   }
 }
@@ -557,7 +562,7 @@ class PaymentProviderCoupon {
    * @param {object} props
    * @param {string} props.code
    * @param {string} props.name
-   * @param {string} props.description
+   * @param {string} [props.description]
    */
   constructor(props) {
     this.code = props.code

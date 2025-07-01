@@ -546,7 +546,10 @@ export function _processUpdates(
       }
       if (filteredUpdates.length === 0) {
         // return early if there are no updates to apply
-        return SyncManager.setResyncState(projectId, newSyncState, callback)
+        return SyncManager.setResyncState(projectId, newSyncState, err => {
+          if (err) return callback(err)
+          callback(null, { resyncNeeded: false })
+        })
       }
       // only make request to history service if we have actual updates to process
       _getMostRecentVersionWithDebug(
@@ -593,17 +596,17 @@ export function _processUpdates(
                   return cb(err)
                 }
                 profile.log('skipAlreadyAppliedUpdates')
-                const compressedUpdates =
-                  UpdateCompressor.compressRawUpdates(unappliedUpdates)
-                const timeTaken = profile
-                  .log('compressRawUpdates')
-                  .getTimeDelta()
-                if (timeTaken >= 1000) {
-                  logger.debug(
-                    { projectId, updates: unappliedUpdates, timeTaken },
-                    'slow compression of raw updates'
-                  )
-                }
+                cb(null, unappliedUpdates)
+              },
+              (unappliedUpdates, cb) => {
+                UpdateCompressor.compressRawUpdatesWithMetricsCb(
+                  unappliedUpdates,
+                  projectId,
+                  profile,
+                  cb
+                )
+              },
+              (compressedUpdates, cb) => {
                 cb = profile.wrap('createBlobs', cb)
                 BlobManager.createBlobsForUpdates(
                   projectId,

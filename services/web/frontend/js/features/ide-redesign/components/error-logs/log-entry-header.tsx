@@ -10,6 +10,7 @@ import {
 import useResizeObserver from '@/features/preview/hooks/use-resize-observer'
 import OLIconButton from '@/features/ui/components/ol/ol-icon-button'
 import importOverleafModules from '../../../../../macros/import-overleaf-module.macro'
+import MaterialIcon from '@/shared/components/material-icon'
 
 const actionComponents = importOverleafModules(
   'pdfLogEntryHeaderActionComponents'
@@ -29,6 +30,8 @@ function LogEntryHeader({
   onToggleCollapsed,
   id,
   logEntry,
+  actionButtonsOverride,
+  openCollapseIconOverride,
 }: {
   headerTitle: string | React.ReactNode
   level: ErrorLevel
@@ -40,6 +43,8 @@ function LogEntryHeader({
   onToggleCollapsed: () => void
   id?: string
   logEntry?: LogEntryData
+  actionButtonsOverride?: React.ReactNode
+  openCollapseIconOverride?: string
 }) {
   const { t } = useTranslation()
   const logLocationSpanRef = useRef<HTMLSpanElement>(null)
@@ -56,9 +61,9 @@ function LogEntryHeader({
   const logEntryHeaderTextClasses = classNames('log-entry-header-text', {
     'log-entry-header-text-error': level === 'error',
     'log-entry-header-text-warning': level === 'warning',
-    'log-entry-header-text-info':
-      level === 'info' || level === 'typesetting' || level === 'raw',
+    'log-entry-header-text-info': level === 'info' || level === 'typesetting',
     'log-entry-header-text-success': level === 'success',
+    'log-entry-header-text-raw': level === 'raw',
   })
 
   function checkLocationSpanOverflow(observedElement: ResizeObserverEntry) {
@@ -98,54 +103,58 @@ function LogEntryHeader({
         description={collapsed ? t('expand') : t('collapse')}
         overlayProps={{ placement: 'bottom' }}
       >
-        <OLIconButton
-          size="sm"
-          variant="ghost"
-          icon={collapsed ? 'chevron_right' : 'expand_more'}
+        <button
+          data-action="expand-collapse"
+          data-collapsed={collapsed}
+          className="log-entry-header-button"
           onClick={onToggleCollapsed}
-          accessibilityLabel={collapsed ? t('expand') : t('collapse')}
-        />
-      </OLTooltip>
-      <div className="log-entry-header-content">
-        <h3 className={logEntryHeaderTextClasses}>{headerTitleText}</h3>
-        {locationSpanOverflown && formattedLocationText && locationText ? (
-          <OLTooltip
-            id={locationText}
-            description={locationText}
-            overlayProps={{ placement: 'left' }}
-            tooltipProps={{ className: 'log-location-tooltip' }}
-          >
-            {formattedLocationText}
-          </OLTooltip>
-        ) : (
-          formattedLocationText
-        )}
-      </div>
-      <div className="log-entry-header-actions">
-        {showSourceLocationLink && (
-          <OLTooltip
-            id={`go-to-location-${locationText}`}
-            description={t('go_to_code_location')}
-            overlayProps={{ placement: 'bottom' }}
-          >
-            <OLIconButton
-              onClick={onSourceLocationClick}
-              variant="ghost"
-              icon="my_location"
-              accessibilityLabel={t('go_to_code_location')}
-            />
-          </OLTooltip>
-        )}
-        {actionComponents.map(({ import: { default: Component }, path }) => (
-          <Component
-            key={path}
-            collapsed={collapsed}
-            onToggleCollapsed={onToggleCollapsed}
-            logEntry={logEntry}
-            id={id}
+          aria-label={collapsed ? t('expand') : t('collapse')}
+        >
+          <MaterialIcon
+            type={
+              openCollapseIconOverride ??
+              (collapsed ? 'chevron_right' : 'expand_more')
+            }
           />
-        ))}
-      </div>
+          <div className="log-entry-header-content">
+            <h3 className={logEntryHeaderTextClasses}>{headerTitleText}</h3>
+            {locationSpanOverflown && formattedLocationText && locationText ? (
+              <OLTooltip
+                id={locationText}
+                description={locationText}
+                overlayProps={{ placement: 'left' }}
+                tooltipProps={{ className: 'log-location-tooltip' }}
+              >
+                {formattedLocationText}
+              </OLTooltip>
+            ) : (
+              formattedLocationText
+            )}
+          </div>
+        </button>
+      </OLTooltip>
+
+      {actionButtonsOverride ?? (
+        <div className="log-entry-header-actions">
+          {showSourceLocationLink && (
+            <OLTooltip
+              id={`go-to-location-${locationText}`}
+              description={t('go_to_code_location')}
+              overlayProps={{ placement: 'bottom' }}
+            >
+              <OLIconButton
+                onClick={onSourceLocationClick}
+                variant="ghost"
+                icon="my_location"
+                accessibilityLabel={t('go_to_code_location')}
+              />
+            </OLTooltip>
+          )}
+          {actionComponents.map(({ import: { default: Component }, path }) => (
+            <Component key={path} logEntry={logEntry} id={id} />
+          ))}
+        </div>
+      )}
     </header>
   )
 }

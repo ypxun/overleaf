@@ -36,6 +36,7 @@ const PermissionsManager = require('../Authorization/PermissionsManager')
 const {
   sanitizeSessionUserForFrontEnd,
 } = require('../../infrastructure/FrontEndUser')
+const { IndeterminateInvoiceError } = require('../Errors/Errors')
 
 /**
  * @import { SubscriptionChangeDescription } from '../../../../types/subscription/subscription-change-preview'
@@ -87,9 +88,13 @@ async function userSubscriptionPage(req, res) {
     await Modules.promises.hooks.fire('userCanExtendTrial', user)
   )?.[0]
   const fromPlansPage = req.query.hasSubscription
+  const isInTrial = SubscriptionHelper.isInTrial(
+    personalSubscription?.payment?.trialEndsAt
+  )
   const plansData =
     SubscriptionViewModelBuilder.buildPlansListForSubscriptionDash(
-      personalSubscription?.plan
+      personalSubscription?.plan,
+      isInTrial
     )
 
   AnalyticsManager.recordEventForSession(req.session, 'subscription-page-view')
@@ -622,6 +627,13 @@ function recurlyCallback(req, res, next) {
           eventData.transaction.subscription_id,
           lastSubscription,
           function (err) {
+            if (err instanceof IndeterminateInvoiceError) {
+              logger.warn(
+                { recurlySubscriptionId: err.info.recurlySubscriptionId },
+                'could not determine invoice to fail for subscription'
+              )
+              return res.sendStatus(200)
+            }
             if (err) {
               return next(err)
             }
@@ -831,7 +843,7 @@ function makeChangePreview(
     paymentMethod: paymentMethod?.toString(),
     netTerms: subscription.netTerms,
     nextPlan: {
-      annual: nextPlan.annual ?? false,
+      annual: nextPlan?.annual ?? false,
     },
     nextInvoice: {
       date: subscription.periodEnd.toISOString(),

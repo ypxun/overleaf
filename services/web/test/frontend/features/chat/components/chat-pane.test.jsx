@@ -7,10 +7,7 @@ import {
 import fetchMock from 'fetch-mock'
 
 import ChatPane from '../../../../../frontend/js/features/chat/components/chat-pane'
-import {
-  cleanUpContext,
-  renderWithEditorContext,
-} from '../../../helpers/render-with-context'
+import { renderWithEditorContext } from '../../../helpers/render-with-context'
 import { stubMathJax, tearDownMathJaxStubs } from './stubs'
 
 describe('<ChatPane />', function () {
@@ -22,7 +19,6 @@ describe('<ChatPane />', function () {
 
   beforeEach(function () {
     window.metaAttributesCache.set('ol-user', user)
-    window.metaAttributesCache.set('ol-chatEnabled', true)
     window.metaAttributesCache.set('ol-preventCompileOnLoad', true)
   })
 
@@ -47,8 +43,6 @@ describe('<ChatPane />', function () {
 
   beforeEach(function () {
     fetchMock.removeRoutes().clearHistory()
-    cleanUpContext()
-
     stubMathJax()
   })
 

@@ -85,7 +85,7 @@ export interface Meta {
   'ol-cannot-link-other-third-party-sso': boolean
   'ol-cannot-reactivate-subscription': boolean
   'ol-cannot-use-ai': boolean
-  'ol-chatEnabled': boolean
+  'ol-capabilities': Array<'dropbox' | 'chat'>
   'ol-compileSettings': {
     reducedTimeoutWarning: string
     compileTimeout: number
@@ -228,6 +228,7 @@ export interface Meta {
   'ol-settingsPlans': Plan[]
   'ol-shouldAllowEditingDetails': boolean
   'ol-shouldLoadHotjar': boolean
+  'ol-showAiAssistNotification': boolean
   'ol-showAiErrorAssistant': boolean
   'ol-showBrlGeoBanner': boolean
   'ol-showCouponField': boolean
@@ -247,7 +248,6 @@ export interface Meta {
   'ol-ssoDisabled': boolean
   'ol-ssoErrorMessage': string
   'ol-stripeCustomerId': string
-  'ol-stripeUKApiKey': string
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
   'ol-subscriptionId': string

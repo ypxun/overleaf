@@ -9,7 +9,6 @@ import {
   FC,
   useState,
 } from 'react'
-import useScopeValue from '../hooks/use-scope-value'
 import useDetachLayout from '../hooks/use-detach-layout'
 import localStorage from '../../infrastructure/local-storage'
 import getMeta from '../../utils/meta'
@@ -21,6 +20,7 @@ import useEventListener from '@/shared/hooks/use-event-listener'
 import { isMac } from '@/shared/utils/os'
 import { sendSearchEvent } from '@/features/event-tracking/search-events'
 import { useRailContext } from '@/features/ide-redesign/contexts/rail-context'
+import usePersistedState from '@/shared/hooks/use-persisted-state'
 
 export type IdeLayout = 'sideBySide' | 'flat'
 export type IdeView = 'editor' | 'file' | 'pdf' | 'history'
@@ -55,6 +55,8 @@ export type LayoutContextValue = {
   pdfPreviewOpen: boolean
   projectSearchIsOpen: boolean
   setProjectSearchIsOpen: Dispatch<SetStateAction<boolean>>
+  openFile: BinaryFile | null
+  setOpenFile: Dispatch<SetStateAction<BinaryFile | null>>
 }
 
 const debugPdfDetach = getMeta('ol-debugPdfDetach')
@@ -70,10 +72,12 @@ function setLayoutInLocalStorage(pdfLayout: IdeLayout) {
   )
 }
 
+const reviewPanelStorageKey = `ui.reviewPanelOpen.${getMeta('ol-project_id')}`
+
 export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   // what to show in the "flat" view (editor or pdf)
-  const [view, _setView] = useScopeValue<IdeView | null>('ui.view')
-  const [openFile] = useScopeValue<BinaryFile | null>('openFile')
+  const [view, _setView] = useState<IdeView | null>('editor')
+  const [openFile, setOpenFile] = useState<BinaryFile | null>(null)
   const historyToggleEmitter = useScopeEventEmitter('history:toggle', true)
   const { isOpen: railIsOpen, setIsOpen: setRailIsOpen } = useRailContext()
   const [prevRailIsOpen, setPrevRailIsOpen] = useState(railIsOpen)
@@ -118,19 +122,23 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   )
 
   // whether the chat pane is open
-  const [chatIsOpen, setChatIsOpen] = useScopeValue<boolean>('ui.chatOpen')
+  const [chatIsOpen, setChatIsOpen] = usePersistedState<boolean>(
+    'ui.chatOpen',
+    false
+  )
 
   // whether the review pane is open
-  const [reviewPanelOpen, setReviewPanelOpen] =
-    useScopeValue<boolean>('ui.reviewPanelOpen')
+  const [reviewPanelOpen, setReviewPanelOpen] = usePersistedState<boolean>(
+    reviewPanelStorageKey,
+    false
+  )
 
   // whether the review pane is collapsed
   const [miniReviewPanelVisible, setMiniReviewPanelVisible] =
-    useScopeValue<boolean>('ui.miniReviewPanelVisible')
+    useState<boolean>(false)
 
   // whether the menu pane is open
-  const [leftMenuShown, setLeftMenuShown] =
-    useScopeValue<boolean>('ui.leftMenuShown')
+  const [leftMenuShown, setLeftMenuShown] = useState<boolean>(false)
 
   // whether the project search is open
   const [projectSearchIsOpen, setProjectSearchIsOpen] = useState(false)
@@ -145,6 +153,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
     )
   )
 
+  // TODO ide-redesign-cleanup: remove this listener as we have an equivalent in rail-context
   useEventListener(
     'ui.toggle-review-panel',
     useCallback(() => {
@@ -152,6 +161,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
     }, [setReviewPanelOpen])
   )
 
+  // TODO ide-redesign-cleanup: remove this listener as we have an equivalent in rail-context
   useEventListener(
     'keydown',
     useCallback((event: KeyboardEvent) => {
@@ -171,7 +181,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   )
 
   // whether to display the editor and preview side-by-side or full-width ("flat")
-  const [pdfLayout, setPdfLayout] = useScopeValue<IdeLayout>('ui.pdfLayout')
+  const [pdfLayout, setPdfLayout] = useState<IdeLayout>('sideBySide')
 
   // whether stylesheet on theme is loading
   const [loadingStyleSheet, setLoadingStyleSheet] = useState(false)
@@ -236,6 +246,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       changeLayout,
       chatIsOpen,
       leftMenuShown,
+      openFile,
       pdfLayout,
       pdfPreviewOpen,
       projectSearchIsOpen,
@@ -245,6 +256,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       loadingStyleSheet,
       setChatIsOpen,
       setLeftMenuShown,
+      setOpenFile,
       setPdfLayout,
       setReviewPanelOpen,
       setMiniReviewPanelVisible,
@@ -260,6 +272,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       changeLayout,
       chatIsOpen,
       leftMenuShown,
+      openFile,
       pdfLayout,
       pdfPreviewOpen,
       projectSearchIsOpen,
@@ -269,6 +282,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       loadingStyleSheet,
       setChatIsOpen,
       setLeftMenuShown,
+      setOpenFile,
       setPdfLayout,
       setReviewPanelOpen,
       setMiniReviewPanelVisible,
