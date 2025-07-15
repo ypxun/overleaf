@@ -8,6 +8,7 @@ import {
   SetStateAction,
   FC,
   useState,
+  useRef,
 } from 'react'
 import useDetachLayout from '../hooks/use-detach-layout'
 import localStorage from '../../infrastructure/local-storage'
@@ -21,42 +22,47 @@ import { isMac } from '@/shared/utils/os'
 import { sendSearchEvent } from '@/features/event-tracking/search-events'
 import { useRailContext } from '@/features/ide-redesign/contexts/rail-context'
 import usePersistedState from '@/shared/hooks/use-persisted-state'
+import { repositionAllTooltips } from '@/features/source-editor/extensions/tooltips-reposition'
 
 export type IdeLayout = 'sideBySide' | 'flat'
 export type IdeView = 'editor' | 'file' | 'pdf' | 'history'
 
-export type LayoutContextValue = {
+export type LayoutContextOwnStates = {
+  view: IdeView | null
+  chatIsOpen: boolean
+  reviewPanelOpen: boolean
+  miniReviewPanelVisible: boolean
+  leftMenuShown: boolean
+  loadingStyleSheet: boolean
+  pdfLayout: IdeLayout
+  projectSearchIsOpen: boolean
+  openFile: BinaryFile | null
+}
+
+export type LayoutContextValue = LayoutContextOwnStates & {
   reattach: () => void
   detach: () => void
   detachIsLinked: boolean
   detachRole: DetachRole
   changeLayout: (newLayout: IdeLayout, newView?: IdeView) => void
-  view: IdeView | null
   setView: (view: IdeView | null) => void
-  chatIsOpen: boolean
   setChatIsOpen: Dispatch<SetStateAction<LayoutContextValue['chatIsOpen']>>
-  reviewPanelOpen: boolean
   setReviewPanelOpen: Dispatch<
     SetStateAction<LayoutContextValue['reviewPanelOpen']>
   >
-  miniReviewPanelVisible: boolean
   setMiniReviewPanelVisible: Dispatch<
     SetStateAction<LayoutContextValue['miniReviewPanelVisible']>
   >
-  leftMenuShown: boolean
   setLeftMenuShown: Dispatch<
     SetStateAction<LayoutContextValue['leftMenuShown']>
   >
-  loadingStyleSheet: boolean
   setLoadingStyleSheet: Dispatch<
     SetStateAction<LayoutContextValue['loadingStyleSheet']>
   >
-  pdfLayout: IdeLayout
   pdfPreviewOpen: boolean
-  projectSearchIsOpen: boolean
   setProjectSearchIsOpen: Dispatch<SetStateAction<boolean>>
-  openFile: BinaryFile | null
   setOpenFile: Dispatch<SetStateAction<BinaryFile | null>>
+  restoreView: () => void
 }
 
 const debugPdfDetach = getMeta('ol-debugPdfDetach')
@@ -81,6 +87,8 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
   const historyToggleEmitter = useScopeEventEmitter('history:toggle', true)
   const { isOpen: railIsOpen, setIsOpen: setRailIsOpen } = useRailContext()
   const [prevRailIsOpen, setPrevRailIsOpen] = useState(railIsOpen)
+  // Whether we came from a file or a document when we left the ide
+  const lastIdeView = useRef<IdeView>('editor')
 
   const setView = useCallback(
     (value: IdeView | null) => {
@@ -99,12 +107,8 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
           setRailIsOpen(prevRailIsOpen)
         }
 
-        if (value === 'editor' && openFile) {
-          // if a file is currently opened, ensure the view is 'file' instead of
-          // 'editor' when the 'editor' view is requested. This is to ensure
-          // that the entity selected in the file tree is the one visible and
-          // that docs don't take precedence over files.
-          return 'file'
+        if (value === 'editor' || value === 'file') {
+          lastIdeView.current = value
         }
 
         return value
@@ -113,13 +117,16 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
     [
       _setView,
       setRailIsOpen,
-      openFile,
       historyToggleEmitter,
       prevRailIsOpen,
       setPrevRailIsOpen,
       railIsOpen,
     ]
   )
+
+  const restoreView = useCallback(() => {
+    setView(lastIdeView.current ?? 'editor')
+  }, [setView])
 
   // whether the chat pane is open
   const [chatIsOpen, setChatIsOpen] = usePersistedState<boolean>(
@@ -188,12 +195,26 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
 
   const changeLayout = useCallback(
     (newLayout: IdeLayout, newView: IdeView = 'editor') => {
+      const targetView = newLayout === 'sideBySide' ? 'editor' : newView
       setPdfLayout(newLayout)
-      setView(newLayout === 'sideBySide' ? 'editor' : newView)
+      if (targetView === 'editor') {
+        restoreView()
+      } else {
+        setView(targetView)
+      }
       setLayoutInLocalStorage(newLayout)
     },
-    [setPdfLayout, setView]
+    [setPdfLayout, setView, restoreView]
   )
+
+  // Force codemirror to reposition all tooltips to prevent an issue
+  // where tooltips would sometimes show on top of the pdf preview
+  // https://github.com/overleaf/internal/issues/23840
+  useEffect(() => {
+    if (view === 'pdf' && pdfLayout === 'flat') {
+      repositionAllTooltips()
+    }
+  }, [view, pdfLayout])
 
   const {
     reattach,
@@ -263,6 +284,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       setLoadingStyleSheet,
       setView,
       view,
+      restoreView,
     }),
     [
       reattach,
@@ -289,6 +311,7 @@ export const LayoutProvider: FC<React.PropsWithChildren> = ({ children }) => {
       setLoadingStyleSheet,
       setView,
       view,
+      restoreView,
     ]
   )
 

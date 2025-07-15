@@ -11,6 +11,7 @@ import {
 import { useProjectContext } from '@/shared/context/project-context'
 import { useIdeReactContext } from '@/features/ide-react/context/ide-react-context'
 import { useEditorManagerContext } from '@/features/ide-react/context/editor-manager-context'
+import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import {
   FileTreeDocumentFindResult,
   FileTreeFileRefFindResult,
@@ -38,10 +39,12 @@ const FileTreeOpenContext = createContext<
 export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
   children,
 }) => {
-  const { rootDocId, owner } = useProjectContext()
+  const { project } = useProjectContext()
+  const rootDocId = project?.rootDocId
+  const projectOwner = project?.owner?._id
   const { eventEmitter, projectJoined } = useIdeReactContext()
-  const { openDocWithId, currentDocumentId, openInitialDoc } =
-    useEditorManagerContext()
+  const { openDocWithId, openInitialDoc } = useEditorManagerContext()
+  const { currentDocumentId } = useEditorOpenDocContext()
   const { setOpenFile } = useLayoutContext()
   const [openEntity, setOpenEntity] = useState<
     FileTreeDocumentFindResult | FileTreeFileRefFindResult | null
@@ -80,7 +83,7 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
         openDocWithId(selected.entity._id, { keepCurrentView: true })
         if (selected.entity.name.endsWith('.bib')) {
           sendMB('open-bib-file', {
-            projectOwner: owner._id,
+            projectOwner,
             isSampleFile: selected.entity.name === 'sample.bib',
             linkedFileProvider: null,
           })
@@ -95,7 +98,7 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
       if (openFile) {
         if (selected?.entity?.name?.endsWith('.bib')) {
           sendMB('open-bib-file', {
-            projectOwner: owner._id,
+            projectOwner,
             isSampleFile: false,
             linkedFileProvider: (selected.entity as FileRef).linkedFileData
               ?.provider,
@@ -104,7 +107,7 @@ export const FileTreeOpenProvider: FC<React.PropsWithChildren> = ({
         window.dispatchEvent(new CustomEvent('file-view:file-opened'))
       }
     },
-    [fileTreeReady, setOpenFile, openDocWithId, owner]
+    [fileTreeReady, setOpenFile, openDocWithId, projectOwner]
   )
 
   const handleFileTreeDelete = useCallback(

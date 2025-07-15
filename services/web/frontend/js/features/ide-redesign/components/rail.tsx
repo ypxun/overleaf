@@ -1,11 +1,4 @@
-import {
-  FC,
-  forwardRef,
-  ReactElement,
-  useCallback,
-  useMemo,
-  useRef,
-} from 'react'
+import { FC, forwardRef, ReactElement, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Nav, NavLink, Tab, TabContainer } from 'react-bootstrap'
 import MaterialIcon, {
@@ -38,7 +31,6 @@ import { RailHelpContactUsModal } from './help/contact-us'
 import { HistorySidebar } from '@/features/ide-react/components/history-sidebar'
 import DictionarySettingsModal from './settings/editor-settings/dictionary-settings-modal'
 import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLIconButton from '@/features/ui/components/ol/ol-icon-button'
 import { useChatContext } from '@/features/chat/context/chat-context'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
 import {
@@ -51,8 +43,8 @@ import { useDetachCompileContext as useCompileContext } from '@/shared/context/d
 import OldErrorPane from './error-logs/old-error-pane'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useSurveyUrl } from '../hooks/use-survey-url'
-import NewErrorLogsPromo from './error-logs/new-error-logs-promo'
 import { useProjectContext } from '@/shared/context/project-context'
+import usePreviousValue from '@/shared/hooks/use-previous-value'
 
 type RailElement = {
   icon: AvailableUnfilledIcon
@@ -114,8 +106,6 @@ export const RailLayout = () => {
   const { logEntries } = useCompileContext()
   const { features } = useProjectContext()
   const errorLogsDisabled = !logEntries
-
-  const errorsTabRef = useRef<HTMLAnchorElement>(null)
 
   const { view, setLeftMenuShown } = useLayoutContext()
 
@@ -228,6 +218,18 @@ export const RailLayout = () => {
 
   const isReviewPanelOpen = selectedTab === 'review-panel'
 
+  const prevTab = usePreviousValue(selectedTab)
+
+  const tabHasChanged = useMemo(() => {
+    return prevTab !== selectedTab
+  }, [prevTab, selectedTab])
+
+  const onCollapse = useCallback(() => {
+    if (!tabHasChanged) {
+      handlePaneCollapse()
+    }
+  }, [tabHasChanged, handlePaneCollapse])
+
   return (
     <TabContainer
       mountOnEnter // Only render when necessary (so that we can lazy load tab content)
@@ -243,7 +245,6 @@ export const RailLayout = () => {
             .filter(({ hide }) => !hide)
             .map(({ icon, key, indicator, title, disabled }) => (
               <RailTab
-                ref={key === 'errors' ? errorsTabRef : null}
                 open={isOpen && selectedTab === key}
                 key={key}
                 eventKey={key}
@@ -257,7 +258,6 @@ export const RailLayout = () => {
           {railActions?.map(action => (
             <RailActionElement key={action.key} action={action} />
           ))}
-          {newErrorlogs && <NewErrorLogsPromo target={errorsTabRef.current} />}
         </Nav>
       </div>
       <Panel
@@ -273,7 +273,7 @@ export const RailLayout = () => {
         maxSize={80}
         ref={panelRef}
         collapsible
-        onCollapse={handlePaneCollapse}
+        onCollapse={onCollapse}
         onExpand={handlePaneExpand}
       >
         {isHistoryView && <HistorySidebar />}
@@ -403,13 +403,17 @@ const RailActionElement = ({ action }: { action: RailAction }) => {
         description={action.title}
         overlayProps={{ delay: 0, placement: 'right' }}
       >
-        <OLIconButton
+        <button
           onClick={onActionClick}
           className="ide-rail-tab-link ide-rail-tab-button"
-          icon={action.icon}
-          accessibilityLabel={action.title}
-          unfilled
-        />
+          aria-label={action.title}
+        >
+          <MaterialIcon
+            className="ide-rail-tab-link-icon"
+            type={action.icon}
+            unfilled
+          />
+        </button>
       </OLTooltip>
     )
   }

@@ -11,11 +11,11 @@ import {
 import useSocketListener from '@/features/ide-react/hooks/use-socket-listener'
 import { useConnectionContext } from '@/features/ide-react/context/connection-context'
 import { useProjectContext } from '@/shared/context/project-context'
-import { useEditorManagerContext } from '@/features/ide-react/context/editor-manager-context'
+import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
 import { useUserContext } from '@/shared/context/user-context'
 import { postJSON } from '@/infrastructure/fetch-json'
 import useEventListener from '@/shared/hooks/use-event-listener'
-import { ProjectContextValue } from '@/shared/context/types/project-context'
+import { ProjectMetadata } from '@/shared/context/types/project-metadata'
 import { usePermissionsContext } from '@/features/ide-react/context/permissions-context'
 
 export type TrackChangesState = {
@@ -48,14 +48,14 @@ export const TrackChangesStateProvider: FC<React.PropsWithChildren> = ({
 }) => {
   const permissions = usePermissionsContext()
   const { socket } = useConnectionContext()
-  const project = useProjectContext()
+  const { projectId, project, features } = useProjectContext()
   const user = useUserContext()
-  const { setWantTrackChanges } = useEditorManagerContext()
+  const { setWantTrackChanges } = useEditorPropertiesContext()
 
   // TODO: update project.trackChangesState instead?
   const [trackChangesValue, setTrackChangesValue] = useState<
-    ProjectContextValue['trackChangesState']
-  >(project.trackChangesState ?? false)
+    ProjectMetadata['trackChangesState']
+  >(project?.trackChangesState ?? false)
 
   useSocketListener(socket, 'toggle-track-changes', setTrackChangesValue)
 
@@ -88,11 +88,11 @@ export const TrackChangesStateProvider: FC<React.PropsWithChildren> = ({
 
   const saveTrackChanges = useCallback(
     async (trackChangesBody: SaveTrackChangesRequestBody) => {
-      postJSON(`/project/${project._id}/track_changes`, {
+      postJSON(`/project/${projectId}/track_changes`, {
         body: trackChangesBody,
       })
     },
-    [project._id]
+    [projectId]
   )
 
   const saveTrackChangesForCurrentUser = useCallback(
@@ -122,7 +122,7 @@ export const TrackChangesStateProvider: FC<React.PropsWithChildren> = ({
     useCallback(() => {
       if (
         user.id &&
-        project.features.trackChanges &&
+        features.trackChanges &&
         permissions.write &&
         !onForEveryone
       ) {
@@ -139,7 +139,7 @@ export const TrackChangesStateProvider: FC<React.PropsWithChildren> = ({
       onForMembers,
       onForEveryone,
       permissions.write,
-      project.features.trackChanges,
+      features.trackChanges,
       user.id,
     ])
   )

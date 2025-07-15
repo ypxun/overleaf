@@ -6,11 +6,13 @@ import React from 'react'
 import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provider'
 import { usePermissionsContext } from '@/features/ide-react/context/permissions-context'
 import FileTreeActionButton from './file-tree-action-button'
+import { useRailContext } from '../../contexts/rail-context'
 
 export default function FileTreeActionButtons() {
   const { t } = useTranslation()
   const { fileTreeReadOnly } = useFileTreeData()
   const { write } = usePermissionsContext()
+  const { handlePaneCollapse } = useRailContext()
 
   const {
     canCreate,
@@ -91,7 +93,7 @@ export default function FileTreeActionButtons() {
           id="upload"
           description={t('upload')}
           onClick={uploadWithAnalytics}
-          iconType="upload_file"
+          iconType="upload"
         />
       )}
       {canBulkDelete && (
@@ -102,6 +104,12 @@ export default function FileTreeActionButtons() {
           iconType="delete"
         />
       )}
+      <FileTreeActionButton
+        id="close"
+        description={t('close')}
+        onClick={handlePaneCollapse}
+        iconType="close"
+      />
     </div>
   )
 }

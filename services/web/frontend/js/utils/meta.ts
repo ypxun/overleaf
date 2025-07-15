@@ -85,7 +85,7 @@ export interface Meta {
   'ol-cannot-link-other-third-party-sso': boolean
   'ol-cannot-reactivate-subscription': boolean
   'ol-cannot-use-ai': boolean
-  'ol-capabilities': Array<'dropbox' | 'chat'>
+  'ol-capabilities': Array<'dropbox' | 'chat' | 'use-ai'>
   'ol-compileSettings': {
     reducedTimeoutWarning: string
     compileTimeout: number
@@ -146,7 +146,6 @@ export interface Meta {
   'ol-isCollectionMethodManual': boolean
   'ol-isExternalAuthenticationSystemUsed': boolean
   'ol-isManagedAccount': boolean
-  'ol-isPaywallChangeCompileTimeoutEnabled': boolean
   'ol-isProfessional': boolean
   'ol-isRegisteredViaGoogle': boolean
   'ol-isRestrictedTokenMember': boolean
@@ -160,7 +159,7 @@ export interface Meta {
   'ol-languages': SpellCheckLanguage[]
   'ol-learnedWords': string[]
   'ol-legacyEditorThemes': string[]
-  'ol-licenseQuantity': number | undefined
+  'ol-licenseQuantity'?: number
   'ol-loadingText': string
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
   'ol-managedInstitutions': ManagedInstitution[]
@@ -180,7 +179,6 @@ export interface Meta {
   'ol-notificationsInstitution': InstitutionType[]
   'ol-oauthProviders': OAuthProviders
   'ol-odcData': OnboardingFormData
-  'ol-odcRole': string
   'ol-overallThemes': OverallThemeMeta[]
   'ol-pages': number
   'ol-passwordStrengthOptions': PasswordStrengthOptions
@@ -197,7 +195,7 @@ export interface Meta {
   'ol-preventCompileOnLoad'?: boolean
   'ol-primaryEmail': { email: string; confirmed: boolean }
   'ol-project': any // TODO
-  'ol-projectEntityCounts'?: { files: number; docs: number }
+  'ol-projectEntityCounts': { files: number; docs: number }
   'ol-projectHistoryBlobsEnabled': boolean
   'ol-projectName': string
   'ol-projectOwnerHasPremiumOnPageLoad': boolean
@@ -247,6 +245,7 @@ export interface Meta {
   'ol-splitTestVariants': { [name: string]: string }
   'ol-ssoDisabled': boolean
   'ol-ssoErrorMessage': string
+  'ol-stripeAccountId': string
   'ol-stripeCustomerId': string
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
@@ -321,6 +320,7 @@ export default function getMeta<T extends keyof Meta>(name: T): Meta[T] {
       value = element.hasAttribute('content')
       break
     case 'json':
+    case 'number':
       if (!plainTextValue) {
         // JSON.parse('') throws
         value = undefined

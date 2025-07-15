@@ -1,4 +1,3 @@
-//- If the `plans-page-bs5` split test has been completed, remove the `data-toggle` and `data-target` because it is not needed anymore (bs5 uses `data-bs-toggle` and `data-bs-target`)
 include ../../_mixins/material_symbol
 
 mixin managingYourSubscription
@@ -6,8 +5,6 @@ mixin managingYourSubscription
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#managingYourSubscriptionQ1'
 				data-bs-toggle='collapse'
 				data-bs-target='#managingYourSubscriptionQ1'
 				aria-expanded='false'
@@ -19,13 +16,13 @@ mixin managingYourSubscription
 			.collapse(id='managingYourSubscriptionQ1')
 				.custom-accordion-body
 					span Yes, you can do this at any time by going to
+					| &nbsp;
 					strong Account > Subscription
+					| &nbsp;
 					span when logged in to Overleaf. You can change plans, switch between monthly and annual billing options, or cancel to downgrade to the free plan. When canceling, your subscription will continue until the end of the billing period.
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#managingYourSubscriptionQ2'
 				data-bs-toggle='collapse'
 				data-bs-target='#managingYourSubscriptionQ2'
 				aria-expanded='false'
@@ -40,8 +37,6 @@ mixin managingYourSubscription
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#managingYourSubscriptionQ3'
 				data-bs-toggle='collapse'
 				data-bs-target='#managingYourSubscriptionQ3'
 				aria-expanded='false'
@@ -56,8 +51,6 @@ mixin managingYourSubscription
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#managingYourSubscriptionQ4'
 				data-bs-toggle='collapse'
 				data-bs-target='#managingYourSubscriptionQ4'
 				aria-expanded='false'
@@ -68,7 +61,8 @@ mixin managingYourSubscription
 					+material-symbol-outlined('keyboard_arrow_down')
 			.collapse(id='managingYourSubscriptionQ4')
 				.custom-accordion-body
-					| You can view and update the card on file by going to Account >
+					span You can view and update the card on file by going to Account >
+					| &nbsp;
 					a.inline-green-link(
 						target='_blank'
 						href='/user/subscription'
@@ -85,8 +79,6 @@ mixin overleafIndividualPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ1'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ1'
 				aria-expanded='false'
@@ -98,8 +90,9 @@ mixin overleafIndividualPlans
 			.collapse(id='overleafIndividualPlansQ1')
 				.custom-accordion-body
 					span You get full access to your chosen plan during your 7-day free trial, and there’s no obligation to continue beyond the trial. Your card will be charged at the end of your trial unless you cancel before then. To cancel, go to
+					| &nbsp;
 					strong Account >
-						|
+						| &nbsp;
 						a.inline-green-link(
 							target='_blank'
 							href='/user/subscription'
@@ -109,13 +102,12 @@ mixin overleafIndividualPlans
 							event-segmentation={button: 'contact', location: 'faq'}
 						)
 							span Subscription
+					| &nbsp;
 					span when logged in to Overleaf (the trial will continue for the full 7 days).
 
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ2'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ2'
 				aria-expanded='false'
@@ -131,8 +123,6 @@ mixin overleafIndividualPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ3'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ3'
 				aria-expanded='false'
@@ -144,13 +134,13 @@ mixin overleafIndividualPlans
 			.collapse(id='overleafIndividualPlansQ3')
 				.custom-accordion-body
 					span No. Only the subscriber’s account will be upgraded. An individual Standard subscription allows you to invite 10 people per project to edit the project with you. Your collaborators can access features such as the full document history and extended compile time, but
+					| &nbsp;
 					strong only
+					| &nbsp;
 					span for the project(s) they’re working on with you. If your collaborators want access to those features on their own projects, they will need to purchase their own subscription. (If you work with the same people regularly, you might find a group subscription more cost effective.)
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ4'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ4'
 				aria-expanded='false'
@@ -162,13 +152,13 @@ mixin overleafIndividualPlans
 			.collapse(id='overleafIndividualPlansQ4')
 				.custom-accordion-body
 					span If you have an Overleaf subscription, then your project collaborators will have access to features like real-time track changes and document history, but
+					| &nbsp;
 					strong only
+					| &nbsp;
 					span for the project(s) they’re working on with you. If your collaborators want access to those features on their own projects, they will need to purchase their own subscription. (If you work with the same people regularly, you might find a group subscription more cost effective.)
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ5'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ5'
 				aria-expanded='false'
@@ -183,8 +173,6 @@ mixin overleafIndividualPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ6'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ6'
 				aria-expanded='false'
@@ -199,8 +187,6 @@ mixin overleafIndividualPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafIndividualPlansQ7'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafIndividualPlansQ7'
 				aria-expanded='false'
@@ -218,8 +204,6 @@ mixin overleafGroupPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafGroupPlansQ1'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafGroupPlansQ1'
 				aria-expanded='false'
@@ -235,8 +219,6 @@ mixin overleafGroupPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafGroupPlansQ2'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafGroupPlansQ2'
 				aria-expanded='false'
@@ -247,7 +229,8 @@ mixin overleafGroupPlans
 					+material-symbol-outlined('keyboard_arrow_down')
 			.collapse(id='overleafGroupPlansQ2')
 				.custom-accordion-body
-					| Our Group subscriptions allow you to purchase access to our premium features for multiple people. They’re easy to manage, help save on paperwork, and allow groups of 5 or more to purchase via purchase order (PO). We also offer discounts on purchases of Group subscriptions for more than 20 users; just get in touch with our
+					span Our Group subscriptions allow you to purchase access to our premium features for multiple people. They’re easy to manage, help save on paperwork, and allow groups of 5 or more to purchase via purchase order (PO). We also offer discounts on purchases of Group subscriptions for more than 20 users; just get in touch with our
+					| &nbsp;
 					a.inline-green-link(
 						target='_blank'
 						href='/for/contact-sales'
@@ -261,8 +244,6 @@ mixin overleafGroupPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafGroupPlansQ3'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafGroupPlansQ3'
 				aria-expanded='false'
@@ -277,8 +258,6 @@ mixin overleafGroupPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafGroupPlansQ4'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafGroupPlansQ4'
 				aria-expanded='false'
@@ -290,7 +269,8 @@ mixin overleafGroupPlans
 			.collapse(id='overleafGroupPlansQ4')
 				.custom-accordion-body
 					div
-						| You can add up to 20 licenses using the
+						span You can add up to 20 licenses using the
+						| &nbsp;
 						a.inline-green-link(
 							target='_blank'
 							href='/user/subscription'
@@ -300,8 +280,9 @@ mixin overleafGroupPlans
 							event-segmentation={button: 'contact', location: 'faq'}
 						)
 							span subscription management page
-						|
-						| accessed by going to Account >
+						| &nbsp;
+						span accessed by going to Account >
+						| &nbsp;
 						a.inline-green-link(
 							target='_blank'
 							href='/user/subscription'
@@ -311,10 +292,11 @@ mixin overleafGroupPlans
 							event-segmentation={button: 'contact', location: 'faq'}
 						)
 							span Subscription
-						|
-						| when logged into Overleaf. The cost per license will be prorated at the current per license rate, and will end with your existing renewal date.
+						| &nbsp;
+						span when logged into Overleaf. The cost per license will be prorated at the current per license rate, and will end with your existing renewal date.
 					.mt-2
-						| If you need more than 20 licenses added to your subscription, please
+						span If you need more than 20 licenses added to your subscription, please
+						| &nbsp;
 						a.inline-green-link(
 							target='_blank'
 							href='/for/contact-sales'
@@ -328,8 +310,6 @@ mixin overleafGroupPlans
 		.custom-accordion-item
 			button.custom-accordion-header.collapsed(
 				type='button'
-				data-toggle='collapse'
-				data-target='#overleafGroupPlansQ5'
 				data-bs-toggle='collapse'
 				data-bs-target='#overleafGroupPlansQ5'
 				aria-expanded='false'
@@ -340,7 +320,8 @@ mixin overleafGroupPlans
 					+material-symbol-outlined('keyboard_arrow_down')
 			.collapse(id='overleafGroupPlansQ5')
 				.custom-accordion-body
-					| You can upgrade your plan from Group Standard to Group Professional on the
+					span You can upgrade your plan from Group Standard to Group Professional on the
+					| &nbsp;
 					a.inline-green-link(
 						target='_blank'
 						href='/user/subscription'

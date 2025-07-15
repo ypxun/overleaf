@@ -55,7 +55,7 @@ describe('SubscriptionGroupController', function () {
         getUsersGroupSubscriptionDetails: sinon.stub().resolves({
           subscription: ctx.subscription,
           plan: ctx.plan,
-          recurlySubscription: ctx.recurlySubscription,
+          paymentProviderSubscription: ctx.recurlySubscription,
         }),
         previewAddSeatsSubscriptionChange: sinon
           .stub()
@@ -73,6 +73,8 @@ describe('SubscriptionGroupController', function () {
           .resolves(ctx.previewSubscriptionChangeData),
         checkBillingInfoExistence: sinon.stub().resolves(ctx.paymentMethod),
         updateSubscriptionPaymentTerms: sinon.stub().resolves(),
+        ensureSubscriptionHasAdditionalLicenseAddOnWhenCollectionMethodIsManual:
+          sinon.stub().resolves(),
       },
     }
 
@@ -105,12 +107,6 @@ describe('SubscriptionGroupController', function () {
       },
     }
 
-    ctx.SplitTestHandler = {
-      promises: {
-        getAssignment: sinon.stub().resolves({ variant: 'enabled' }),
-      },
-    }
-
     ctx.UserGetter = {
       promises: {
         getUserEmail: sinon.stub().resolves(ctx.user.email),
@@ -140,6 +136,7 @@ describe('SubscriptionGroupController', function () {
       InactiveError: class extends Error {},
       SubtotalLimitExceededError: class extends Error {},
       HasPastDueInvoiceError: class extends Error {},
+      HasNoAdditionalLicenseWhenManuallyCollectedError: class extends Error {},
     }
 
     vi.doMock(
@@ -170,13 +167,6 @@ describe('SubscriptionGroupController', function () {
     vi.doMock('../../../../app/src/infrastructure/Modules', () => ({
       default: ctx.Modules,
     }))
-
-    vi.doMock(
-      '../../../../app/src/Features/SplitTests/SplitTestHandler',
-      () => ({
-        default: ctx.SplitTestHandler,
-      })
-    )
 
     vi.doMock('../../../../app/src/Features/User/UserGetter', () => ({
       default: ctx.UserGetter,
@@ -456,6 +446,9 @@ describe('SubscriptionGroupController', function () {
             ctx.SubscriptionGroupHandler.promises.checkBillingInfoExistence
               .calledWith(ctx.recurlySubscription, ctx.adminUserId)
               .should.equal(true)
+            ctx.SubscriptionGroupHandler.promises.ensureSubscriptionHasAdditionalLicenseAddOnWhenCollectionMethodIsManual
+              .calledWith(ctx.recurlySubscription)
+              .should.equal(true)
             page.should.equal('subscriptions/add-seats')
             props.subscriptionId.should.equal(ctx.subscriptionId)
             props.groupName.should.equal(ctx.subscription.teamName)
@@ -512,6 +505,28 @@ describe('SubscriptionGroupController', function () {
           redirect: url => {
             url.should.equal(
               '/user/subscription/group/missing-billing-information'
+            )
+            resolve()
+          },
+        }
+
+        ctx.Controller.addSeatsToGroupSubscription(ctx.req, res)
+      })
+    })
+
+    it('should redirect to manually collected subscription error page when collection method is manual and has no additional license add-on', async function (ctx) {
+      await new Promise(resolve => {
+        ctx.SubscriptionGroupHandler.promises.ensureSubscriptionHasAdditionalLicenseAddOnWhenCollectionMethodIsManual =
+          sinon
+            .stub()
+            .throws(
+              new ctx.Errors.HasNoAdditionalLicenseWhenManuallyCollectedError()
+            )
+
+        const res = {
+          redirect: url => {
+            url.should.equal(
+              '/user/subscription/group/manually-collected-subscription'
             )
             resolve()
           },

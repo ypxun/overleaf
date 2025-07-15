@@ -27,9 +27,11 @@ const Modules = require('../../infrastructure/Modules')
 const async = require('async')
 const HttpErrorHandler = require('../Errors/HttpErrorHandler')
 const RecurlyClient = require('./RecurlyClient')
-const { AI_ADD_ON_CODE } = require('./PaymentProviderEntities')
+const {
+  AI_ADD_ON_CODE,
+  subscriptionChangeIsAiAssistUpgrade,
+} = require('./AiHelper')
 const PlansLocator = require('./PlansLocator')
-const PaymentProviderEntities = require('./PaymentProviderEntities')
 const { User } = require('../../models/User')
 const UserGetter = require('../User/UserGetter')
 const PermissionsManager = require('../Authorization/PermissionsManager')
@@ -304,20 +306,18 @@ async function resumeSubscription(req, res, next) {
   }
 }
 
-function cancelSubscription(req, res, next) {
+async function cancelSubscription(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
   logger.debug({ userId: user._id }, 'canceling subscription')
-  SubscriptionHandler.cancelSubscription(user, function (err) {
-    if (err) {
-      OError.tag(err, 'something went wrong canceling subscription', {
-        user_id: user._id,
-      })
-      return next(err)
-    }
-    // Note: this redirect isn't used in the main flow as the redirection is
-    // handled by Angular
-    res.redirect('/user/subscription/canceled')
-  })
+  try {
+    await SubscriptionHandler.promises.cancelSubscription(user)
+    return res.sendStatus(200)
+  } catch (err) {
+    OError.tag(err, 'something went wrong canceling subscription', {
+      user_id: user._id,
+    })
+    return next(err)
+  }
 }
 
 /**
@@ -379,10 +379,7 @@ async function previewAddonPurchase(req, res) {
 
     const { isPremium: hasAiAssistViaWritefull } =
       await UserGetter.promises.getWritefullData(userId)
-    const isAiUpgrade =
-      PaymentProviderEntities.subscriptionChangeIsAiAssistUpgrade(
-        subscriptionChange
-      )
+    const isAiUpgrade = subscriptionChangeIsAiAssistUpgrade(subscriptionChange)
     if (hasAiAssistViaWritefull && isAiUpgrade) {
       return res.redirect(
         '/user/subscription?redirect-reason=writefull-entitled'
@@ -455,6 +452,7 @@ async function purchaseAddon(req, res, next) {
       return res.status(402).json({
         message: 'Payment action required',
         clientSecret: err.info.clientSecret,
+        publicKey: err.info.publicKey,
       })
     } else {
       if (err instanceof Error) {
