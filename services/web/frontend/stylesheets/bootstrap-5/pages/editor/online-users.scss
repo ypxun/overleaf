@@ -123,5 +123,14 @@
       var(--online-users-border-color);
     box-sizing: border-box;
     display: inline-block;
+    text-transform: uppercase;
+  }
+
+  .online-user-circle-light-font {
+    color: var(--content-primary-dark);
+  }
+
+  .online-user-circle-dark-font {
+    color: var(--content-primary);
   }
 }

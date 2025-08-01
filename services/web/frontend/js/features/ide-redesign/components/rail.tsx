@@ -45,6 +45,7 @@ import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useSurveyUrl } from '../hooks/use-survey-url'
 import { useProjectContext } from '@/shared/context/project-context'
 import usePreviousValue from '@/shared/hooks/use-previous-value'
+import { useCommandProvider } from '@/features/ide-react/hooks/use-command-provider'
 
 type RailElement = {
   icon: AvailableUnfilledIcon
@@ -54,6 +55,7 @@ type RailElement = {
   title: string
   hide?: boolean
   disabled?: boolean
+  mountOnFirstLoad?: boolean
 }
 
 type RailActionButton = {
@@ -122,6 +124,9 @@ export const RailLayout = () => {
         icon: 'description',
         title: t('file_tree'),
         component: <FileTreeOutlinePanel />,
+        // NOTE: We always need to mount the file tree on first load
+        // since it is responsible for opening the initial document.
+        mountOnFirstLoad: true,
       },
       {
         key: 'full-project-search',
@@ -142,6 +147,7 @@ export const RailLayout = () => {
         title: t('review_panel'),
         component: null,
         hide: !features.trackChangesVisible,
+        disabled: view !== 'editor',
       },
       {
         key: 'chat',
@@ -160,7 +166,7 @@ export const RailLayout = () => {
         disabled: errorLogsDisabled,
       },
     ],
-    [t, features.trackChangesVisible, newErrorlogs, errorLogsDisabled]
+    [t, features.trackChangesVisible, newErrorlogs, errorLogsDisabled, view]
   )
 
   const railActions: RailAction[] = useMemo(
@@ -182,6 +188,19 @@ export const RailLayout = () => {
       },
     ],
     [setLeftMenuShown, t, sendEvent]
+  )
+
+  useCommandProvider(
+    () => [
+      {
+        id: 'open-settings',
+        handler: () => {
+          setLeftMenuShown(true)
+        },
+        label: t('settings'),
+      },
+    ],
+    [t, setLeftMenuShown]
   )
 
   const onTabSelect = useCallback(
@@ -239,7 +258,13 @@ export const RailLayout = () => {
       onSelect={onTabSelect}
       id="ide-rail-tabs"
     >
-      <div className={classNames('ide-rail', { hidden: isHistoryView })}>
+      {/* The <Nav> element is a "div" and has a "role="tablist"".
+          But it should be identified as a navigation landmark.
+          Therefore, we nest them: the parent <nav> is the landmark, and its child gets the "role="tablist"". */}
+      <nav
+        className={classNames('ide-rail', { hidden: isHistoryView })}
+        aria-label={t('files_collaboration_integrations_logs')}
+      >
         <Nav activeKey={selectedTab} className="ide-rail-tabs-nav">
           {railTabs
             .filter(({ hide }) => !hide)
@@ -255,11 +280,13 @@ export const RailLayout = () => {
               />
             ))}
           <div className="flex-grow-1" />
-          {railActions?.map(action => (
-            <RailActionElement key={action.key} action={action} />
-          ))}
+          <nav aria-label={t('help_editor_settings')}>
+            {railActions?.map(action => (
+              <RailActionElement key={action.key} action={action} />
+            ))}
+          </nav>
         </Nav>
-      </div>
+      </nav>
       <Panel
         id={
           newErrorlogs
@@ -285,8 +312,12 @@ export const RailLayout = () => {
           <Tab.Content className="ide-rail-tab-content">
             {railTabs
               .filter(({ hide }) => !hide)
-              .map(({ key, component }) => (
-                <Tab.Pane eventKey={key} key={key}>
+              .map(({ key, component, mountOnFirstLoad }) => (
+                <Tab.Pane
+                  eventKey={key}
+                  key={key}
+                  mountOnEnter={!mountOnFirstLoad}
+                >
                   {component}
                 </Tab.Pane>
               ))}

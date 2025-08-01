@@ -37,7 +37,11 @@ describe('SandboxedCompiles', function () {
       cy.findByText(/This is pdfTeX, Version .+ \(TeX Live 2023\) /)
 
       cy.log('Switch TeXLive version from 2023 to 2022')
-      cy.get('header').findByText('Menu').click()
+      cy.findByRole('navigation', {
+        name: /Project actions/i,
+      })
+        .findByRole('button', { name: /Menu/i })
+        .click()
       cy.findByText(LABEL_TEX_LIVE_VERSION)
         .parent()
         .findByText('2023')
@@ -161,7 +165,9 @@ describe('SandboxedCompiles', function () {
         })
 
         cy.log('navigate to Section A')
-        cy.get('.cm-content').within(() => cy.findByText('Section A').click())
+        cy.findByRole('textbox', { name: /Source Editor editing/i }).within(
+          () => cy.findByText('Section A').click()
+        )
         cy.get('[aria-label="Go to code location in PDF"]').click()
         cy.get('@title').then((title: any) => {
           waitUntilScrollingFinished('.pdfjs-viewer-inner', title)
@@ -170,7 +176,9 @@ describe('SandboxedCompiles', function () {
         })
 
         cy.log('navigate to Section B')
-        cy.get('.cm-content').within(() => cy.findByText('Section B').click())
+        cy.findByRole('textbox', { name: /Source Editor editing/i }).within(
+          () => cy.findByText('Section B').click()
+        )
         cy.get('[aria-label="Go to code location in PDF"]').click()
         cy.get('@sectionA').then((title: any) => {
           waitUntilScrollingFinished('.pdfjs-viewer-inner', title)
@@ -209,7 +217,11 @@ describe('SandboxedCompiles', function () {
       cy.findByText(/This is pdfTeX/)
 
       cy.log('Switch compiler to from pdfLaTeX to XeLaTeX')
-      cy.get('header').findByText('Menu').click()
+      cy.findByRole('navigation', {
+        name: /Project actions/i,
+      })
+        .findByRole('button', { name: /Menu/i })
+        .click()
       cy.findByText('Compiler')
         .parent()
         .findByText('pdfLaTeX')
@@ -241,7 +253,11 @@ describe('SandboxedCompiles', function () {
       cy.findByText(/This is pdfTeX, Version .+ \(TeX Live 2025\) /)
 
       cy.log('Check that there is no TeX Live version toggle')
-      cy.get('header').findByText('Menu').click()
+      cy.findByRole('navigation', {
+        name: /Project actions/i,
+      })
+        .findByRole('button', { name: /Menu/i })
+        .click()
       cy.findByText('Word Count') // wait for lazy loading
       cy.findByText(LABEL_TEX_LIVE_VERSION).should('not.exist')
     })

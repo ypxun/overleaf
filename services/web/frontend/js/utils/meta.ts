@@ -44,7 +44,10 @@ import {
 import { SuggestedLanguage } from '../../../types/system-message'
 import type { TeamInvite } from '../../../types/team-invite'
 import { GroupPlans } from '../../../types/subscription/dashboard/group-plans'
-import { GroupSSOLinkingStatus } from '../../../types/subscription/sso'
+import {
+  GroupSSOLinkingStatus,
+  SSOConfig,
+} from '../../../types/subscription/sso'
 import { PasswordStrengthOptions } from '../../../types/password-strength-options'
 import { Subscription as ProjectDashboardSubscription } from '../../../types/project/dashboard/subscription'
 import { ThirdPartyIds } from '../../../types/third-party-ids'
@@ -55,6 +58,7 @@ import { FooterMetadata } from '@/features/ui/components/types/footer-metadata'
 import type { ScriptLogType } from '../../../modules/admin-panel/frontend/js/features/script-logs/script-log'
 import { ActiveExperiment } from './labs-utils'
 import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
+import { AdminCapability } from '../../../types/admin-capabilities'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -62,6 +66,7 @@ export interface Meta {
     string,
     { annual: string; monthly: string; annualDividedByTwelve: string }
   >
+  'ol-adminCapabilities': AdminCapability[]
   'ol-adminSubscription': AdminSubscription
   'ol-aiAssistViaWritefullSource': string
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
@@ -75,7 +80,6 @@ export interface Meta {
   // dynamic keys based on permissions
   'ol-canUseAddSeatsFeature': boolean
   'ol-canUseFlexibleLicensing': boolean
-  'ol-canUseFlexibleLicensingForConsolidatedPlans': boolean
   'ol-cannot-add-secondary-email': boolean
   'ol-cannot-change-password': boolean
   'ol-cannot-delete-own-account': boolean
@@ -102,6 +106,7 @@ export interface Meta {
   'ol-debugPdfDetach': boolean
   'ol-detachRole': 'detached' | 'detacher' | ''
   'ol-dictionariesRoot': 'string'
+  'ol-domainCaptureEnabled': boolean | undefined
   'ol-dropbox': { error: boolean; registered: boolean }
   'ol-editorThemes': string[]
   'ol-email': string
@@ -121,6 +126,7 @@ export interface Meta {
   'ol-groupPlans': GroupPlans
   'ol-groupPolicy': GroupPolicy
   'ol-groupSSOActive': boolean
+  'ol-groupSSOConfig'?: SSOConfig
   'ol-groupSSOTestResult': GroupSSOTestResult
   'ol-groupSettingsAdvertisedFor': string[]
   'ol-groupSettingsEnabledFor': string[]
@@ -246,9 +252,17 @@ export interface Meta {
   'ol-ssoDisabled': boolean
   'ol-ssoErrorMessage': string
   'ol-stripeAccountId': string
-  'ol-stripeCustomerId': string
+  'ol-stripeSubscriptionData': {
+    customerId: string
+    subscriptionState: string | null
+  }
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
+  'ol-subscriptionFeatures': {
+    managedUsers?: boolean
+    groupSSO?: boolean
+    domainCapture?: boolean
+  }
   'ol-subscriptionId': string
   'ol-suggestedLanguage': SuggestedLanguage | undefined
   'ol-survey': Survey | undefined

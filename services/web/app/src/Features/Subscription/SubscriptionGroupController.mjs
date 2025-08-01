@@ -19,6 +19,7 @@ import {
   SubtotalLimitExceededError,
   HasPastDueInvoiceError,
   HasNoAdditionalLicenseWhenManuallyCollectedError,
+  PaymentActionRequiredError,
 } from './Errors.js'
 
 /**
@@ -273,6 +274,14 @@ async function createAddSeatsSubscriptionChange(req, res) {
       })
     }
 
+    if (error instanceof PaymentActionRequiredError) {
+      return res.status(402).json({
+        message: 'Payment action required',
+        clientSecret: error.info.clientSecret,
+        publicKey: error.info.publicKey,
+      })
+    }
+
     logger.err(
       { error },
       'error trying to create "add seats" subscription change'
@@ -294,7 +303,6 @@ async function submitForm(req, res) {
 
   if (paymentProviderSubscription.isCollectionMethodManual) {
     await SubscriptionGroupHandler.promises.updateSubscriptionPaymentTerms(
-      userId,
       paymentProviderSubscription,
       poNumber
     )
@@ -369,6 +377,13 @@ async function upgradeSubscription(req, res) {
     await SubscriptionGroupHandler.promises.upgradeGroupPlan(userId)
     return res.sendStatus(200)
   } catch (error) {
+    if (error instanceof PaymentActionRequiredError) {
+      return res.status(402).json({
+        message: 'Payment action required',
+        clientSecret: error.info.clientSecret,
+        publicKey: error.info.publicKey,
+      })
+    }
     logger.err({ error }, 'error trying to upgrade subscription')
     return res.sendStatus(500)
   }
@@ -425,6 +440,21 @@ async function subtotalLimitExceeded(req, res) {
   }
 }
 
+async function getGroupPlanPerUserPrices(req, res) {
+  try {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const prices = await Modules.promises.hooks.fire(
+      'getGroupPlanPerUserPrices',
+      userId,
+      req.query.currency
+    )
+    return res.json(prices[0])
+  } catch (error) {
+    logger.err({ error }, 'error trying to get websale group product prices')
+    return res.sendStatus(500)
+  }
+}
+
 export default {
   removeUserFromGroup: expressify(removeUserFromGroup),
   removeSelfFromGroup: expressify(removeSelfFromGroup),
@@ -441,4 +471,5 @@ export default {
   missingBillingInformation: expressify(missingBillingInformation),
   manuallyCollectedSubscription: expressify(manuallyCollectedSubscription),
   subtotalLimitExceeded: expressify(subtotalLimitExceeded),
+  getGroupPlanPerUserPrices: expressify(getGroupPlanPerUserPrices),
 }

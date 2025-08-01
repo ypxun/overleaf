@@ -12,7 +12,17 @@ export default async function handleStripePaymentAction(
     if (stripe) {
       const manualConfirmationFlow =
         await stripe.confirmCardPayment(clientSecret)
-      if (!manualConfirmationFlow.error) {
+      if (manualConfirmationFlow.error) {
+        const paymentIntentId = manualConfirmationFlow.error.payment_intent?.id
+        try {
+          await postJSON(
+            `/user/subscription/void-change?payment_intent_id=${paymentIntentId}`
+          )
+        } catch (error) {
+          // do nothing
+        }
+        return { handled: false }
+      } else {
         try {
           await postJSON(`/user/subscription/sync`)
         } catch (error) {

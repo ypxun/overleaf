@@ -1,9 +1,11 @@
 include ../_mixins/navbar
+include ../_mixins/material_symbol
 
 nav.navbar.navbar-default.navbar-main.navbar-expand-lg(
 	class={
 		'website-redesign-navbar': isWebsiteRedesign,
 	}
+	aria-label=translate('primary')
 )
 	.container-fluid.navbar-container
 		.navbar-header
@@ -44,7 +46,7 @@ nav.navbar.navbar-default.navbar-main.navbar-expand-lg(
 				aria-expanded='false'
 				aria-label='Toggle ' + translate('navigation')
 			)
-				i.fa.fa-bars(aria-hidden='true')
+				+material-symbol('menu')
 
 			#navbar-main-collapse.navbar-collapse.collapse
 				ul.nav.navbar-nav.navbar-right.ms-auto(role='menubar')

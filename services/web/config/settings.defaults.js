@@ -387,6 +387,7 @@ module.exports = {
   adminUrl: process.env.ADMIN_URL,
   adminOnlyLogin: process.env.ADMIN_ONLY_LOGIN === 'true',
   adminPrivilegeAvailable: process.env.ADMIN_PRIVILEGE_AVAILABLE === 'true',
+  adminRolesEnabled: false,
   blockCrossOriginRequests: process.env.BLOCK_CROSS_ORIGIN_REQUESTS === 'true',
   allowedOrigins: (process.env.ALLOWED_ORIGINS || siteUrl).split(','),
 
@@ -438,6 +439,9 @@ module.exports = {
   enabledLinkedFileTypes: (process.env.ENABLED_LINKED_FILE_TYPES || '').split(
     ','
   ),
+
+  filestoreMigrationLevel:
+    parseInt(process.env.OVERLEAF_FILESTORE_MIGRATION_LEVEL, 10) || 0,
 
   // i18n
   // ------
@@ -807,7 +811,10 @@ module.exports = {
     '/templates/index': '/templates/',
   },
 
-  reloadModuleViewsOnEachRequest: process.env.NODE_ENV === 'development',
+  enablePugCache: process.env.ENABLE_PUG_CACHE === 'true',
+  reloadModuleViewsOnEachRequest:
+    process.env.ENABLE_PUG_CACHE !== 'true' &&
+    process.env.NODE_ENV === 'development',
 
   rateLimit: {
     subnetRateLimiterDisabled:
