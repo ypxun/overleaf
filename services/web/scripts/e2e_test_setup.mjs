@@ -9,7 +9,6 @@ import ProjectDeleter from '../app/src/Features/Project/ProjectDeleter.js'
 import SplitTestManager from '../app/src/Features/SplitTests/SplitTestManager.js'
 import UserDeleter from '../app/src/Features/User/UserDeleter.js'
 import UserRegistrationHandler from '../app/src/Features/User/UserRegistrationHandler.js'
-import { scriptRunner } from './lib/ScriptRunner.mjs'
 
 const MONOREPO = Path.dirname(
   Path.dirname(Path.dirname(Path.dirname(fileURLToPath(import.meta.url))))
@@ -24,7 +23,7 @@ async function createUser(email) {
     email,
     password: process.env.CYPRESS_DEFAULT_PASSWORD,
   })
-  const features = email.startsWith('free@')
+  const features = email.startsWith('free+')
     ? Settings.defaultFeatures
     : Settings.features.professional
   await db.users.updateOne(
@@ -32,12 +31,14 @@ async function createUser(email) {
     {
       $set: {
         // Set admin flag.
-        isAdmin: email.startsWith('admin@'),
+        isAdmin: email.startsWith('admin+'),
         // Disable spell-checking for performance and flakiness reasons.
         'ace.spellCheckLanguage': '',
         // Override features.
         features,
         featuresOverrides: [{ features }],
+        // disable Writefull
+        'writefull.enabled': false,
       },
     }
   )
@@ -50,6 +51,8 @@ async function createUser(email) {
 async function deleteUser(email) {
   const user = await db.users.findOne({ email })
   if (!user) return
+  // Delete the subscriptions of the user
+  await db.subscriptions.deleteMany({ admin_id: user._id })
   // Soft delete the user.
   await UserDeleter.promises.deleteUser(user._id, {
     force: true,
@@ -76,6 +79,11 @@ async function deleteUser(email) {
  * @return {Promise<void>}
  */
 async function provisionUser(email) {
+  if (!email.includes('+')) {
+    throw new Error(
+      `email=${email} should include the test suite name, e.g. user+project-sharing@example.com`
+    )
+  }
   await deleteUser(email)
   await createUser(email)
 }
@@ -83,7 +91,7 @@ async function provisionUser(email) {
 async function provisionUsers() {
   const emails = Settings.recaptcha.trustedUsers
   console.log(`> Provisioning ${emails.length} E2E users.`)
-  await promiseMapWithLimit(3, emails, provisionUser)
+  await promiseMapWithLimit(5, emails, provisionUser)
 }
 
 async function purgeNewUsers() {
@@ -95,28 +103,11 @@ async function purgeNewUsers() {
     .toArray()
   console.log(`> Deleting ${users.length} newly created E2E users.`)
   await promiseMapWithLimit(
-    3,
+    5,
     users.map(user => user.email),
     deleteUser
   )
 }
-
-const SPLIT_TEST_OVERRIDES = [
-  // disable writefull, oauth registration does not work in dev-env and their banners hide our buttons.
-  {
-    name: 'writefull-auto-account-creation',
-    versions: [
-      {
-        versionNumber: 1,
-        phase: 'release',
-        active: true,
-        analyticsEnabled: false,
-        variants: [{ name: 'enabled', rolloutPercent: 0, rolloutStripes: [] }],
-        createdAt: new Date(),
-      },
-    ],
-  },
-]
 
 async function provisionSplitTests() {
   const backup = Path.join(
@@ -143,10 +134,6 @@ async function provisionSplitTests() {
   )
   console.log(`> Importing ${SPLIT_TESTS.length} split-tests from production.`)
   await SplitTestManager.replaceSplitTests(SPLIT_TESTS)
-  console.log(
-    `> Importing ${SPLIT_TEST_OVERRIDES.length} split-tests for test compatibility.`
-  )
-  await SplitTestManager.mergeSplitTests(SPLIT_TEST_OVERRIDES, true)
 }
 
 async function main() {
@@ -154,12 +141,10 @@ async function main() {
     throw new Error('only available in dev-env')
   }
 
-  await purgeNewUsers()
-  await provisionUsers()
-  await provisionSplitTests()
+  await Promise.all([purgeNewUsers(), provisionUsers(), provisionSplitTests()])
 }
 
-await scriptRunner(main)
+await main()
 await GracefulShutdown.gracefulShutdown(
   {
     close(cb) {

@@ -7,6 +7,7 @@ import { Trans, useTranslation } from 'react-i18next'
 import { useSubscriptionDashboardContext } from '../../context/subscription-dashboard-context'
 import { RowLink } from './row-link'
 import { ManagedGroupSubscription } from '../../../../../../types/subscription/dashboard/subscription'
+import { sendMB } from '@/infrastructure/event-tracking'
 
 function ManagedGroupAdministrator({
   subscription,
@@ -125,6 +126,17 @@ export default function ManagedGroupSubscriptions() {
               {groupSettingsAdvertisedFor?.includes(subscription._id) && (
                 <GroupSettingsButtonWithAdBadge subscription={subscription} />
               )}
+              <RowLink
+                href={`/manage/groups/${subscription._id}/audit-logs`}
+                heading={t('audit_logs')}
+                subtext={t('view_audit_logs_group_subtext')}
+                icon="list"
+                onClick={() =>
+                  sendMB('group-audit-log-click', {
+                    subscriptionId: subscription._id,
+                  })
+                }
+              />
               <RowLink
                 href={`/metrics/groups/${subscription._id}`}
                 heading={t('usage_metrics')}

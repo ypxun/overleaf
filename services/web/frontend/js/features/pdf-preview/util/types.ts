@@ -40,3 +40,19 @@ export type PdfFileDataList = {
   other: PdfFileData[]
   archive?: PdfFileArchiveData
 }
+
+export type HighlightData = {
+  page: number
+  h: number
+  v: number
+  width: number
+  height: number
+}
+
+export type DeliveryLatencies = {
+  compileTimeClientE2E?: number
+  compileTimeServerE2E?: number
+  totalDeliveryTime?: number
+  latencyFetch?: number
+  latencyRender?: number
+}

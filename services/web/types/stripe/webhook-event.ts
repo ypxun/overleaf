@@ -53,7 +53,15 @@ export type CustomerSubscriptionsDeletedWebhookEvent = {
 export type InvoicePaidWebhookEvent = {
   type: 'invoice.paid'
   data: {
-    object: Stripe.Invoice
+    object: Stripe.Invoice & {
+      parent: Stripe.Invoice.Parent & {
+        subscription_details: Stripe.Invoice.Parent.SubscriptionDetails & {
+          metadata: {
+            adminUserId?: string
+          }
+        }
+      }
+    }
   }
   request: Stripe.Event.Request
 }
@@ -66,6 +74,14 @@ export type PaymentIntentPaymentFailedWebhookEvent = {
   request: Stripe.Event.Request
 }
 
+export type InvoiceVoidedWebhookEvent = {
+  type: 'invoice.voided'
+  data: {
+    object: Stripe.Invoice
+  }
+  request: Stripe.Event.Request
+}
+
 export type CustomerSubscriptionWebhookEvent =
   | CustomerSubscriptionUpdatedWebhookEvent
   | CustomerSubscriptionCreatedWebhookEvent
@@ -74,4 +90,5 @@ export type CustomerSubscriptionWebhookEvent =
 export type WebhookEvent =
   | CustomerSubscriptionWebhookEvent
   | InvoicePaidWebhookEvent
+  | InvoiceVoidedWebhookEvent
   | PaymentIntentPaymentFailedWebhookEvent

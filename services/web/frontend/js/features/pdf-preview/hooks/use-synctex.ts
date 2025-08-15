@@ -9,7 +9,6 @@ import useDetachAction from '../../../shared/hooks/use-detach-action'
 import localStorage from '../../../infrastructure/local-storage'
 import { useFileTreeData } from '../../../shared/context/file-tree-data-context'
 import useScopeEventListener from '../../../shared/hooks/use-scope-event-listener'
-import * as eventTracking from '../../../infrastructure/event-tracking'
 import { debugConsole } from '@/utils/debugging'
 import { useFileTreePathContext } from '@/features/file-tree/contexts/file-tree-path'
 import { useEditorManagerContext } from '@/features/ide-react/context/editor-manager-context'
@@ -18,7 +17,10 @@ import useEventListener from '@/shared/hooks/use-event-listener'
 import { CursorPosition } from '@/features/ide-react/types/cursor-position'
 import { isValidTeXFile } from '@/main/is-valid-tex-file'
 import { PdfScrollPosition } from '@/shared/hooks/use-pdf-scroll-position'
-import { showFileErrorToast } from '@/features/pdf-preview/components/synctex-toasts'
+import {
+  showFileErrorToast,
+  showSynctexRequestErrorToast,
+} from '@/features/pdf-preview/components/synctex-toasts'
 import { sendMB } from '@/infrastructure/event-tracking'
 
 export default function useSynctex(): {
@@ -126,7 +128,10 @@ export default function useSynctex(): {
             })
           }
         })
-        .catch(debugConsole.error)
+        .catch(error => {
+          showSynctexRequestErrorToast()
+          debugConsole.error(error)
+        })
         .finally(() => {
           if (isMounted.current) {
             setSyncToPdfInFlight(false)
@@ -162,11 +167,6 @@ export default function useSynctex(): {
         line: String(row + 1),
         column: String(column),
       }).toString()
-
-      eventTracking.sendMB('jump-to-location', {
-        direction: 'code-location-in-pdf',
-        method: 'arrow',
-      })
 
       goToPdfLocation(params)
     }
@@ -242,7 +242,10 @@ export default function useSynctex(): {
             })
           }
         })
-        .catch(debugConsole.error)
+        .catch(error => {
+          debugConsole.error(error)
+          showSynctexRequestErrorToast()
+        })
         .finally(() => {
           if (isMounted.current) {
             setSyncToCodeInFlight(false)

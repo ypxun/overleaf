@@ -3,9 +3,8 @@ import { memo, useCallback, useMemo } from 'react'
 import { useDetachCompileContext as useCompileContext } from '../../../shared/context/detach-compile-context'
 import { useLayoutContext } from '../../../shared/context/layout-context'
 import { useTranslation } from 'react-i18next'
-import * as eventTracking from '../../../infrastructure/event-tracking'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLButton from '@/shared/components/ol/ol-button'
 import MaterialIcon from '@/shared/components/material-icon'
 import { Spinner } from 'react-bootstrap'
 import { Placement } from 'react-bootstrap/types'
@@ -38,10 +37,6 @@ const GoToCodeButton = memo(function GoToCodeButton({
   }
 
   const syncToCodeWithButton = useCallback(() => {
-    eventTracking.sendMB('jump-to-location', {
-      direction: 'pdf-location-in-code',
-      method: 'arrow',
-    })
     syncToCode({ visualOffset: 72 })
   }, [syncToCode])
 

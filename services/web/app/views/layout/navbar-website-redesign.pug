@@ -39,9 +39,9 @@ nav.navbar.navbar-default.navbar-main.website-redesign-navbar(
 
 		- var canDisplayAdminMenu = hasAdminAccess()
 		- var canDisplayAdminRedirect = canRedirectToAdminDomain()
-		- var canDisplaySplitTestMenu = hasFeature('saas') && (canDisplayAdminMenu || (getSessionUser() && getSessionUser().staffAccess && (getSessionUser().staffAccess.splitTestMetrics || getSessionUser().staffAccess.splitTestManagement)))
-		- var canDisplaySurveyMenu = hasFeature('saas') && canDisplayAdminMenu
-		- var canDisplayScriptLogMenu = hasFeature('saas') && canDisplayAdminMenu
+		- var canDisplaySplitTestMenu = hasFeature('saas') && ((canDisplayAdminMenu && hasAdminCapability('view-split-test')) || (getSessionUser() && getSessionUser().staffAccess && (getSessionUser().staffAccess.splitTestMetrics || getSessionUser().staffAccess.splitTestManagement)))
+		- var canDisplaySurveyMenu = hasFeature('saas') && canDisplayAdminMenu && hasAdminCapability('manage-survey')
+		- var canDisplayScriptLogMenu = hasFeature('saas') && hasAdminCapability('view-script-log') && canDisplayAdminMenu
 
 		if typeof suppressNavbarRight == 'undefined'
 			#navbar-main-collapse.navbar-collapse.collapse

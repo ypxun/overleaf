@@ -4,6 +4,7 @@ import { ensureUserExists, login } from './helpers/login'
 import {
   createProject,
   enableLinkSharing,
+  getSpamSafeProjectName,
   openProjectByName,
   openProjectViaLinkSharingAsAnon,
   openProjectViaLinkSharingAsUser,
@@ -14,13 +15,13 @@ import { throttledRecompile } from './helpers/compile'
 import { beforeWithReRunOnTestRetry } from './helpers/beforeWithReRunOnTestRetry'
 
 describe('Project Sharing', function () {
-  if (isExcludedBySharding('PRO_CUSTOM_2')) return
+  if (isExcludedBySharding('PRO_CUSTOM_4')) return
   ensureUserExists({ email: 'user@example.com' })
   startWith({ withDataDir: true, pro: true })
 
   let projectName: string
   beforeWithReRunOnTestRetry(function () {
-    projectName = `Project ${uuid()}`
+    projectName = getSpamSafeProjectName()
     setupTestProject()
   })
 

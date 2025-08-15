@@ -12,10 +12,10 @@ import useAsync from '@/shared/hooks/use-async'
 import { useLocation } from '@/shared/hooks/use-location'
 import { debugConsole } from '@/utils/debugging'
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
-import OLCard from '@/features/ui/components/ol/ol-card'
-import OLRow from '@/features/ui/components/ol/ol-row'
-import OLCol from '@/features/ui/components/ol/ol-col'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLCard from '@/shared/components/ol/ol-card'
+import OLRow from '@/shared/components/ol/ol-row'
+import OLCol from '@/shared/components/ol/ol-col'
+import OLButton from '@/shared/components/ol/ol-button'
 import { subscriptionUpdateUrl } from '@/features/subscription/data/subscription-url'
 import * as eventTracking from '@/infrastructure/event-tracking'
 import sparkleText from '@/shared/svgs/ai-sparkle-text.svg'
@@ -194,6 +194,11 @@ function PreviewSubscriptionChange() {
                 tOptions={{ interpolation: { escapeValue: true } }}
               />
             </div>
+            {aiAddOnChange && (
+              <div className="plan-terms mt-3">
+                *{t('fair_usage_policy_applies')}
+              </div>
+            )}
 
             <div className="mt-5">
               <OLButton

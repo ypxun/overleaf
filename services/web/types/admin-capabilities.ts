@@ -1,12 +1,22 @@
 export type AdminCapability =
   | 'clear-saml-data'
   | 'clear-session'
+  | 'create-recurly-account'
   | 'create-subscription'
+  | 'modify-feature-override'
+  | 'modify-group'
   | 'modify-login-status'
+  | 'modify-managed-group'
+  | 'manage-survey'
+  | 'modify-split-test'
   | 'modify-user-email'
   | 'modify-user-name'
+  | 'view-audit-log'
   | 'view-project'
   | 'view-session'
+  | 'view-script-log'
+  | 'view-split-test'
+  | 'view-user-additional-info'
 
 export type AdminRole =
   | 'engagement'

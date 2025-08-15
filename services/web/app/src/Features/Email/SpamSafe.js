@@ -11,6 +11,11 @@ const XRegExp = require('xregexp')
 const HAN_REGEX = XRegExp('\\p{Han}')
 const SAFE_REGEX = XRegExp("^[\\p{L}\\p{N}\\s\\-_!'&\\(\\)]+$")
 const EMAIL_REGEX = XRegExp('^[\\p{L}\\p{N}.+_-]+@[\\w.-]+$')
+const SPAM_TAGS_REGEX = /qun|jiaqun|jia|jnd/i
+
+function countDigits(str) {
+  return (str.match(/\d/g) || []).length
+}
 
 const SpamSafe = {
   isSafeUserName(name) {
@@ -18,6 +23,10 @@ const SpamSafe = {
   },
 
   isSafeProjectName(name) {
+    if (SPAM_TAGS_REGEX.test(name) || countDigits(name) > 5) {
+      return false
+    }
+
     if (HAN_REGEX.test(name)) {
       return SAFE_REGEX.test(name) && name.length <= 10
     }
@@ -25,7 +34,14 @@ const SpamSafe = {
   },
 
   isSafeEmail(email) {
-    return EMAIL_REGEX.test(email) && email.length <= 40
+    if (!EMAIL_REGEX.test(email) || email.length > 40) {
+      return false
+    }
+
+    // All-digits, e.g. qq, is safe, but mixed digits and letters is not.
+    const localPart = email.split('@')[0]
+    const digitCount = countDigits(localPart)
+    return digitCount === localPart.length || digitCount <= 5
   },
 
   safeUserName(name, alternative, project) {

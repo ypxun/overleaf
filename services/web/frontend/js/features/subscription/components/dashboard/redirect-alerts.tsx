@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLNotification from '@/shared/components/ol/ol-notification'
 
 export function RedirectAlerts() {
   const queryParams = new URLSearchParams(window.location.search)
@@ -17,6 +17,8 @@ export function RedirectAlerts() {
     warning = t('good_news_you_already_purchased_this_add_on')
   } else if (redirectReason === 'ai-assist-unavailable') {
     warning = t('ai_assist_unavailable_due_to_subscription_type')
+  } else if (redirectReason === 'subscription-paused') {
+    warning = t('no_add_on_purchase_while_paused')
   } else {
     return null
   }

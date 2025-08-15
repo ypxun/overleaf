@@ -53,12 +53,13 @@ import { Subscription as ProjectDashboardSubscription } from '../../../types/pro
 import { ThirdPartyIds } from '../../../types/third-party-ids'
 import { Publisher } from '../../../types/subscription/dashboard/publisher'
 import { SubscriptionChangePreview } from '../../../types/subscription/subscription-change-preview'
-import { DefaultNavbarMetadata } from '@/features/ui/components/types/default-navbar-metadata'
-import { FooterMetadata } from '@/features/ui/components/types/footer-metadata'
+import { DefaultNavbarMetadata } from '@/shared/components/types/default-navbar-metadata'
+import { FooterMetadata } from '@/shared/components/types/footer-metadata'
 import type { ScriptLogType } from '../../../modules/admin-panel/frontend/js/features/script-logs/script-log'
 import { ActiveExperiment } from './labs-utils'
 import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
 import { AdminCapability } from '../../../types/admin-capabilities'
+import { GroupAuditLog } from '../../../modules/group-audit-log/frontend/js/components/logs'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -74,7 +75,6 @@ export interface Meta {
   'ol-allowedImageNames': AllowedImageName[]
   'ol-anonymous': boolean
   'ol-baseAssetPath': string
-  'ol-bootstrapVersion': 3 | 5
   'ol-brandVariation': Record<string, any>
 
   // dynamic keys based on permissions
@@ -167,6 +167,7 @@ export interface Meta {
   'ol-legacyEditorThemes': string[]
   'ol-licenseQuantity'?: number
   'ol-loadingText': string
+  'ol-logsForRendering': GroupAuditLog[]
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
   'ol-managedInstitutions': ManagedInstitution[]
   'ol-managedPublishers': Publisher[]
@@ -232,7 +233,6 @@ export interface Meta {
   'ol-settingsPlans': Plan[]
   'ol-shouldAllowEditingDetails': boolean
   'ol-shouldLoadHotjar': boolean
-  'ol-showAiAssistNotification': boolean
   'ol-showAiErrorAssistant': boolean
   'ol-showBrlGeoBanner': boolean
   'ol-showCouponField': boolean
@@ -245,7 +245,6 @@ export interface Meta {
   'ol-showTemplatesServerPro': boolean
   'ol-showUSGovBanner': boolean
   'ol-showUpgradePrompt': boolean
-  'ol-skipUrl': string
   'ol-splitTestInfo': { [name: string]: SplitTestInfo }
   'ol-splitTestName': string
   'ol-splitTestVariants': { [name: string]: string }

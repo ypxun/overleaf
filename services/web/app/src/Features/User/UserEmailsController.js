@@ -273,6 +273,14 @@ const _checkConfirmationCode =
         })
       }
 
+      if (error.name === 'InvalidInstitutionalEmailError') {
+        return res.status(422).json({
+          message: {
+            key: 'email_does_not_belong_to_university',
+          },
+        })
+      }
+
       logger.err({ error }, 'failed to check confirmation code')
 
       return res.status(500).json({
@@ -293,7 +301,6 @@ const checkNewSecondaryEmailConfirmationCode = _checkConfirmationCode(
       req.ip,
       { newSecondaryEmail: email }
     )
-    await _sendSecurityAlertEmail(user, email)
     await UserUpdater.promises.addEmailAddress(
       user._id,
       email,
@@ -303,6 +310,7 @@ const checkNewSecondaryEmailConfirmationCode = _checkConfirmationCode(
         ipAddress: req.ip,
       }
     )
+    await _sendSecurityAlertEmail(user, email)
   }
 )
 

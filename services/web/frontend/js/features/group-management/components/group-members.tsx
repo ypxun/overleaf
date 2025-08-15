@@ -7,13 +7,13 @@ import ErrorAlert from './error-alert'
 import MembersList from './members-table/members-list'
 import { sendMB } from '../../../infrastructure/event-tracking'
 import BackButton from '@/features/group-management/components/back-button'
-import OLRow from '@/features/ui/components/ol/ol-row'
-import OLCol from '@/features/ui/components/ol/ol-col'
-import OLCard from '@/features/ui/components/ol/ol-card'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLFormText from '@/features/ui/components/ol/ol-form-text'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLRow from '@/shared/components/ol/ol-row'
+import OLCol from '@/shared/components/ol/ol-col'
+import OLCard from '@/shared/components/ol/ol-card'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLFormText from '@/shared/components/ol/ol-form-text'
+import OLNotification from '@/shared/components/ol/ol-notification'
 
 export default function GroupMembers() {
   const { isReady } = useWaitForI18n()
@@ -159,6 +159,7 @@ export default function GroupMembers() {
                         aria-describedby="add-members-description"
                         value={emailString}
                         onChange={handleEmailsChange}
+                        data-testid="add-members-input"
                       />
                     </OLCol>
                     <OLCol xs={4}>

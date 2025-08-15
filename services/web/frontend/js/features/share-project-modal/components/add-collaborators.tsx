@@ -9,13 +9,14 @@ import useIsMounted from '@/shared/hooks/use-is-mounted'
 import { useProjectContext } from '@/shared/context/project-context'
 import { sendMB } from '@/infrastructure/event-tracking'
 import ClickableElementEnhancer from '@/shared/components/clickable-element-enhancer'
-import OLForm from '@/features/ui/components/ol/ol-form'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
+import OLForm from '@/shared/components/ol/ol-form'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
 import { Select } from '@/shared/components/select'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
+import { PermissionsLevel } from '@/features/ide-react/types/permissions'
 
 export default function AddCollaborators({ readOnly }: { readOnly?: boolean }) {
-  const [privileges, setPrivileges] = useState('readAndWrite')
+  const [privileges, setPrivileges] = useState<PermissionsLevel>('readAndWrite')
 
   const isMounted = useIsMounted()
 
@@ -176,7 +177,7 @@ export default function AddCollaborators({ readOnly }: { readOnly?: boolean }) {
 
   const privilegeOptions = useMemo(() => {
     const options: {
-      key: string
+      key: PermissionsLevel
       label: string
       description?: string | null
     }[] = [

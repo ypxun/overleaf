@@ -7,8 +7,8 @@ import { Trans, useTranslation } from 'react-i18next'
 import LoadingSpinner from '@/shared/components/loading-spinner'
 import MaterialIcon from '@/shared/components/material-icon'
 import { sendMB } from '@/infrastructure/event-tracking'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLButton from '@/shared/components/ol/ol-button'
 import { useLocation } from '@/shared/hooks/use-location'
 
 type Feedback = {
@@ -306,6 +306,9 @@ function ErrorMessage({ error }: { error: string }) {
 
     case 'email_already_registered':
       return <span>{t('email_already_registered')}</span>
+
+    case 'email_does_not_belong_to_university':
+      return <span>{t('email_does_not_belong_to_university')}</span>
 
     case 'too_many_confirm_code_resend_attempts':
       return <span>{t('too_many_confirm_code_resend_attempts')}</span>

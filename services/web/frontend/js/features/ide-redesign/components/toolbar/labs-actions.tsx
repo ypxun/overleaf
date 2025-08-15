@@ -1,10 +1,10 @@
 import { useIdeRedesignSwitcherContext } from '@/features/ide-react/context/ide-redesign-switcher-context'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSurveyUrl } from '../../hooks/use-survey-url'
+import { GiveFeedbackLink } from './give-feedback-link'
 
 export const LabsActions = () => {
   const { t } = useTranslation()
@@ -12,7 +12,6 @@ export const LabsActions = () => {
   const openEditorRedesignSwitcherModal = useCallback(() => {
     setShowSwitcherModal(true)
   }, [setShowSwitcherModal])
-  const surveyURL = useSurveyUrl()
 
   return (
     <>
@@ -35,16 +34,7 @@ export const LabsActions = () => {
           </OLButton>
         </OLTooltip>
       </div>
-      <div className="ide-redesign-toolbar-button-container">
-        <a
-          href={surveyURL}
-          rel="noopener noreferrer"
-          target="_blank"
-          className="ide-redesign-toolbar-labs-feedback-link"
-        >
-          {t('give_feedback')}
-        </a>
-      </div>
+      <GiveFeedbackLink />
     </>
   )
 }
