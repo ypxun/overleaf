@@ -12,17 +12,6 @@ const { useAdminCapabilities } = require('../Helpers/AdminAuthorizationHelper')
 // set of middleware arrays or functions that checks user access to an entity
 // (publisher, institution, group, template, etc.)
 const UserMembershipMiddleware = {
-  requireTeamMetricsAccess: [
-    AuthenticationController.requireLogin(),
-    fetchEntityConfig('team'),
-    fetchEntity(),
-    requireEntity(),
-    allowAccessIfAny([
-      UserMembershipAuthorization.hasEntityAccess(),
-      UserMembershipAuthorization.hasStaffAccess('groupMetrics'),
-    ]),
-  ],
-
   requireGroup: [fetchEntityConfig('group'), fetchEntity(), requireEntity()],
 
   requireGroupAccess: [
@@ -32,55 +21,44 @@ const UserMembershipMiddleware = {
     requireEntity(),
   ],
 
-  requireGroupMemberAccess: [
+  requireEntityAccess: ({ entityName, staffAccess, adminCapability }) => [
     AuthenticationController.requireLogin(),
-    fetchEntityConfig('groupMember'),
+    fetchEntityConfig(entityName),
     fetchEntity(),
     requireEntity(),
-    allowAccessIfAny([UserMembershipAuthorization.hasEntityAccess()]),
+    allowAccessIfAny(
+      [
+        UserMembershipAuthorization.hasEntityAccess(),
+        staffAccess && UserMembershipAuthorization.hasStaffAccess(staffAccess),
+        adminCapability &&
+          UserMembershipAuthorization.hasAdminCapability(adminCapability),
+      ].filter(Boolean)
+    ),
   ],
 
-  requireGroupManagementAccess: [
+  requireEntityAccessOrAdminAccess: entityName => [
     AuthenticationController.requireLogin(),
-    fetchEntityConfig('group'),
+    fetchEntityConfig(entityName),
     fetchEntity(),
     requireEntity(),
     allowAccessIfAny([
       UserMembershipAuthorization.hasEntityAccess(),
       UserMembershipAuthorization.hasStaffAccess('groupManagement'),
+      // allow to all admins when `adminRolesEnabled` is true
+      UserMembershipAuthorization.hasAnyAdminRole,
     ]),
   ],
 
-  requireGroupMetricsAccess: [
+  requireGroupMemberManagement: entityName => [
     AuthenticationController.requireLogin(),
-    fetchEntityConfig('group'),
+    fetchEntityConfig(entityName),
     fetchEntity(),
     requireEntity(),
-    allowAccessIfAny([
-      UserMembershipAuthorization.hasEntityAccess(),
-      UserMembershipAuthorization.hasStaffAccess('groupMetrics'),
-    ]),
-  ],
-
-  requireGroupManagersManagementAccess: [
-    AuthenticationController.requireLogin(),
-    fetchEntityConfig('groupManagers'),
-    fetchEntity(),
-    requireEntity(),
+    useAdminCapabilities,
     allowAccessIfAny([
       UserMembershipAuthorization.hasEntityAccess(),
       UserMembershipAuthorization.hasStaffAccess('groupManagement'),
-    ]),
-  ],
-
-  requireGroupAdminAccess: [
-    AuthenticationController.requireLogin(),
-    fetchEntityConfig('groupAdmin'),
-    fetchEntity(),
-    requireEntity(),
-    allowAccessIfAny([
-      UserMembershipAuthorization.hasEntityAccess(),
-      UserMembershipAuthorization.hasStaffAccess('groupManagement'),
+      UserMembershipAuthorization.hasModifyGroupMemberCapability,
     ]),
   ],
 

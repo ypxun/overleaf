@@ -30,6 +30,7 @@ import {
   GroupPolicy,
   ManagedGroupSubscription,
   MemberGroupSubscription,
+  StripePaymentProviderService,
 } from '../../../types/subscription/dashboard/subscription'
 import { SplitTestInfo } from '../../../types/split-test'
 import { ValidationStatus } from '../../../types/group-management/validation'
@@ -43,7 +44,10 @@ import {
 } from '../../../types/settings-page'
 import { SuggestedLanguage } from '../../../types/system-message'
 import type { TeamInvite } from '../../../types/team-invite'
-import { GroupPlans } from '../../../types/subscription/dashboard/group-plans'
+import {
+  GroupPlans,
+  GroupPlansData,
+} from '../../../types/subscription/dashboard/group-plans'
 import {
   GroupSSOLinkingStatus,
   SSOConfig,
@@ -60,6 +64,7 @@ import { ActiveExperiment } from './labs-utils'
 import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
 import { AdminCapability } from '../../../types/admin-capabilities'
 import { GroupAuditLog } from '../../../modules/group-audit-log/frontend/js/components/logs'
+import { AlgoliaConfig } from '../../../modules/algolia-search/frontend/js/types'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -70,6 +75,7 @@ export interface Meta {
   'ol-adminCapabilities': AdminCapability[]
   'ol-adminSubscription': AdminSubscription
   'ol-aiAssistViaWritefullSource': string
+  'ol-algolia': AlgoliaConfig | undefined
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
   'ol-allowedExperiments': string[]
   'ol-allowedImageNames': AllowedImageName[]
@@ -89,9 +95,8 @@ export interface Meta {
   'ol-cannot-link-other-third-party-sso': boolean
   'ol-cannot-reactivate-subscription': boolean
   'ol-cannot-use-ai': boolean
-  'ol-capabilities': Array<'dropbox' | 'chat' | 'use-ai'>
+  'ol-capabilities': Array<'dropbox' | 'chat' | 'use-ai' | 'link-sharing'>
   'ol-compileSettings': {
-    reducedTimeoutWarning: string
     compileTimeout: number
   }
   'ol-compilesUserContentDomain': string
@@ -124,6 +129,7 @@ export interface Meta {
   'ol-groupId': string
   'ol-groupName': string
   'ol-groupPlans': GroupPlans
+  'ol-groupPlansData': GroupPlansData
   'ol-groupPolicy': GroupPolicy
   'ol-groupSSOActive': boolean
   'ol-groupSSOConfig'?: SSOConfig
@@ -142,6 +148,7 @@ export interface Meta {
   'ol-hasSplitTestWriteAccess': boolean
   'ol-hasSubscription': boolean
   'ol-hasTrackChangesFeature': boolean
+  'ol-hasWriteAccess': boolean
   'ol-hideLinkingWidgets': boolean // CI only
   'ol-i18n': { currentLangCode: string }
   'ol-inactiveTutorials': string[]
@@ -250,10 +257,12 @@ export interface Meta {
   'ol-splitTestVariants': { [name: string]: string }
   'ol-ssoDisabled': boolean
   'ol-ssoErrorMessage': string
+  'ol-ssoInitPath': string
   'ol-stripeAccountId': string
   'ol-stripeSubscriptionData': {
     customerId: string
     subscriptionState: string | null
+    paymentProviderService: StripePaymentProviderService | null
   }
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview

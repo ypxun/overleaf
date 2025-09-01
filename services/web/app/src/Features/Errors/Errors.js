@@ -186,6 +186,8 @@ class SAMLEmailNotRecognizedError extends SAMLAuthenticationError {
   }
 }
 
+class SAMLDomainCaptureRegisterError extends SAMLAuthenticationError {}
+
 class SAMLSessionDataMissing extends BackwardCompatibleError {
   constructor(arg) {
     super(arg)
@@ -220,6 +222,12 @@ class SAMLSessionDataMissing extends BackwardCompatibleError {
 }
 
 class SAMLProviderRequesterError extends SAMLAuthenticationError {}
+
+class SAMLProviderRequesterInvalidNameIDPolicyError extends SAMLProviderRequesterError {
+  get i18nKey() {
+    return 'sso_provider_error_invalid_name'
+  }
+}
 
 class ThirdPartyIdentityExistsError extends BackwardCompatibleError {
   constructor(arg) {
@@ -356,10 +364,12 @@ module.exports = {
   SAMLMissingUserIdentifierError,
   SAMLMissingSignatureError,
   SAMLProviderRequesterError,
+  SAMLProviderRequesterInvalidNameIDPolicyError,
   SAMLInvalidResponseError,
   SAMLLoginFailureError,
   SAMLEmailNotRecognizedError,
   SAMLResponseAlreadyProcessedError,
+  SAMLDomainCaptureRegisterError,
   SLInV2Error,
   ThirdPartyIdentityExistsError,
   ThirdPartyUserNotFoundError,

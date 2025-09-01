@@ -5,8 +5,13 @@ export type AdminCapability =
   | 'create-subscription'
   | 'modify-feature-override'
   | 'modify-group'
-  | 'modify-login-status'
+  | 'modify-group-manager'
+  | 'modify-group-member'
+  | 'modify-group-setting'
   | 'modify-managed-group'
+  | 'modify-managed-group-member'
+  | 'modify-user-account-status'
+  | 'modify-project'
   | 'manage-survey'
   | 'modify-split-test'
   | 'modify-user-email'
@@ -17,6 +22,7 @@ export type AdminCapability =
   | 'view-script-log'
   | 'view-split-test'
   | 'view-user-additional-info'
+  | 'create-stripe-account'
 
 export type AdminRole =
   | 'engagement'

@@ -193,11 +193,10 @@ describe('RecurlyClient', function () {
   describe('createAccountForUserId', function () {
     it('should return the Account as created by recurly', async function () {
       this.client.createAccount = sinon.stub().resolves(this.recurlyAccount)
-      await expect(
-        this.RecurlyClient.promises.createAccountForUserId(this.user._id)
+      const result = await this.RecurlyClient.promises.createAccountForUserId(
+        this.user._id
       )
-        .to.eventually.be.an.instanceOf(recurly.Account)
-        .that.has.property('code', this.user._id)
+      expect(result).to.has.property('code', this.user._id)
     })
 
     it('should throw any API errors', async function () {
@@ -560,6 +559,30 @@ describe('RecurlyClient', function () {
       expect(this.client.cancelSubscription).to.be.calledWith(
         'uuid-' + this.subscription.uuid
       )
+    })
+
+    it('should terminate subscription when cancellation fails due to being in last cycle of paused term', async function () {
+      const validationError = new recurly.errors.ValidationError()
+      validationError.message =
+        'Cannot cancel a paused subscription in the last cycle of the term'
+
+      this.client.cancelSubscription = sinon.stub().throws(validationError)
+      this.client.terminateSubscription = sinon
+        .stub()
+        .resolves(this.recurlySubscription)
+
+      const subscription =
+        await this.RecurlyClient.promises.cancelSubscriptionByUuid(
+          this.subscription.uuid
+        )
+
+      expect(this.client.cancelSubscription).to.be.calledWith(
+        'uuid-' + this.subscription.uuid
+      )
+      expect(this.client.terminateSubscription).to.be.calledWith(
+        'uuid-' + this.subscription.uuid
+      )
+      expect(subscription).to.deep.equal(this.recurlySubscription)
     })
   })
 

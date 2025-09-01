@@ -24,13 +24,13 @@ test-e2e-native:
 test-e2e:
 	docker compose build host-admin
 	docker compose up --detach --wait host-admin
-	docker compose up --detach --wait mongo || (docker compose logs mongo && exit 42)
-	docker compose up --no-log-prefix --exit-code-from=e2e e2e host-admin || (docker compose logs mongo && exit 42)
+	docker compose up --detach --wait mongo || { docker compose logs mongo; exit 42; }
+	docker compose up --no-log-prefix --exit-code-from=e2e e2e host-admin || { docker compose logs mongo; exit 42; }
 
 test-e2e-open:
 	docker compose up --detach --wait host-admin
-	docker compose up --detach --wait mongo || (docker compose logs mongo && exit 42)
-	docker compose up --no-log-prefix --exit-code-from=e2e-open e2e-open host-admin || (docker compose logs mongo && exit 42)
+	docker compose up --detach --wait mongo || { docker compose logs mongo; exit 42; }
+	docker compose up --no-log-prefix --exit-code-from=e2e-open e2e-open host-admin || { docker compose logs mongo; exit 42; }
 
 SHARD_PROJECT_NAMES = \
 	test-ce-default \
@@ -81,6 +81,12 @@ prefetch_custom: prefetch_old_5_0
 prefetch_old_5_0:
 	docker pull $(IMAGE_TAG_PRO:main=5.0.1-RC1)
 	docker pull $(IMAGE_TAG_PRO:main=5.0)
+
+prefetch_custom: build_hotfix_5_5_5
+build_hotfix_5_5_5:
+	docker pull $(IMAGE_TAG_PRO:main=5.5.4)
+	docker tag $(IMAGE_TAG_PRO:main=5.5.4) quay.io/sharelatex/sharelatex-pro:5.5.4
+	cd ../../server-pro/hotfix/5.5.5 && docker build -t $(IMAGE_TAG_PRO:main=5.5.5) .
 
 # Google Cloud Build runs on a very ancient Docker version that does not support the subdir flag.
 # Use services -> mailtrap -> build -> context = https://github.com/dbck/docker-mailtrap.git#v1.5.0:build in docker-compose.yml eventually.

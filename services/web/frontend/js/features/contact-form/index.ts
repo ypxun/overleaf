@@ -9,7 +9,6 @@ document
   .forEach(el => {
     el.addEventListener('click', function (e) {
       e.preventDefault()
-      $('[data-ol-contact-form-modal="contact-us"]').modal()
     })
   })
 
@@ -18,18 +17,20 @@ document
   .forEach(el => {
     el.addEventListener('click', function (e) {
       e.preventDefault()
-      $('[data-ol-contact-form-modal="general"]').modal()
     })
   })
 
 document.querySelectorAll('[data-ol-contact-form]').forEach(el => {
   el.addEventListener('submit', function () {
-    const emailValue = document.querySelector(
+    const emailInput = document.querySelector<HTMLInputElement>(
       '[data-ol-contact-form-email-input]'
-    ).value
-    const thankYouEmailEl = document.querySelector(
+    )
+    const thankYouEmailEl = document.querySelector<HTMLElement>(
       '[data-ol-contact-form-thank-you-email]'
     )
-    thankYouEmailEl.textContent = emailValue
+
+    if (emailInput && thankYouEmailEl) {
+      thankYouEmailEl.textContent = emailInput.value
+    }
   })
 })

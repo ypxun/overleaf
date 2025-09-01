@@ -7,6 +7,16 @@ const crypto = require('crypto')
 const _ = require('lodash')
 const { expressify } = require('@overleaf/promise-utils')
 const logger = require('@overleaf/logger')
+const { createHash } = require('crypto')
+
+if (
+  Settings.analytics?.enabled &&
+  process.env.NODE_ENV !== 'test' &&
+  !Settings.analytics?.hashedEmailSalt
+) {
+  // This isn't important enough to crash the app, but we want to record the error
+  logger.error({}, 'Settings.analytics.hashedEmailSalt should be set')
+}
 
 const analyticsEventsQueue = Queues.getQueue('analytics-events')
 const analyticsEditingSessionsQueue = Queues.getQueue(
@@ -18,6 +28,7 @@ const analyticsUserPropertiesQueue = Queues.getQueue(
 const analyticsAccountMappingQueue = Queues.getQueue(
   'analytics-account-mapping'
 )
+const analyticsEmailChangeQueue = Queues.getQueue('analytics-email-change')
 
 const ONE_MINUTE_MS = 60 * 1000
 
@@ -148,6 +159,7 @@ function setUserPropertyForSessionInBackground(session, property, value) {
 
 /**
  * @typedef {(import('./types').AccountMapping)} AccountMapping
+ * @typedef {(import('./types').EmailChangePayload)} EmailChangePayload
  */
 
 /**
@@ -189,6 +201,57 @@ function registerAccountMapping({
       Metrics.analyticsQueue.inc({
         status: 'error',
         event_type: 'account-mapping',
+      })
+    })
+}
+
+/**
+ * Registers operations relating to email addresses.
+ *
+ * Generally, this should be called through the EmailChangeHelper module to ensure
+ * that the right data is sent.
+ *
+ * This will be called whenever an email is created, updated or deleted.
+ *
+ * @param {EmailChangePayload} payload
+ */
+function registerEmailChange({
+  userId,
+  email,
+  action,
+  createdAt = new Date(),
+  emailCreatedAt,
+  isPrimary,
+  emailConfirmedAt,
+  emailDeletedAt,
+}) {
+  Metrics.analyticsQueue.inc({ status: 'adding', event_type: 'email-change' })
+
+  const hashedEmail = createHash('sha256')
+    .update(`${email}${Settings.analytics?.hashedEmailSalt}`)
+    .digest('hex')
+
+  analyticsEmailChangeQueue
+    .add('email-change', {
+      action,
+      createdAt,
+      emailDeletedAt,
+      email: hashedEmail,
+      emailConfirmedAt,
+      emailCreatedAt,
+      isPrimary,
+      userId,
+    })
+    .then(() => {
+      Metrics.analyticsQueue.inc({
+        status: 'added',
+        event_type: 'email-change',
+      })
+    })
+    .catch(() => {
+      Metrics.analyticsQueue.inc({
+        status: 'error',
+        event_type: 'email-change',
       })
     })
 }
@@ -400,5 +463,6 @@ module.exports = {
   updateEditingSession,
   getIdsFromSession,
   registerAccountMapping,
+  registerEmailChange,
   analyticsIdMiddleware: expressify(analyticsIdMiddleware),
 }

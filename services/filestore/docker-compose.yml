@@ -19,6 +19,7 @@ services:
     environment:
       MOCHA_GREP: ${MOCHA_GREP}
       LOG_LEVEL: ${LOG_LEVEL:-}
+      MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
     command: npm run --silent test:unit
@@ -75,7 +76,7 @@ services:
   certs:
     build:
       dockerfile_inline: |
-        FROM node:22.17.0
+        FROM node:22.18.0
         RUN wget -O /certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-$(dpkg --print-architecture)"
         RUN chmod +x /certgen
     volumes:

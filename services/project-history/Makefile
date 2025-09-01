@@ -32,12 +32,12 @@ HERE=$(shell pwd)
 MONOREPO=$(shell cd ../../ && pwd)
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
-RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) node:22.17.0 npm run --silent
+RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) node:22.18.0 npm run --silent
 
 RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/document-updater/app/js/types.ts:/overleaf/services/document-updater/app/js/types.ts ci/$(PROJECT_NAME):$(BRANCH_NAME)-$(BUILD_NUMBER) npm run --silent
 
 # Same but from the top of the monorepo
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) node:22.17.0 npm run --silent
+RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) node:22.18.0 npm run --silent
 
 SHELLCHECK_OPTS = \
 	--shell=bash \
@@ -86,7 +86,6 @@ test: format lint typecheck shellcheck test_unit test_acceptance
 test_unit:
 ifneq (,$(wildcard test/unit))
 	$(DOCKER_COMPOSE_TEST_UNIT) run --rm test_unit
-	$(MAKE) test_unit_clean
 endif
 
 test_clean: test_unit_clean

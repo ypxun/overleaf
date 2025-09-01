@@ -9,6 +9,7 @@ import {
   UserNotFoundError,
   UserAlreadyAddedError,
 } from '../../../../app/src/Features/UserMembership/UserMembershipErrors.js'
+
 const assertCalledWith = sinon.assert.calledWith
 
 const modulePath =
@@ -35,6 +36,7 @@ describe('UserMembershipController', function () {
     ctx.subscription = {
       _id: 'mock-subscription-id',
       admin_id: 'mock-admin-id',
+      manager_ids: ['mock-admin-id'],
       fetchV1Data: callback => callback(null, ctx.subscription),
     }
     ctx.institution = {
@@ -45,6 +47,7 @@ describe('UserMembershipController', function () {
         institution.name = 'Test Institution Name'
         callback(null, institution)
       },
+      managerIds: ['mock-member-id-1'],
     }
     ctx.users = [
       {
@@ -201,8 +204,10 @@ describe('UserMembershipController', function () {
 
   describe('index', function () {
     beforeEach(function (ctx) {
+      ctx.req.user = ctx.user
       ctx.req.entity = ctx.subscription
       ctx.req.entityConfig = EntityConfigs.group
+      ctx.Modules.promises.hooks.fire.resolves([])
     })
 
     it('get users', async function (ctx) {
@@ -243,6 +248,7 @@ describe('UserMembershipController', function () {
     })
 
     it('render group managers view', async function (ctx) {
+      ctx.req.user = ctx.user
       ctx.req.entityConfig = EntityConfigs.groupManagers
       await ctx.UserMembershipController.manageGroupManagers(ctx.req, {
         render: (viewPath, viewParams) => {
@@ -253,6 +259,7 @@ describe('UserMembershipController', function () {
     })
 
     it('render institution view', async function (ctx) {
+      ctx.req.user = ctx.user
       ctx.req.entity = ctx.institution
       ctx.req.entityConfig = EntityConfigs.institution
       await ctx.UserMembershipController.manageInstitutionManagers(ctx.req, {

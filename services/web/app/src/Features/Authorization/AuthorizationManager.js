@@ -1,5 +1,6 @@
 const { callbackify } = require('util')
 const { ObjectId } = require('mongodb-legacy')
+const Features = require('../../infrastructure/Features')
 const CollaboratorsGetter = require('../Collaborators/CollaboratorsGetter')
 const CollaboratorsHandler = require('../Collaborators/CollaboratorsHandler')
 const ProjectGetter = require('../Project/ProjectGetter')
@@ -13,7 +14,7 @@ const {
   getAdminCapabilities,
 } = require('../Helpers/AdminAuthorizationHelper')
 const Settings = require('@overleaf/settings')
-const DocumentUpdaterHandler = require('../DocumentUpdater/DocumentUpdaterHandler')
+const ChatApiHandler = require('../Chat/ChatApiHandler')
 
 function isRestrictedUser(
   userId,
@@ -213,6 +214,10 @@ async function _getPrivilegeLevelForProjectWithoutUserWithPublicAccessLevel(
   publicAccessLevel,
   opts = {}
 ) {
+  if (!Features.hasFeature('link-sharing')) {
+    // Link sharing disabled globally.
+    return PrivilegeLevels.NONE
+  }
   if (!opts.ignorePublicAccess) {
     if (publicAccessLevel === PublicAccessLevels.READ_ONLY) {
       // Legacy public read-only access for anonymous user
@@ -332,7 +337,6 @@ async function isUserSiteAdmin(userId) {
 async function canUserDeleteOrResolveThread(
   userId,
   projectId,
-  docId,
   threadId,
   token
 ) {
@@ -353,12 +357,14 @@ async function canUserDeleteOrResolveThread(
     return false
   }
 
-  const comment = await DocumentUpdaterHandler.promises.getComment(
-    projectId,
-    docId,
-    threadId
-  )
-  return comment.metadata.user_id === userId
+  try {
+    const thread = await ChatApiHandler.promises.getThread(projectId, threadId)
+    // Check if the user created the thread (first message)
+    return thread.messages.length > 0 && thread.messages[0].user_id === userId
+  } catch (error) {
+    // If thread doesn't exist or other error, deny access
+    return false
+  }
 }
 
 module.exports = {

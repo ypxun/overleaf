@@ -432,6 +432,7 @@ module.exports = {
   ],
 
   disableChat: process.env.OVERLEAF_DISABLE_CHAT === 'true',
+  disableLinkSharing: process.env.OVERLEAF_DISABLE_LINK_SHARING === 'true',
   enableSubscriptions: false,
   restrictedCountries: [],
   enableOnboardingEmails: process.env.ENABLE_ONBOARDING_EMAILS === 'true',
@@ -661,7 +662,8 @@ module.exports = {
   // If you are running Overleaf behind a proxy (like Apache, Nginx, etc)
   // then set this to true to allow it to correctly detect the forwarded IP
   // address and http/https protocol information.
-  behindProxy: false,
+  behindProxy: true,
+  trustedProxyIps: process.env.TRUSTED_PROXY_IPS || 'loopback',
 
   // Delay before closing the http server upon receiving a SIGTERM process signal.
   gracefulShutdownDelayInMs:

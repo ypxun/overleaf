@@ -107,6 +107,9 @@ const _ProjectController = {
   async updateProjectAdminSettings(req, res) {
     const projectId = req.params.Project_id
     const user = SessionManager.getSessionUser(req.session)
+    if (!Features.hasFeature('link-sharing')) {
+      return res.sendStatus(403) // return Forbidden if link sharing is not enabled
+    }
     const publicAccessLevel = req.body.publicAccessLevel
     const publicAccessLevels = [
       PublicAccessLevels.READ_ONLY,
@@ -317,6 +320,32 @@ const _ProjectController = {
       sessionUser = null
       anonymous = true
       userId = null
+    }
+
+    if (Features.hasFeature('saas') && userId) {
+      const { variant: domainCaptureRedirect } =
+        await SplitTestHandler.promises.getAssignment(
+          req,
+          res,
+          'domain-capture-redirect'
+        )
+
+      if (domainCaptureRedirect === 'enabled') {
+        const subscription = (
+          await Modules.promises.hooks.fire(
+            'findDomainCaptureGroupUserCouldBePartOf',
+            userId
+          )
+        )?.[0]
+
+        if (subscription) {
+          if (subscription.managedUsersEnabled) {
+            return res.redirect('/domain-capture')
+          } else {
+            // TODO show notification or anything else
+          }
+        }
+      }
     }
 
     const projectId = req.params.Project_id
@@ -694,6 +723,15 @@ const _ProjectController = {
         capabilities.push('chat')
       }
 
+      // Note: this is not part of the default capabilities in the backend.
+      // See services/web/modules/group-settings/app/src/DefaultGroupPolicy.mjs.
+      // We are only using it on the frontend at the moment.
+      // Add !Features.hasFeature('saas') to the conditional, as for chat above
+      // if you define the capability in the backend.
+      if (Features.hasFeature('link-sharing')) {
+        capabilities.push('link-sharing')
+      }
+
       const isOverleafAssistBundleEnabled =
         splitTestAssignments['overleaf-assist-bundle']?.variant === 'enabled'
 
@@ -724,11 +762,16 @@ const _ProjectController = {
         isOverleafAssistBundleEnabled &&
         (await ProjectController._getAddonPrices(req, res))
 
-      const reducedTimeoutWarning =
+      const reducedTimeout =
         await SplitTestHandler.promises.getAssignmentForUser(
           project.owner_ref,
-          '10s-timeout-warning'
+          '10s-timeout-enforcement'
         )
+
+      let compileTimeout = ownerFeatures?.compileTimeout
+      if (compileTimeout === 20 && reducedTimeout.variant === 'enabled') {
+        compileTimeout = 10
+      }
 
       let planCode = subscription?.planCode
       if (!planCode && !userInNonIndividualSub) {
@@ -837,8 +880,7 @@ const _ProjectController = {
         customerIoEnabled,
         addonPrices,
         compileSettings: {
-          reducedTimeoutWarning: reducedTimeoutWarning?.variant,
-          compileTimeout: ownerFeatures?.compileTimeout,
+          compileTimeout,
         },
       })
       timer.done()
