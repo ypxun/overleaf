@@ -1,7 +1,7 @@
 import AdminController from './Features/ServerAdmin/AdminController.js'
-import ErrorController from './Features/Errors/ErrorController.js'
+import ErrorController from './Features/Errors/ErrorController.mjs'
 import Features from './infrastructure/Features.js'
-import ProjectController from './Features/Project/ProjectController.js'
+import ProjectController from './Features/Project/ProjectController.mjs'
 import ProjectApiController from './Features/Project/ProjectApiController.mjs'
 import ProjectListController from './Features/Project/ProjectListController.mjs'
 import SpellingController from './Features/Spelling/SpellingController.mjs'
@@ -19,14 +19,13 @@ import TagsController from './Features/Tags/TagsController.mjs'
 import NotificationsController from './Features/Notifications/NotificationsController.mjs'
 import CollaboratorsRouter from './Features/Collaborators/CollaboratorsRouter.mjs'
 import UserInfoController from './Features/User/UserInfoController.js'
-import UserController from './Features/User/UserController.js'
+import UserController from './Features/User/UserController.mjs'
 import UserEmailsController from './Features/User/UserEmailsController.js'
 import UserPagesController from './Features/User/UserPagesController.mjs'
 import TutorialController from './Features/Tutorial/TutorialController.mjs'
 import DocumentController from './Features/Documents/DocumentController.mjs'
 import CompileManager from './Features/Compile/CompileManager.js'
 import CompileController from './Features/Compile/CompileController.js'
-import ClsiCookieManagerFactory from './Features/Compile/ClsiCookieManager.js'
 import HealthCheckController from './Features/HealthCheck/HealthCheckController.mjs'
 import ProjectDownloadsController from './Features/Downloads/ProjectDownloadsController.mjs'
 import FileStoreController from './Features/FileStore/FileStoreController.mjs'
@@ -35,7 +34,7 @@ import HistoryRouter from './Features/History/HistoryRouter.mjs'
 import ExportsController from './Features/Exports/ExportsController.mjs'
 import PasswordResetRouter from './Features/PasswordReset/PasswordResetRouter.mjs'
 import StaticPagesRouter from './Features/StaticPages/StaticPagesRouter.mjs'
-import ChatController from './Features/Chat/ChatController.js'
+import ChatController from './Features/Chat/ChatController.mjs'
 import Modules from './infrastructure/Modules.js'
 import {
   RateLimiter,
@@ -58,7 +57,7 @@ import UserMembershipRouter from './Features/UserMembership/UserMembershipRouter
 import SystemMessageController from './Features/SystemMessages/SystemMessageController.js'
 import AnalyticsRegistrationSourceMiddleware from './Features/Analytics/AnalyticsRegistrationSourceMiddleware.js'
 import AnalyticsUTMTrackingMiddleware from './Features/Analytics/AnalyticsUTMTrackingMiddleware.mjs'
-import CaptchaMiddleware from './Features/Captcha/CaptchaMiddleware.js'
+import CaptchaMiddleware from './Features/Captcha/CaptchaMiddleware.mjs'
 import { Joi, validate } from './infrastructure/Validation.js'
 import UnsupportedBrowserMiddleware from './infrastructure/UnsupportedBrowserMiddleware.js'
 import logger from '@overleaf/logger'
@@ -66,12 +65,9 @@ import _ from 'lodash'
 import { plainTextResponse } from './infrastructure/Response.js'
 import PublicAccessLevels from './Features/Authorization/PublicAccessLevels.js'
 import SocketDiagnostics from './Features/SocketDiagnostics/SocketDiagnostics.mjs'
-import ClsiCacheController from './Features/Compile/ClsiCacheController.js'
+import ClsiCacheController from './Features/Compile/ClsiCacheController.mjs'
 import AsyncLocalStorage from './infrastructure/AsyncLocalStorage.js'
 
-const ClsiCookieManager = ClsiCookieManagerFactory(
-  Settings.apis.clsi != null ? Settings.apis.clsi.backendGroupName : undefined
-)
 const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
   UnsupportedBrowserMiddleware
 
@@ -1184,33 +1180,43 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
       const projectId = req.params.Project_id
       // use a valid user id for testing
       const testUserId = '123456789012345678901234'
-      const sendRes = _.once(function (statusCode, message) {
+      const sendRes = _.once(function (statusCode, message, clsiServerId) {
         res.status(statusCode)
         plainTextResponse(res, message)
-        ClsiCookieManager.promises
-          .clearServerId(projectId, testUserId)
+        // Force every compile to a new server and do not leave cruft behind.
+        CompileManager.promises
+          .deleteAuxFiles(projectId, testUserId, clsiServerId)
           .catch(() => {})
-      }) // force every compile to a new server
-      // set a timeout
+      })
       let handler = setTimeout(function () {
+        CompileManager.promises
+          .stopCompile(projectId, testUserId)
+          .catch(() => {})
         sendRes(500, 'Compiler timed out')
         handler = null
       }, 10000)
-      // run the compile
       CompileManager.compile(
         projectId,
         testUserId,
         {},
-        function (error, status) {
+        function (error, status, _outputFiles, clsiServerId) {
           if (handler) {
             clearTimeout(handler)
           }
           if (error) {
-            sendRes(500, `Compiler returned error ${error.message}`)
+            sendRes(
+              500,
+              `Compiler returned error ${error.message}`,
+              clsiServerId
+            )
           } else if (status === 'success') {
-            sendRes(200, 'Compiler returned in less than 10 seconds')
+            sendRes(
+              200,
+              'Compiler returned in less than 10 seconds',
+              clsiServerId
+            )
           } else {
-            sendRes(500, `Compiler returned failure ${status}`)
+            sendRes(500, `Compiler returned failure ${status}`, clsiServerId)
           }
         }
       )

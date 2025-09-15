@@ -144,12 +144,22 @@ export interface Meta {
   'ol-hasGroupSSOFeature': boolean
   'ol-hasIndividualPaidSubscription': boolean
   'ol-hasManagedUsersFeature': boolean
+  'ol-hasModifyGroupManagerAccess': boolean
   'ol-hasPassword': boolean
   'ol-hasSplitTestWriteAccess': boolean
   'ol-hasSubscription': boolean
   'ol-hasTrackChangesFeature': boolean
   'ol-hasWriteAccess': boolean
   'ol-hideLinkingWidgets': boolean // CI only
+  'ol-historyBlobStats': {
+    projectId: string
+    textBlobsBytes: number
+    binaryBlobsBytes: number
+    totalBytes: number
+    nTextBlobs: number
+    nBinaryBlobs: number
+    owned?: boolean
+  }[]
   'ol-i18n': { currentLangCode: string }
   'ol-inactiveTutorials': string[]
   'ol-institutionEmailNonCanonical': string | undefined
@@ -167,6 +177,7 @@ export interface Meta {
   'ol-itm_campaign': string
   'ol-itm_content': string
   'ol-itm_referrer': string
+  'ol-joinedGroupName': string
   'ol-labs': boolean
   'ol-labsExperiments': ActiveExperiment[] | undefined
   'ol-languages': SpellCheckLanguage[]
@@ -193,6 +204,7 @@ export interface Meta {
   'ol-notificationsInstitution': InstitutionType[]
   'ol-oauthProviders': OAuthProviders
   'ol-odcData': OnboardingFormData
+  'ol-otMigrationStage': number
   'ol-overallThemes': OverallThemeMeta[]
   'ol-pages': number
   'ol-passwordStrengthOptions': PasswordStrengthOptions
@@ -210,7 +222,6 @@ export interface Meta {
   'ol-primaryEmail': { email: string; confirmed: boolean }
   'ol-project': any // TODO
   'ol-projectEntityCounts': { files: number; docs: number }
-  'ol-projectHistoryBlobsEnabled': boolean
   'ol-projectName': string
   'ol-projectOwnerHasPremiumOnPageLoad': boolean
   'ol-projectSyncSuccessMessage': string
@@ -297,6 +308,7 @@ export interface Meta {
   'ol-usersEmail': string | undefined
   'ol-usersSubscription': { personal: boolean; group: boolean }
   'ol-validationStatus': ValidationStatus
+  'ol-viaDomainCapture': boolean
   'ol-wikiEnabled': boolean
   'ol-writefullCssUrl': string
   'ol-writefullEnabled': boolean

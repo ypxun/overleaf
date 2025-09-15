@@ -20,6 +20,7 @@ describe('ProjectListController', function () {
       first_name: 'bjkdsjfk',
       features: {},
       emails: [{ email: 'test@overleaf.com' }],
+      lastActive: new Date(1),
       lastLoginIp: '111.111.111.112',
     }
     ctx.users = {
@@ -298,19 +299,25 @@ describe('ProjectListController', function () {
   describe('projectListPage', function () {
     beforeEach(function (ctx) {
       ctx.projects = [
-        { _id: 1, lastUpdated: 1, owner_ref: 'user-1' },
+        { _id: 1, lastUpdated: new Date(1), owner_ref: 'user-1' },
         {
           _id: 2,
-          lastUpdated: 2,
+          lastUpdated: new Date(2),
           owner_ref: 'user-2',
           lastUpdatedBy: 'user-1',
         },
       ]
-      ctx.readAndWrite = [{ _id: 5, lastUpdated: 5, owner_ref: 'user-1' }]
-      ctx.readOnly = [{ _id: 3, lastUpdated: 3, owner_ref: 'user-1' }]
-      ctx.tokenReadAndWrite = [{ _id: 6, lastUpdated: 5, owner_ref: 'user-4' }]
-      ctx.tokenReadOnly = [{ _id: 7, lastUpdated: 4, owner_ref: 'user-5' }]
-      ctx.review = [{ _id: 8, lastUpdated: 4, owner_ref: 'user-6' }]
+      ctx.readAndWrite = [
+        { _id: 5, lastUpdated: new Date(5), owner_ref: 'user-1' },
+      ]
+      ctx.readOnly = [{ _id: 3, lastUpdated: new Date(3), owner_ref: 'user-1' }]
+      ctx.tokenReadAndWrite = [
+        { _id: 6, lastUpdated: new Date(5), owner_ref: 'user-4' },
+      ]
+      ctx.tokenReadOnly = [
+        { _id: 7, lastUpdated: new Date(4), owner_ref: 'user-5' },
+      ]
+      ctx.review = [{ _id: 8, lastUpdated: new Date(4), owner_ref: 'user-6' }]
       ctx.allProjects = {
         owned: ctx.projects,
         readAndWrite: ctx.readAndWrite,
@@ -559,6 +566,21 @@ describe('ProjectListController', function () {
             email: ctx.institutionEmail,
             institutionName: ctx.institutionName,
             templateKey: 'notification_institution_sso_linked',
+          })
+        }
+        ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+      })
+      it('should show a linked group notification via domain capture', function (ctx) {
+        ctx.req.session.saml = {
+          linkedGroup: true,
+          universityName: ctx.institutionName,
+          domainCaptureJoin: true,
+        }
+        ctx.res.render = (pageName, opts) => {
+          expect(opts).to.deep.include({
+            groupSsoSetupSuccess: true,
+            joinedGroupName: ctx.institutionName,
+            viaDomainCapture: true,
           })
         }
         ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
@@ -854,17 +876,21 @@ describe('ProjectListController', function () {
   describe('projectListReactPage with duplicate projects', function () {
     beforeEach(function (ctx) {
       ctx.projects = [
-        { _id: 1, lastUpdated: 1, owner_ref: 'user-1' },
-        { _id: 2, lastUpdated: 2, owner_ref: 'user-2' },
+        { _id: 1, lastUpdated: new Date(1), owner_ref: 'user-1' },
+        { _id: 2, lastUpdated: new Date(2), owner_ref: 'user-2' },
       ]
-      ctx.readAndWrite = [{ _id: 5, lastUpdated: 5, owner_ref: 'user-1' }]
-      ctx.readOnly = [{ _id: 3, lastUpdated: 3, owner_ref: 'user-1' }]
-      ctx.tokenReadAndWrite = [{ _id: 6, lastUpdated: 5, owner_ref: 'user-4' }]
+      ctx.readAndWrite = [
+        { _id: 5, lastUpdated: new Date(5), owner_ref: 'user-1' },
+      ]
+      ctx.readOnly = [{ _id: 3, lastUpdated: new Date(3), owner_ref: 'user-1' }]
+      ctx.tokenReadAndWrite = [
+        { _id: 6, lastUpdated: new Date(5), owner_ref: 'user-4' },
+      ]
       ctx.tokenReadOnly = [
-        { _id: 6, lastUpdated: 5, owner_ref: 'user-4' }, // Also in tokenReadAndWrite
-        { _id: 7, lastUpdated: 4, owner_ref: 'user-5' },
+        { _id: 6, lastUpdated: new Date(5), owner_ref: 'user-4' }, // Also in tokenReadAndWrite
+        { _id: 7, lastUpdated: new Date(4), owner_ref: 'user-5' },
       ]
-      ctx.review = [{ _id: 8, lastUpdated: 5, owner_ref: 'user-6' }]
+      ctx.review = [{ _id: 8, lastUpdated: new Date(5), owner_ref: 'user-6' }]
       ctx.allProjects = {
         owned: ctx.projects,
         readAndWrite: ctx.readAndWrite,

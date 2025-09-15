@@ -40,6 +40,7 @@ const PermissionsManager = require('../Authorization/PermissionsManager')
 const {
   sanitizeSessionUserForFrontEnd,
 } = require('../../infrastructure/FrontEndUser')
+const { z, validateReq } = require('../../infrastructure/Validation')
 const { IndeterminateInvoiceError } = require('../Errors/Errors')
 const SubscriptionLocator = require('./SubscriptionLocator')
 
@@ -354,16 +355,16 @@ async function successfulSubscription(req, res) {
   }
 }
 
+const pauseSubscriptionSchema = z.object({
+  params: z.object({
+    pauseCycles: z.coerce.number().int().max(12),
+  }),
+})
+
 async function pauseSubscription(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
-  const pauseCycles = req.params.pauseCycles
-  if (!('pauseCycles' in req.params)) {
-    return HttpErrorHandler.badRequest(
-      req,
-      res,
-      `Pausing subscription requires a 'pauseCycles' argument with number of billing cycles to pause for`
-    )
-  }
+  const { params } = validateReq(req, pauseSubscriptionSchema)
+  const pauseCycles = params.pauseCycles
   if (pauseCycles < 0) {
     return HttpErrorHandler.badRequest(
       req,
@@ -564,9 +565,16 @@ async function previewAddonPurchase(req, res) {
   })
 }
 
+const purchaseAddonSchema = z.object({
+  params: z.object({
+    addOnCode: z.string(),
+  }),
+})
+
 async function purchaseAddon(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
-  const addOnCode = req.params.addOnCode
+  const { params } = validateReq(req, purchaseAddonSchema)
+  const addOnCode = params.addOnCode
   // currently we only support having a quantity of 1
   const quantity = 1
   // currently we only support one add-on, the Ai add-on
@@ -642,9 +650,16 @@ async function purchaseAddon(req, res, next) {
   return res.sendStatus(200)
 }
 
+const removeAddonSchema = z.object({
+  params: z.object({
+    addOnCode: z.string(),
+  }),
+})
+
 async function removeAddon(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
-  const addOnCode = req.params.addOnCode
+  const { params } = validateReq(req, removeAddonSchema)
+  const addOnCode = params.addOnCode
 
   if (addOnCode !== AI_ADD_ON_CODE) {
     return res.sendStatus(404)
@@ -671,6 +686,43 @@ async function removeAddon(req, res, next) {
         })
       }
       return next(err)
+    }
+  }
+}
+
+const reactivateAddonSchema = z.object({
+  params: z.object({
+    addOnCode: z.string(),
+  }),
+})
+
+/**
+ * Reactivate an add-on pending cancellation
+ *
+ * This "cancels" the cancellation.
+ */
+async function reactivateAddon(req, res) {
+  const user = SessionManager.getSessionUser(req.session)
+  const { params } = validateReq(req, reactivateAddonSchema)
+  const addOnCode = params.addOnCode
+
+  if (addOnCode !== AI_ADD_ON_CODE) {
+    return res.sendStatus(404)
+  }
+
+  try {
+    await SubscriptionHandler.promises.reactivateAddon(user._id, addOnCode)
+    res.sendStatus(200)
+  } catch (err) {
+    if (err instanceof AddOnNotPresentError) {
+      HttpErrorHandler.badRequest(
+        req,
+        res,
+        'The requested add-on is not pending cancellation',
+        { addon: addOnCode }
+      )
+    } else {
+      throw err
     }
   }
 }
@@ -1056,6 +1108,7 @@ module.exports = {
   previewAddonPurchase: expressify(previewAddonPurchase),
   purchaseAddon,
   removeAddon,
+  reactivateAddon,
   makeChangePreview,
   getRecommendedCurrency,
   getLatamCountryBannerDetails,

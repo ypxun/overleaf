@@ -15,7 +15,6 @@ const { Cookie } = require('tough-cookie')
 const ClsiCookieManager = require('./ClsiCookieManager')(
   Settings.apis.clsi?.backendGroupName
 )
-const Features = require('../../infrastructure/Features')
 const NewBackendCloudClsiCookieManager = require('./ClsiCookieManager')(
   Settings.apis.clsi_new?.backendGroupName
 )
@@ -27,6 +26,8 @@ const Metrics = require('@overleaf/metrics')
 const Errors = require('../Errors/Errors')
 const ClsiCacheHandler = require('./ClsiCacheHandler')
 const { getFilestoreBlobURL } = require('../History/HistoryManager')
+const SplitTestHandler = require('../SplitTests/SplitTestHandler')
+const AnalyticsManager = require('../Analytics/AnalyticsManager')
 
 const VALID_COMPILERS = ['pdflatex', 'latex', 'xelatex', 'lualatex']
 const OUTPUT_FILE_TIMEOUT_MS = 60000
@@ -34,6 +35,17 @@ const CLSI_COOKIES_ENABLED = (Settings.clsiCookie?.key ?? '') !== ''
 
 // The timeout in services/clsi/app.js is 10 minutes, so we'll be on the safe side with 12 minutes
 const COMPILE_REQUEST_TIMEOUT_MS = 12 * 60 * 1000
+
+async function clearClsiServerId(projectId, userId) {
+  const jobs = [ClsiCookieManager.promises.clearServerId(projectId, userId)]
+  if (Settings.apis.clsi_new?.url) {
+    // Mirror resetting the clsiserverid in both backends.
+    jobs.push(
+      NewBackendCloudClsiCookieManager.promises.clearServerId(projectId, userId)
+    )
+  }
+  await Promise.all(jobs)
+}
 
 function collectMetricsOnBlgFiles(outputFiles) {
   let topLevel = 0
@@ -161,14 +173,15 @@ async function deleteAuxFiles(projectId, userId, options, clsiserverid) {
     try {
       await DocumentUpdaterHandler.promises.clearProjectState(projectId)
     } finally {
-      await ClsiCookieManager.promises.clearServerId(projectId, userId)
+      // always clear the clsi server id, even if prior actions failed
+      await clearClsiServerId(projectId, userId)
     }
   }
 }
 
-async function _sendBuiltRequest(projectId, userId, req, options, callback) {
+async function _sendBuiltRequest(projectId, userId, req, options) {
   if (options.forceNewClsiServer) {
-    await ClsiCookieManager.promises.clearServerId(projectId, userId)
+    await clearClsiServerId(projectId, userId)
   }
   const validationProblems =
     await ClsiFormatChecker.promises.checkRecoursesForProblems(
@@ -222,13 +235,12 @@ async function _makeRequestWithClsiServerId(
 ) {
   if (clsiserverid) {
     // ignore cookies and newBackend, go straight to the clsi node
-    url.searchParams.set('compileGroup', compileGroup)
-    url.searchParams.set('compileBackendClass', compileBackendClass)
-    url.searchParams.set('clsiserverid', clsiserverid)
+    const urlWithId = new URL(url)
+    urlWithId.searchParams.set('clsiserverid', clsiserverid)
 
     let body
     try {
-      body = await fetchString(url, opts)
+      body = await fetchString(urlWithId, opts)
     } catch (err) {
       throw OError.tag(err, 'error making request to CLSI', {
         userId,
@@ -242,6 +254,17 @@ async function _makeRequestWithClsiServerId(
     } catch (err) {
       // some responses are empty. Ignore JSON parsing errors.
     }
+
+    _makeNewBackendRequest(
+      projectId,
+      userId,
+      compileGroup,
+      compileBackendClass,
+      url,
+      opts
+    ).catch(err => {
+      logger.warn({ err }, 'Error making request to new CLSI backend')
+    })
 
     return { body: json }
   } else {
@@ -331,15 +354,16 @@ async function _makeRequest(
     opts
   )
     .then(result => {
-      if (result == null) {
+      if (result == null || !url.pathname.endsWith('/compile')) {
         return
       }
-      const { response: newBackendResponse } = result
-      Metrics.inc(`compile.newBackend.response.${newBackendResponse.status}`)
+      const current = json.compile
+      const {
+        body: { compile: next },
+        newCompileBackendClass,
+      } = result
       const newBackendCompileTime = new Date() - newBackendStartTime
-      const currentStatusCode = response.status
-      const newStatusCode = newBackendResponse.status
-      const statusCodeSame = newStatusCode === currentStatusCode
+      const statusCodeSame = next.status === current.status
       const timeDifference = newBackendCompileTime - currentCompileTime
       logger.debug(
         {
@@ -351,6 +375,44 @@ async function _makeRequest(
         },
         'both clsi requests returned'
       )
+      if (
+        current.status === 'success' &&
+        current.status === next.status &&
+        current.stats.isInitialCompile === next.stats.isInitialCompile &&
+        current.stats.restoredClsiCache === next.stats.restoredClsiCache
+      ) {
+        const fraction = next.timings.compileE2E / current.timings.compileE2E
+        Metrics.histogram(
+          'compile_backend_difference_v1',
+          fraction * 100,
+          [
+            // Increment the version in the metrics name when changing the buckets.
+            0,
+            10, 20, 30, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100,
+            105, 110, 115, 120,
+          ],
+          { path: compileBackendClass, method: newCompileBackendClass }
+        )
+        AnalyticsManager.recordEventForUserInBackground(
+          userId,
+          'double-compile-result',
+          {
+            projectId,
+            compileBackendClass,
+            newCompileBackendClass,
+            status: current.status,
+            compileTime: current.timings.compileE2E,
+            newCompileTime: next.timings.compileE2E,
+            clsiServerId: newClsiServerId || clsiServerId,
+            newClsiServerId: result.newClsiServerId,
+            // Successful compiles are guaranteed to have an output.pdf file.
+            pdfSize: current.outputFiles.find(f => f.path === 'output.pdf')
+              .size,
+            newPdfSize: next.outputFiles.find(f => f.path === 'output.pdf')
+              .size,
+          }
+        )
+      }
     })
     .catch(err => {
       logger.warn({ err }, 'Error making request to new CLSI backend')
@@ -366,27 +428,50 @@ async function _makeNewBackendRequest(
   projectId,
   userId,
   compileGroup,
-  compileBackendClass,
+  currentCompileBackendClass,
   url,
   opts
 ) {
   if (Settings.apis.clsi_new?.url == null) {
     return null
   }
-  url = url
-    .toString()
-    .replace(Settings.apis.clsi.url, Settings.apis.clsi_new.url)
+  url = new URL(
+    url.toString().replace(Settings.apis.clsi.url, Settings.apis.clsi_new.url)
+  )
+
+  // Sample x% of projects to move up one bracket.
+  if (
+    SplitTestHandler.getPercentile(projectId, 'double-compile', 'release') >=
+    Settings.apis.clsi_new.sample
+  )
+    return null
+
+  let newCompileBackendClass
+  switch (currentCompileBackendClass) {
+    case 'n2d':
+      newCompileBackendClass = 'c2d'
+      break
+    case 'c2d':
+      newCompileBackendClass = 'c4d'
+      break
+    default:
+      throw new Error('unknown ?compileBackendClass')
+  }
+  url.searchParams.set('compileBackendClass', newCompileBackendClass)
 
   const clsiServerId =
     await NewBackendCloudClsiCookieManager.promises.getServerId(
       projectId,
       userId,
       compileGroup,
-      compileBackendClass
+      newCompileBackendClass
     )
-  opts.headers = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
+  opts = {
+    ...opts,
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
   }
 
   if (CLSI_COOKIES_ENABLED) {
@@ -416,18 +501,24 @@ async function _makeNewBackendRequest(
     // Some responses are empty. Ignore JSON parsing errors
   }
   timer.done()
+  let newClsiServerId
   if (CLSI_COOKIES_ENABLED) {
-    const newClsiServerId = _getClsiServerIdFromResponse(response)
+    newClsiServerId = _getClsiServerIdFromResponse(response)
     await NewBackendCloudClsiCookieManager.promises.setServerId(
       projectId,
       userId,
       compileGroup,
-      compileBackendClass,
+      newCompileBackendClass,
       newClsiServerId,
       clsiServerId
     )
   }
-  return { response, body: json }
+  return {
+    response,
+    body: json,
+    newCompileBackendClass,
+    newClsiServerId: clsiServerId || newClsiServerId,
+  }
 }
 
 function _getCompilerUrl(
@@ -750,18 +841,9 @@ function _finaliseRequest(projectId, options, project, docs, files) {
   for (let path in files) {
     const file = files[path]
     path = path.replace(/^\//, '') // Remove leading /
-
-    const filestoreURL = `${Settings.apis.filestore.url}/project/${project._id}/file/${file._id}`
-    let url = filestoreURL
-    let fallbackURL
-    if (file.hash && Features.hasFeature('project-history-blobs')) {
-      url = getFilestoreBlobURL(historyId, file.hash)
-      fallbackURL = filestoreURL
-    }
     resources.push({
       path,
-      url,
-      fallbackURL,
+      url: getFilestoreBlobURL(historyId, file.hash),
       modified: file.created?.getTime(),
     })
   }
@@ -803,9 +885,9 @@ function _finaliseRequest(projectId, options, project, docs, files) {
   }
 }
 
-async function wordCount(projectId, userId, file, options, clsiserverid) {
-  const { compileBackendClass, compileGroup } = options
-  const req = await _buildRequest(projectId, options)
+async function wordCount(projectId, userId, file, limits, clsiserverid) {
+  const { compileBackendClass, compileGroup } = limits
+  const req = await _buildRequest(projectId, limits)
   const filename = file || req.compile.rootResourcePath
   const url = _getCompilerUrl(
     compileBackendClass,
@@ -830,6 +912,56 @@ async function wordCount(projectId, userId, file, options, clsiserverid) {
     clsiserverid
   )
   return body
+}
+
+async function syncTeX(
+  projectId,
+  userId,
+  {
+    direction,
+    compileFromClsiCache,
+    limits,
+    imageName,
+    validatedOptions,
+    clsiServerId,
+  }
+) {
+  const { compileBackendClass, compileGroup } = limits
+  const url = _getCompilerUrl(
+    compileBackendClass,
+    compileGroup,
+    projectId,
+    userId,
+    `sync/${direction}`
+  )
+  url.searchParams.set(
+    'compileFromClsiCache',
+    compileFromClsiCache && ['alpha', 'priority'].includes(compileGroup)
+  )
+  url.searchParams.set('imageName', imageName)
+  for (const [key, value] of Object.entries(validatedOptions)) {
+    url.searchParams.set(key, value)
+  }
+  const opts = {
+    method: 'GET',
+  }
+  try {
+    const { body } = await _makeRequestWithClsiServerId(
+      projectId,
+      userId,
+      compileGroup,
+      compileBackendClass,
+      url,
+      opts,
+      clsiServerId
+    )
+    return body
+  } catch (err) {
+    if (err instanceof RequestFailedError && err.response.status === 404) {
+      throw new Errors.NotFoundError()
+    }
+    throw err
+  }
 }
 
 function _getClsiServerIdFromResponse(response) {
@@ -868,6 +1000,7 @@ module.exports = {
   deleteAuxFiles: callbackify(deleteAuxFiles),
   getOutputFileStream: callbackify(getOutputFileStream),
   wordCount: callbackify(wordCount),
+  syncTeX: callbackify(syncTeX),
   promises: {
     sendRequest,
     sendExternalRequest,
@@ -875,5 +1008,6 @@ module.exports = {
     deleteAuxFiles,
     getOutputFileStream,
     wordCount,
+    syncTeX,
   },
 }

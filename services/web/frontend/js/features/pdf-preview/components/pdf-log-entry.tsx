@@ -2,14 +2,14 @@ import { memo, MouseEventHandler, useCallback } from 'react'
 import PreviewLogEntryHeader from '../../preview/components/preview-log-entry-header'
 import PdfLogEntryContent from './pdf-log-entry-content'
 import HumanReadableLogsHints from '../../../ide/human-readable-logs/HumanReadableLogsHints'
-import { sendMB } from '@/infrastructure/event-tracking'
 import getMeta from '@/utils/meta'
 import { ErrorLevel, LogEntry, SourceLocation } from '../util/types'
-import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
+import { useAreNewErrorLogsEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
 import NewLogEntry from '@/features/ide-redesign/components/error-logs/log-entry'
-import { useFeatureFlag } from '@/shared/context/split-test-context'
+import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
 
 function PdfLogEntry({
+  autoExpand,
   ruleId,
   headerTitle,
   headerIcon,
@@ -29,6 +29,7 @@ function PdfLogEntry({
 }: {
   headerTitle: string | React.ReactNode
   level: ErrorLevel
+  autoExpand?: boolean
   ruleId?: string
   headerIcon?: React.ReactElement
   rawContent?: string
@@ -45,6 +46,7 @@ function PdfLogEntry({
   id?: string
 }) {
   const showAiErrorAssistant = getMeta('ol-showAiErrorAssistant')
+  const { sendEvent } = useEditorAnalytics()
 
   if (ruleId && HumanReadableLogsHints[ruleId]) {
     const hint = HumanReadableLogsHints[ruleId]
@@ -63,18 +65,18 @@ function PdfLogEntry({
           const parts = sourceLocation?.file?.split('.')
           const extension =
             parts?.length && parts?.length > 1 ? parts.pop() : ''
-          sendMB('log-entry-link-click', { level, ruleId, extension })
+          sendEvent('log-entry-link-click', { level, ruleId, extension })
         }
       },
-      [level, onSourceLocationClick, ruleId, sourceLocation]
+      [level, onSourceLocationClick, ruleId, sourceLocation, sendEvent]
     )
 
-  const newEditor = useIsNewEditorEnabled()
-  const newErrorlogs = useFeatureFlag('new-editor-error-logs-redesign')
+  const newErrorlogs = useAreNewErrorLogsEnabled()
 
-  if (newEditor && newErrorlogs) {
+  if (newErrorlogs) {
     return (
       <NewLogEntry
+        autoExpand={autoExpand}
         index={index}
         id={id}
         logEntry={logEntry}
@@ -87,7 +89,7 @@ function PdfLogEntry({
         contentDetails={contentDetails}
         entryAriaLabel={entryAriaLabel}
         sourceLocation={sourceLocation}
-        onSourceLocationClick={onSourceLocationClick}
+        onSourceLocationClick={handleLogEntryLinkClick}
         showSourceLocationLink={showSourceLocationLink}
         extraInfoURL={extraInfoURL}
       />

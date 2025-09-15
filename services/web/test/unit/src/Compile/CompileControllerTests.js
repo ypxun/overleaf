@@ -22,6 +22,7 @@ describe('CompileController', function () {
       promises: {
         compile: sinon.stub(),
         getProjectCompileLimits: sinon.stub(),
+        syncTeX: sinon.stub(),
       },
     }
     this.ClsiManager = {
@@ -594,16 +595,24 @@ describe('CompileController', function () {
     })
   })
   describe('proxySyncCode', function () {
-    let file, line, column, imageName, editorId, buildId
+    let file, line, column, imageName, editorId, buildId, clsiServerId
 
     beforeEach(async function () {
       this.req.params = { Project_id: this.projectId }
+      clsiServerId = 'clsi-1'
       file = 'main.tex'
       line = String(Date.now())
       column = String(Date.now() + 1)
       editorId = '172977cb-361e-4854-a4dc-a71cf11512e5'
       buildId = '195b4a3f9e7-03e5be430a9e7796'
-      this.req.query = { file, line, column, editorId, buildId }
+      this.req.query = {
+        file,
+        line,
+        column,
+        editorId,
+        buildId,
+        clsiserverid: clsiServerId,
+      }
 
       imageName = 'foo/bar:tag-0'
       this.ProjectGetter.promises.getProject = sinon
@@ -615,37 +624,45 @@ describe('CompileController', function () {
       await this.CompileController.proxySyncCode(this.req, this.res, this.next)
     })
 
-    it('should proxy the request with an imageName', function () {
-      expect(this.CompileController._proxyToClsi).to.have.been.calledWith(
+    it('should parse the parameters', function () {
+      expect(this.CompileManager.promises.syncTeX).to.have.been.calledWith(
         this.projectId,
-        'sync-to-code',
-        `/project/${this.projectId}/user/${this.user_id}/sync/code`,
+        this.user_id,
         {
-          file,
-          line,
-          column,
-          imageName,
-          editorId,
-          buildId,
+          direction: 'code',
           compileFromClsiCache: false,
-        },
-        this.req,
-        this.res
+          validatedOptions: {
+            file,
+            line,
+            column,
+            editorId,
+            buildId,
+          },
+          clsiServerId,
+        }
       )
     })
   })
 
   describe('proxySyncPdf', function () {
-    let page, h, v, imageName, editorId, buildId
+    let page, h, v, imageName, editorId, buildId, clsiServerId
 
     beforeEach(async function () {
       this.req.params = { Project_id: this.projectId }
+      clsiServerId = 'clsi-1'
       page = String(Date.now())
       h = String(Math.random())
       v = String(Math.random())
       editorId = '172977cb-361e-4854-a4dc-a71cf11512e5'
       buildId = '195b4a3f9e7-03e5be430a9e7796'
-      this.req.query = { page, h, v, editorId, buildId }
+      this.req.query = {
+        page,
+        h,
+        v,
+        editorId,
+        buildId,
+        clsiserverid: clsiServerId,
+      }
 
       imageName = 'foo/bar:tag-1'
       this.ProjectGetter.promises.getProject = sinon
@@ -657,22 +674,22 @@ describe('CompileController', function () {
       await this.CompileController.proxySyncPdf(this.req, this.res, this.next)
     })
 
-    it('should proxy the request with an imageName', function () {
-      expect(this.CompileController._proxyToClsi).to.have.been.calledWith(
+    it('should parse the parameters', function () {
+      expect(this.CompileManager.promises.syncTeX).to.have.been.calledWith(
         this.projectId,
-        'sync-to-pdf',
-        `/project/${this.projectId}/user/${this.user_id}/sync/pdf`,
+        this.user_id,
         {
-          page,
-          h,
-          v,
-          imageName,
-          editorId,
-          buildId,
+          direction: 'pdf',
           compileFromClsiCache: false,
-        },
-        this.req,
-        this.res
+          validatedOptions: {
+            page,
+            h,
+            v,
+            editorId,
+            buildId,
+          },
+          clsiServerId,
+        }
       )
     })
   })
@@ -695,7 +712,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'e2',
+              compileBackendClass: 'n2d',
             })
           await this.CompileController._proxyToClsi(
             this.projectId,
@@ -710,7 +727,7 @@ describe('CompileController', function () {
 
         it('should open a request to the CLSI', function () {
           this.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=e2&query=foo`
+            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=n2d&query=foo`
           )
         })
 
@@ -752,7 +769,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'e2',
+              compileBackendClass: 'n2d',
             })
           await this.CompileController._proxyToClsi(
             this.projectId,
@@ -767,7 +784,7 @@ describe('CompileController', function () {
 
         it('should open a request to the CLSI', function () {
           this.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=e2`
+            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=n2d`
           )
         })
 
@@ -783,7 +800,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'e2',
+              compileBackendClass: 'n2d',
             })
           await this.CompileController._proxyToClsi(
             this.projectId,
@@ -798,7 +815,7 @@ describe('CompileController', function () {
 
         it('should proxy to the standard url', function () {
           this.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=e2`
+            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=n2d`
           )
         })
       })
@@ -809,7 +826,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'e2',
+              compileBackendClass: 'n2d',
             })
           this.req.query = { build: 1234 }
           await this.CompileController._proxyToClsi(
@@ -825,7 +842,7 @@ describe('CompileController', function () {
 
         it('should proxy to the standard url without the build parameter', function () {
           this.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=e2`
+            `${this.settings.apis.clsi.url}${this.url}?compileGroup=standard&compileBackendClass=n2d`
           )
         })
       })

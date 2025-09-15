@@ -25,6 +25,8 @@ const render = require('./render')
 const expressify = require('./expressify')
 const withTmpDir = require('./with_tmp_dir')
 const StreamSizeLimit = require('./stream_size_limit')
+const { getProjectBlobsBatch } = require('../../storage/lib/blob_store')
+const assert = require('../../storage/lib/assert')
 
 const pipeline = promisify(Stream.pipeline)
 
@@ -154,11 +156,12 @@ async function getChanges(req, res, next) {
     })
   }
 
-  let chunk
   try {
-    chunk = await chunkStore.loadAtVersion(projectId, since, {
-      preferNewer: true,
-    })
+    const { changes, hasMore } = await chunkStore.getChangesSinceVersion(
+      projectId,
+      since
+    )
+    res.json({ changes: changes.map(change => change.toRaw()), hasMore })
   } catch (err) {
     if (err instanceof Chunk.VersionNotFoundError) {
       return res.status(400).json({
@@ -167,14 +170,6 @@ async function getChanges(req, res, next) {
     }
     throw err
   }
-
-  const latestChunkMetadata = await chunkStore.getLatestChunkMetadata(projectId)
-
-  // Extract the relevant changes from the chunk that contains the start version
-  const changes = chunk.getChanges().slice(since - chunk.getStartVersion())
-  const hasMore = latestChunkMetadata.endVersion > chunk.getEndVersion()
-
-  res.json({ changes: changes.map(change => change.toRaw()), hasMore })
 }
 
 async function getZip(req, res, next) {
@@ -378,6 +373,40 @@ async function getSnapshotAtVersion(projectId, version) {
   return snapshot
 }
 
+function sumUpByteLength(blobs) {
+  return blobs.reduce((sum, blob) => sum + blob.getByteLength(), 0)
+}
+
+async function getProjectBlobsStats(req, res) {
+  const projectIds = req.swagger.params.body.value.projectIds
+  const { blobs } = await getProjectBlobsBatch(
+    projectIds.map(id => {
+      if (assert.POSTGRES_ID_REGEXP.test(id)) {
+        return parseInt(id, 10)
+      } else {
+        return id
+      }
+    })
+  )
+  const sizes = []
+  for (const projectId of projectIds) {
+    const projectBlobs = blobs.get(projectId) || []
+    const textBlobs = projectBlobs.filter(b => b.getStringLength() !== null)
+    const binaryBlobs = projectBlobs.filter(b => b.getStringLength() === null)
+    const textBlobBytes = sumUpByteLength(textBlobs)
+    const binaryBlobBytes = sumUpByteLength(binaryBlobs)
+    sizes.push({
+      projectId,
+      textBlobBytes,
+      binaryBlobBytes,
+      totalBytes: textBlobBytes + binaryBlobBytes,
+      nTextBlobs: textBlobs.length,
+      nBinaryBlobs: binaryBlobs.length,
+    })
+  }
+  res.json(sizes)
+}
+
 module.exports = {
   initializeProject: expressify(initializeProject),
   getLatestContent: expressify(getLatestContent),
@@ -396,4 +425,5 @@ module.exports = {
   getProjectBlob: expressify(getProjectBlob),
   headProjectBlob: expressify(headProjectBlob),
   copyProjectBlob: expressify(copyProjectBlob),
+  getProjectBlobsStats: expressify(getProjectBlobsStats),
 }

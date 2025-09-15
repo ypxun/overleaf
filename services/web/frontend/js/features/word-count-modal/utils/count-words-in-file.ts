@@ -139,6 +139,10 @@ export const countWordsInFile = (
   const headMatcher = NodeType.match<
     (nodeRef: SyntaxNodeRef) => boolean | void
   >({
+    Comment(nodeRef) {
+      handleComment(nodeRef)
+      return false
+    },
     Title(nodeRef) {
       data.headers++
       iterateNode(nodeRef, 'header')
@@ -149,6 +153,10 @@ export const countWordsInFile = (
   const bodyMatcher = NodeType.match<
     (nodeRef: SyntaxNodeRef) => boolean | void
   >({
+    Comment(nodeRef) {
+      handleComment(nodeRef)
+      return false
+    },
     Normal(nodeRef) {
       textNodes.push({
         from: nodeRef.from,
@@ -157,15 +165,24 @@ export const countWordsInFile = (
         context: currentContext,
       })
     },
-    Command(nodeRef) {
-      const child = nodeRef.node.getChild('UnknownCommand')
-      if (!child) return
+    Cite(nodeRef) {
+      // Count as \cite[text]{citation}
+      const optionalArgs = nodeRef.node.getChildren('OptionalArgument')
+      for (const arg of optionalArgs) {
+        // We normally ignore ShortOptionalArg, so we need to iterate it
+        // explicitly
+        const child = arg.getChild('ShortOptionalArg')
+        if (!child) continue
+        iterateNode(child, 'text')
+      }
+      return false
+    },
+    UnknownCommand(nodeRef) {
+      const macro =
+        nodeRef.node.getChild('$CtrlSeq') ?? nodeRef.node.getChild('$CtrlSym')
+      if (!macro) return
 
-      const grandchild =
-        child.getChild('$CtrlSeq') ?? child.getChild('$CtrlSym')
-      if (!grandchild) return
-
-      const commandName = content.substring(grandchild.from + 1, grandchild.to)
+      const commandName = content.substring(macro.from + 1, macro.to)
       if (!commandName) return
 
       switch (commandName) {
@@ -265,17 +282,48 @@ export const countWordsInFile = (
 
   const preambleExtent = findPreambleExtent(tree)
 
+  const state = {
+    skipping: false,
+  }
+
+  const TC_REGEX = /^%+TC:\s*(\w+)\s*/i
+
+  const handleComment = (nodeRef: SyntaxNodeRef) => {
+    const comment = content.slice(nodeRef.from, nodeRef.to)
+
+    // look for TeXcount instructions
+    const match = TC_REGEX.exec(comment)
+    if (match) {
+      switch (match[1].toLowerCase()) {
+        case 'ignore':
+          state.skipping = true
+          break
+        case 'endignore':
+          state.skipping = false
+          break
+        default:
+          break
+      }
+    }
+  }
+
   tree.iterate({
     from: 0,
     to: preambleExtent.to,
-    enter(nodeRef) {
+    enter(nodeRef: SyntaxNodeRef) {
+      if (state.skipping && !nodeRef.type.is('Comment')) {
+        return
+      }
       return headMatcher(nodeRef.type)?.(nodeRef)
     },
   })
 
   tree.iterate({
     from: preambleExtent.to,
-    enter(nodeRef) {
+    enter(nodeRef: SyntaxNodeRef) {
+      if (state.skipping && !nodeRef.type.is('Comment')) {
+        return
+      }
       return bodyMatcher(nodeRef.type)?.(nodeRef)
     },
   })
