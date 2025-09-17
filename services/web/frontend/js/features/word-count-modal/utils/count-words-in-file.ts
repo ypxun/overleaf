@@ -4,6 +4,7 @@ import { NodeType, SyntaxNodeRef } from '@lezer/common'
 import { debugConsole } from '@/utils/debugging'
 import { findPreambleExtent } from '@/features/word-count-modal/utils/find-preamble-extent'
 import { Segmenters } from './segmenters'
+import { ProjectSnapshot } from '@/infrastructure/project-snapshot'
 
 // const whiteSpaceRe = /^\s$/
 
@@ -108,14 +109,24 @@ type TextNode = {
 
 export const countWordsInFile = (
   data: WordCountData,
-  projectSnapshot: { getDocContents(path: string): string | null },
-  docPath: string,
+  projectSnapshot: ProjectSnapshot,
+  relativePath: string,
+  basePath: string,
   segmenters: Segmenters
 ) => {
-  debugConsole.log(`Counting words in ${docPath}`)
+  const docPath = projectSnapshot.locateFile(relativePath, basePath)
+  if (!docPath) {
+    debugConsole.warn(`Couldn't find ${relativePath} from ${basePath}`)
+    return
+  }
 
-  const content = projectSnapshot.getDocContents(docPath) // TODO: try with extensions
-  if (!content) return
+  const content = projectSnapshot.getDocContents(docPath)
+  if (!content) {
+    debugConsole.warn(`No doc content in ${docPath}`)
+    return
+  }
+
+  debugConsole.log(`Counting words in ${docPath}`)
 
   // TODO: language from file extension
   const tree = LaTeXLanguage.parser.parse(content)
@@ -147,6 +158,9 @@ export const countWordsInFile = (
       data.headers++
       iterateNode(nodeRef, 'header')
       return false
+    },
+    $Environment(nodeRef) {
+      return handleEnvironment(nodeRef)
     },
   })
 
@@ -209,27 +223,7 @@ export const countWordsInFile = (
       return false
     },
     $Environment(nodeRef) {
-      const envNameNode = nodeRef.node
-        .getChild('BeginEnv')
-        ?.getChild('EnvNameGroup')
-        ?.getChild('EnvName')
-
-      if (envNameNode) {
-        const envName = content
-          ?.substring(envNameNode.from, envNameNode.to)
-          .replace(/\*$/, '')
-
-        if (envName === 'abstract') {
-          data.headers++
-
-          const contentNode = nodeRef.node.getChild('Content')
-          if (contentNode) {
-            iterateNode(contentNode, 'abstract')
-          }
-
-          return false
-        }
-      }
+      return handleEnvironment(nodeRef)
     },
     BeginEnv() {
       return false // ignore text in \begin arguments
@@ -261,13 +255,10 @@ export const countWordsInFile = (
       return false
     },
     'IncludeArgument InputArgument'(nodeRef) {
-      let path = content.substring(nodeRef.from + 1, nodeRef.to - 1)
-      if (!/\.\w+$/.test(path)) {
-        path += '.tex'
-      }
+      const path = content.substring(nodeRef.from + 1, nodeRef.to - 1)
       debugConsole.log(path)
       if (path) {
-        countWordsInFile(data, projectSnapshot, path, segmenters)
+        countWordsInFile(data, projectSnapshot, path, docPath, segmenters)
       }
     },
     'BlankLine LineBreak'(nodeRef) {
@@ -303,6 +294,30 @@ export const countWordsInFile = (
           break
         default:
           break
+      }
+    }
+  }
+
+  const handleEnvironment = (nodeRef: SyntaxNodeRef) => {
+    const envNameNode = nodeRef.node
+      .getChild('BeginEnv')
+      ?.getChild('EnvNameGroup')
+      ?.getChild('EnvName')
+
+    if (envNameNode) {
+      const envName = content
+        ?.substring(envNameNode.from, envNameNode.to)
+        .replace(/\*$/, '')
+
+      if (envName === 'abstract') {
+        data.headers++
+
+        const contentNode = nodeRef.node.getChild('Content')
+        if (contentNode) {
+          iterateNode(contentNode, 'abstract')
+        }
+
+        return false
       }
     }
   }

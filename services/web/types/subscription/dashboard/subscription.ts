@@ -20,10 +20,12 @@ export type PurchasingAddOnCode = {
   code: string
 }
 
-type PaymentProviderCoupon = {
+export type PaymentProviderCoupon = {
   code: string
   name: string
-  description: string
+  description?: string
+  isSingleUse?: boolean
+  discountMonths?: number | null
 }
 
 type PaymentProviderRecord = {
@@ -128,4 +130,13 @@ export type PaymentProvider = {
 export type SubscriptionRequesterData = {
   id?: string
   ip?: string
+}
+
+export type SubscriptionBillingAddress = {
+  line1?: string
+  line2?: string
+  city?: string
+  state?: string
+  postal_code: string
+  country: string
 }
