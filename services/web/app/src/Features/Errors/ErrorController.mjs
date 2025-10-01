@@ -1,7 +1,7 @@
 import { isZodErrorLike, fromZodError } from 'zod-validation-error'
 import Errors from './Errors.js'
 import SessionManager from '../Authentication/SessionManager.js'
-import SamlLogHandler from '../SamlLog/SamlLogHandler.js'
+import SamlLogHandler from '../SamlLog/SamlLogHandler.mjs'
 import HttpErrorHandler from './HttpErrorHandler.js'
 import { plainTextResponse } from '../../infrastructure/Response.js'
 import { expressifyErrorHandler } from '@overleaf/promise-utils'
@@ -88,6 +88,12 @@ async function handleError(error, req, res, next) {
     req.logger.setLevel('warn')
     if (shouldSendErrorResponse) {
       HttpErrorHandler.badRequest(req, res, error.message)
+    }
+  } else if (error instanceof Errors.FileTooLargeError) {
+    req.logger.setLevel('warn')
+    if (shouldSendErrorResponse) {
+      res.status(400)
+      plainTextResponse(res, error.message)
     }
   } else if (isZodErrorLike(error)) {
     req.logger.setLevel('warn')

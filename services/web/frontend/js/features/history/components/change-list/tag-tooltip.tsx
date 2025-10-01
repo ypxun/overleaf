@@ -1,6 +1,7 @@
 import { forwardRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
@@ -122,6 +123,7 @@ const ChangeTag = forwardRef<HTMLElement, TagProps>(
                 variant="danger"
                 disabled={isLoading}
                 isLoading={isLoading}
+                loadingLabel={t('deleting')}
                 onClick={localDeleteHandler}
               >
                 {t('history_delete_label')}

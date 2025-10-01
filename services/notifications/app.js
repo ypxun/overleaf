@@ -6,8 +6,10 @@ import logger from '@overleaf/logger'
 import express from 'express'
 import methodOverride from 'method-override'
 import { mongoClient } from './app/js/mongodb.js'
-import NotificationsController from './app/js/NotificationsController.js'
-import HealthCheckController from './app/js/HealthCheckController.js'
+import NotificationsController from './app/js/NotificationsController.ts'
+import HealthCheckController from './app/js/HealthCheckController.ts'
+import { isZodErrorLike } from 'zod-validation-error'
+import { ParamsError } from '@overleaf/validation-tools'
 
 const app = express()
 
@@ -42,6 +44,22 @@ app.get('/health_check', HealthCheckController.check)
 
 app.get('*', (req, res) => res.sendStatus(404))
 
+app.use(handleApiError)
+
+function handleApiError(err, req, res, next) {
+  req.logger.addFields({ err })
+  if (err instanceof ParamsError) {
+    req.logger.setLevel('warn')
+    res.sendStatus(404)
+  } else if (isZodErrorLike(err)) {
+    req.logger.setLevel('warn')
+    res.sendStatus(400)
+  } else {
+    req.logger.setLevel('error')
+    res.sendStatus(500)
+  }
+}
+
 const host = Settings.internal.notifications?.host || '127.0.0.1'
 const port = Settings.internal.notifications?.port || 3042
 try {
@@ -51,6 +69,9 @@ try {
   process.exit(1)
 }
 
-app.listen(port, host, () =>
-  logger.debug({}, `notifications starting up, listening on ${host}:${port}`)
-)
+if (import.meta.url === `file://${process.argv[1]}`) {
+  app.listen(port, host, () =>
+    logger.debug({}, `notifications starting up, listening on ${host}:${port}`)
+  )
+}
+export default app

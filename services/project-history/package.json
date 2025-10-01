@@ -12,8 +12,8 @@
     "test:acceptance:_run": "mocha --loader=esmock --recursive --reporter spec --timeout 15000 --exit $@ test/acceptance/js",
     "test:unit:_run": "mocha --loader=esmock --recursive --reporter spec --exit $@ test/unit/js",
     "lint": "eslint --max-warnings 0 --format unix .",
-    "format": "prettier --list-different $PWD/'**/*.*js'",
-    "format:fix": "prettier --write $PWD/'**/*.*js'",
+    "format": "prettier --list-different $PWD/'**/{*.*js,*.ts,Jenkinsfile}'",
+    "format:fix": "prettier --write $PWD/'**/{*.*js,*.ts,Jenkinsfile}'",
     "lint:fix": "eslint --fix .",
     "types:check": "tsc --noEmit"
   },
@@ -28,7 +28,6 @@
     "@overleaf/settings": "*",
     "@overleaf/stream-utils": "*",
     "async": "^3.2.5",
-    "aws-sdk": "^2.650.0",
     "body-parser": "^1.20.3",
     "bunyan": "^1.8.15",
     "celebrate": "^15.0.3",

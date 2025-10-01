@@ -8,7 +8,8 @@ import { Tag } from '../../../../../../app/src/Features/Tags/types'
 import { getTagColor } from '../../util/tag'
 import { ColorPicker } from '../color-picker/color-picker'
 import { debugConsole } from '@/utils/debugging'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
@@ -89,7 +90,7 @@ export function ManageTagModal({
 
   return (
     <OLModal show animation onHide={onClose} id={id} backdrop="static">
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{t('edit_tag')}</OLModalTitle>
       </OLModalHeader>
 
@@ -127,6 +128,7 @@ export function ManageTagModal({
           className="me-auto"
           disabled={isDeleteLoading || isUpdateLoading}
           isLoading={isDeleteLoading}
+          loadingLabel={t('deleting')}
         >
           {t('delete_tag')}
         </OLButton>
@@ -147,6 +149,7 @@ export function ManageTagModal({
               (newTagName === tag?.name && selectedColor === getTagColor(tag))
           )}
           isLoading={isUpdateLoading}
+          loadingLabel={t('saving')}
         >
           {t('save_or_cancel-save')}
         </OLButton>

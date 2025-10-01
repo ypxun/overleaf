@@ -74,7 +74,7 @@ function ModalContentNewProjectForm({ onCancel, template = 'none' }: Props) {
 
   return (
     <>
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{t('new_project')}</OLModalTitle>
       </OLModalHeader>
 
@@ -109,6 +109,7 @@ function ModalContentNewProjectForm({ onCancel, template = 'none' }: Props) {
           onClick={createNewProject}
           disabled={projectName === '' || isLoading || redirecting}
           isLoading={isLoading}
+          loadingLabel={t('creating')}
         >
           {t('create')}
         </OLButton>

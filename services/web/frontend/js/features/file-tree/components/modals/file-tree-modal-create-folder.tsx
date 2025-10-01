@@ -4,7 +4,8 @@ import { useRefWithAutoFocus } from '../../../../shared/hooks/use-ref-with-auto-
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import { DuplicateFilenameError } from '../../errors'
 import { isCleanFilename } from '../../util/safe-path'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
@@ -85,7 +86,12 @@ function FileTreeModalCreateFolder() {
 
       <OLModalFooter>
         {inFlight ? (
-          <OLButton variant="primary" disabled isLoading={inFlight} />
+          <OLButton
+            variant="primary"
+            disabled
+            isLoading={inFlight}
+            loadingLabel={t('creating')}
+          />
         ) : (
           <>
             <OLButton variant="secondary" onClick={handleHide}>

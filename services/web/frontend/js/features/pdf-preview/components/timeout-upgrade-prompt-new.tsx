@@ -11,7 +11,12 @@ import {
   populateEditorRedesignSegmentation,
   useEditorAnalytics,
 } from '@/shared/hooks/use-editor-analytics'
-import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
+import {
+  isNewUser,
+  useIsNewEditorEnabled,
+  useIsNewErrorLogsPositionEnabled,
+} from '@/features/ide-redesign/utils/new-editor-utils'
+import { getSplitTestVariant } from '@/utils/splitTestUtils'
 
 function TimeoutUpgradePromptNew() {
   const {
@@ -74,10 +79,27 @@ const CompileTimeout = memo(function CompileTimeout({
   segmentation,
 }: CompileTimeoutProps) {
   const { t } = useTranslation()
+  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
+
+  const extraSearchParams = useMemo(() => {
+    if (!isNewUser()) {
+      return undefined
+    }
+
+    const variant = getSplitTestVariant('editor-redesign-new-users')
+
+    if (!variant) {
+      return undefined
+    }
+
+    return {
+      itm_content: variant,
+    }
+  }, [])
 
   return (
     <PdfLogEntry
-      autoExpand
+      autoExpand={!newLogsPosition}
       headerTitle={t('your_compile_timed_out')}
       formattedContent={
         getMeta('ol-ExposedSettings').enableSubscriptions && (
@@ -110,6 +132,7 @@ const CompileTimeout = memo(function CompileTimeout({
                   source="compile-timeout"
                   buttonProps={{ variant: 'primary', className: 'w-100' }}
                   segmentation={segmentation}
+                  extraSearchParams={extraSearchParams}
                 >
                   {t('start_a_free_trial')}
                 </StartFreeTrialButton>
@@ -138,6 +161,7 @@ const PreventTimeoutHelpMessage = memo(function PreventTimeoutHelpMessage({
 }: PreventTimeoutHelpMessageProps) {
   const { t } = useTranslation()
   const { sendEvent } = useEditorAnalytics()
+  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
 
   function sendInfoClickEvent() {
     sendEvent('paywall-info-click', {
@@ -160,14 +184,14 @@ const PreventTimeoutHelpMessage = memo(function PreventTimeoutHelpMessage({
 
   return (
     <PdfLogEntry
-      autoExpand
+      autoExpand={!newLogsPosition}
       headerTitle={t('reasons_for_compile_timeouts')}
       formattedContent={
         <>
           <p>
             <em>
               <Trans
-                i18nKey="were_reducing_compile_timeout"
+                i18nKey="weve_reduced_compile_timeout"
                 components={[compileTimeoutChangesBlogLink]}
               />
             </em>

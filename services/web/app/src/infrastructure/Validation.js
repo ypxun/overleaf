@@ -3,11 +3,16 @@
 const { Joi: CelebrateJoi, celebrate, errors } = require('celebrate')
 const { ObjectId } = require('mongodb-legacy')
 const { NotFoundError } = require('../Features/Errors/Errors')
-const { z } = require('zod')
+const {
+  validateReq,
+  z,
+  zz,
+  ParamsError,
+} = require('@overleaf/validation-tools')
+const { isZodErrorLike, fromError } = require('zod-validation-error')
 
 /**
- * @import { ZodType } from 'zod'
- * @import { Request } from 'express'
+ * @typedef {import('express').ErrorRequestHandler} ErrorRequestHandler
  */
 
 const objectIdValidator = {
@@ -31,43 +36,43 @@ const objectIdValidator = {
 }
 
 const Joi = CelebrateJoi.extend(objectIdValidator)
-const errorMiddleware = errors()
+const errorMiddleware = [
+  errors(),
+  /** @type {ErrorRequestHandler} */
+  (err, req, res, next) => {
+    if (!isZodErrorLike(err)) {
+      return next(err)
+    }
+
+    res.status(400).json({ ...fromError(err), statusCode: 400 })
+  },
+]
 
 /**
  * Validation middleware
+ * @deprecated Please use Zod schemas and `validateReq` instead
  */
 function validate(schema) {
   return celebrate(schema, { allowUnknown: true })
 }
 
-const zz = {
-  objectId: () =>
-    z.string().refine(ObjectId.isValid, { message: 'invalid Mongo ObjectId' }),
-  coercedObjectId: () =>
-    z
-      .string()
-      .refine(ObjectId.isValid, { message: 'invalid Mongo ObjectId' })
-      .transform(val => new ObjectId(val)),
-}
-
-/**
- * Validate a request against a zod schema
- *
- * @template T
- * @param {Request} req
- * @param {ZodType<T>} schema
- * @return {T}
- */
-function validateReq(req, schema) {
-  const parsed = schema.safeParse(req)
-  if (parsed.success) {
-    return parsed.data
-  } else if (parsed.error.issues.some(issue => issue.path[0] === 'params')) {
-    // Parts of the URL path failed to validate; throw a 404 rather than a 400
-    throw new NotFoundError('Not found').withCause(parsed.error)
-  } else {
-    throw parsed.error
+const validateReqWeb = (req, schema) => {
+  try {
+    return validateReq(req, schema)
+  } catch (err) {
+    if (err instanceof ParamsError) {
+      // convert into a NotFoundError that web understands
+      throw new NotFoundError('Not found').withCause(err)
+    }
+    throw err
   }
 }
 
-module.exports = { Joi, validate, errorMiddleware, validateReq, z, zz }
+module.exports = {
+  Joi,
+  validate,
+  errorMiddleware,
+  validateReq: validateReqWeb,
+  z,
+  zz,
+}

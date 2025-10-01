@@ -7,7 +7,7 @@ import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
 import mongodb from 'mongodb-legacy'
 import ProjectDeleter from './ProjectDeleter.js'
-import ProjectDuplicator from './ProjectDuplicator.js'
+import ProjectDuplicator from './ProjectDuplicator.mjs'
 import ProjectCreationHandler from './ProjectCreationHandler.js'
 import EditorController from '../Editor/EditorController.js'
 import ProjectHelper from './ProjectHelper.js'
@@ -18,7 +18,7 @@ import { isPaidSubscription } from '../Subscription/SubscriptionHelper.js'
 import LimitationsManager from '../Subscription/LimitationsManager.js'
 import Settings from '@overleaf/settings'
 import AuthorizationManager from '../Authorization/AuthorizationManager.js'
-import InactiveProjectManager from '../InactiveData/InactiveProjectManager.js'
+import InactiveProjectManager from '../InactiveData/InactiveProjectManager.mjs'
 import ProjectUpdateHandler from './ProjectUpdateHandler.js'
 import ProjectGetter from './ProjectGetter.js'
 import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
@@ -29,26 +29,26 @@ import CollaboratorsGetter from '../Collaborators/CollaboratorsGetter.js'
 import ProjectEntityHandler from './ProjectEntityHandler.js'
 import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.js'
 import Features from '../../infrastructure/Features.js'
-import BrandVariationsHandler from '../BrandVariations/BrandVariationsHandler.js'
+import BrandVariationsHandler from '../BrandVariations/BrandVariationsHandler.mjs'
 import UserController from '../User/UserController.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.js'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.js'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.js'
 import FeaturesUpdater from '../Subscription/FeaturesUpdater.js'
-import SpellingHandler from '../Spelling/SpellingHandler.js'
+import SpellingHandler from '../Spelling/SpellingHandler.mjs'
 import { hasAdminAccess } from '../Helpers/AdminAuthorizationHelper.js'
 import InstitutionsFeatures from '../Institutions/InstitutionsFeatures.js'
 import InstitutionsGetter from '../Institutions/InstitutionsGetter.js'
-import ProjectAuditLogHandler from './ProjectAuditLogHandler.js'
+import ProjectAuditLogHandler from './ProjectAuditLogHandler.mjs'
 import PublicAccessLevels from '../Authorization/PublicAccessLevels.js'
 import TagsHandler from '../Tags/TagsHandler.js'
-import TutorialHandler from '../Tutorial/TutorialHandler.js'
+import TutorialHandler from '../Tutorial/TutorialHandler.mjs'
 import UserUpdater from '../User/UserUpdater.js'
 import Modules from '../../infrastructure/Modules.js'
 import { z, zz, validateReq } from '../../infrastructure/Validation.js'
 import UserGetter from '../User/UserGetter.js'
 import { isStandaloneAiAddOnPlanCode } from '../Subscription/AiHelper.js'
-import SubscriptionController from '../Subscription/SubscriptionController.js'
+import SubscriptionController from '../Subscription/SubscriptionController.mjs'
 import { formatCurrency } from '../../util/currency.js'
 
 const { ObjectId } = mongodb
@@ -400,6 +400,7 @@ const _ProjectController = {
       'editor-popup-ux-survey',
       'client-side-references',
       'editor-redesign-new-users',
+      'writefull-frontend-migration',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -512,7 +513,7 @@ const _ProjectController = {
         req,
         projectId
       )
-      const allowedImageNames = ProjectHelper.getAllowedImagesForUser(user)
+      const imageNames = ProjectHelper.getAllowedImagesForUser(user)
 
       const privilegeLevel =
         await AuthorizationManager.promises.getPrivilegeLevelForProject(
@@ -706,30 +707,13 @@ const _ProjectController = {
         })
       }
 
-      let inEnterpriseCommons = false
-      const affiliations = userValues.affiliations || []
-      for (const affiliation of affiliations) {
-        inEnterpriseCommons =
-          inEnterpriseCommons || affiliation.institution?.enterpriseCommons
-      }
-
-      // check if a user has never tried writefull before (writefull.enabled will be null)
-      //  if they previously accepted writefull, or are have been already assigned to a trial, user.writefull will be true,
-      //  if they explicitly disabled it, user.writefull will be false
-      if (
-        aiFeaturesAllowed &&
-        user.writefull?.enabled === null &&
-        !userIsMemberOfGroupSubscription &&
-        !inEnterpriseCommons
-      ) {
-        await UserUpdater.promises.updateUser(userId, {
-          $set: {
-            writefull: { enabled: true, autoCreatedAccount: true },
-          },
-        })
-        user.writefull.enabled = true
-        user.writefull.autoCreatedAccount = true
-      }
+      await ProjectController._setWritefullTrialState(
+        user,
+        userValues,
+        userId,
+        aiFeaturesAllowed,
+        userIsMemberOfGroupSubscription
+      )
 
       const template =
         detachRole === 'detached'
@@ -781,17 +765,6 @@ const _ProjectController = {
       const addonPrices =
         isOverleafAssistBundleEnabled &&
         (await ProjectController._getAddonPrices(req, res))
-
-      const reducedTimeout =
-        await SplitTestHandler.promises.getAssignmentForUser(
-          project.owner_ref,
-          '10s-timeout-enforcement'
-        )
-
-      let compileTimeout = ownerFeatures?.compileTimeout
-      if (compileTimeout === 20 && reducedTimeout.variant === 'enabled') {
-        compileTimeout = 10
-      }
 
       let planCode = subscription?.planCode
       if (!planCode && !userInNonIndividualSub) {
@@ -874,7 +847,7 @@ const _ProjectController = {
         maxReconnectGracefullyIntervalMs:
           Settings.maxReconnectGracefullyIntervalMs,
         brandVariation,
-        allowedImageNames,
+        imageNames,
         gitBridgePublicBaseUrl: Settings.gitBridgePublicBaseUrl,
         gitBridgeEnabled: Features.hasFeature('git-bridge'),
         wsUrl,
@@ -898,7 +871,7 @@ const _ProjectController = {
         customerIoEnabled,
         addonPrices,
         compileSettings: {
-          compileTimeout,
+          compileTimeout: ownerFeatures?.compileTimeout,
         },
       })
       timer.done()
@@ -1157,6 +1130,51 @@ const _ProjectController = {
     }
     return portalTemplates
   },
+
+  async _setWritefullTrialState(
+    user,
+    userValues,
+    userId,
+    aiFeaturesAllowed,
+    userIsMemberOfGroupSubscription
+  ) {
+    let inEnterpriseCommons = false
+    const affiliations = userValues.affiliations || []
+    for (const affiliation of affiliations) {
+      inEnterpriseCommons =
+        inEnterpriseCommons || affiliation.institution?.enterpriseCommons
+    }
+
+    // check if a user has never tried writefull before (writefull.enabled will be null)
+    //  if they previously accepted writefull, or are have been already assigned to a trial, user.writefull will be true,
+    //  if they explicitly disabled it, user.writefull will be false
+    const shouldPushWritefull =
+      aiFeaturesAllowed &&
+      user.writefull?.enabled === null &&
+      !userIsMemberOfGroupSubscription
+
+    // we dont have legal approval to push enterprise commons into WF auto-account-create, but we are able to auto-load it into the toolbar
+    const shouldAutoCreateAccount = shouldPushWritefull && !inEnterpriseCommons
+    const shouldAutoLoad = shouldPushWritefull && inEnterpriseCommons
+
+    if (shouldAutoCreateAccount) {
+      await UserUpdater.promises.updateUser(userId, {
+        $set: {
+          writefull: { enabled: true, autoCreatedAccount: true },
+        },
+      })
+      user.writefull.enabled = true
+      user.writefull.autoCreatedAccount = true
+    } else if (shouldAutoLoad) {
+      await UserUpdater.promises.updateUser(userId, {
+        $set: {
+          writefull: { enabled: true, autoCreatedAccount: false },
+        },
+      })
+      user.writefull.enabled = true
+      user.writefull.autoCreatedAccount = false
+    }
+  },
 }
 
 const defaultSettingsForAnonymousUser = userId => ({
@@ -1269,6 +1287,7 @@ const ProjectController = {
   _refreshFeatures: _ProjectController._refreshFeatures,
   _getPaywallPlansPrices: _ProjectController._getPaywallPlansPrices,
   _getAddonPrices: _ProjectController._getAddonPrices,
+  _setWritefullTrialState: _ProjectController._setWritefullTrialState,
 }
 
 export default ProjectController

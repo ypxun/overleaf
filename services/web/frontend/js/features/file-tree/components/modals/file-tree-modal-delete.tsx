@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
@@ -59,7 +60,12 @@ function FileTreeModalDelete() {
 
       <OLModalFooter>
         {inFlight ? (
-          <OLButton variant="danger" disabled isLoading />
+          <OLButton
+            variant="danger"
+            disabled
+            isLoading
+            loadingLabel={t('deleting')}
+          />
         ) : (
           <>
             <OLButton variant="secondary" onClick={handleHide}>

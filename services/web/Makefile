@@ -77,7 +77,7 @@ clean_ci:
 # Tests
 #
 
-test: test_unit test_acceptance test_frontend test_frontend_ct
+test: test_unit test_acceptance test_frontend test_frontend_ct test_writefull
 
 test_module: test_unit_module test_acceptance_module
 
@@ -142,7 +142,7 @@ test_unit_module: mongo_migrations_for_tests
 	$(MAKE) modules/$(MODULE_NAME)/test_unit
 
 mongo_migrations_for_tests:
-	$(DOCKER_COMPOSE) run --rm test_unit npm run migrations -- migrate -t saas || { $(DOCKER_COMPOSE) logs mongo; exit 42; }
+	$(DOCKER_COMPOSE) run --rm test_unit npm run migrations -- migrate -t saas
 
 #
 # Frontend tests
@@ -164,6 +164,14 @@ TEST_FRONTEND_CT_VARIANTS = \
 	test_frontend_ct_modules \
 	test_frontend_ct_editor_other \
 	test_frontend_ct_editor_visual \
+
+#
+# Writefull tests
+#
+
+test_writefull:
+	COMPOSE_PROJECT_NAME=writefull_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run --rm test_writefull
+	COMPOSE_PROJECT_NAME=writefull_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) down -v -t 0
 
 # Note: The below cypress targets are for CI only
 build_test_frontend_ct:
@@ -214,7 +222,7 @@ test_acceptance_app_server_pro: export COMPOSE_PROJECT_NAME=acceptance_test_serv
 test_acceptance_app_server_pro: export OVERLEAF_CONFIG=$(CFG_SERVER_PRO)
 
 $(TEST_ACCEPTANCE_APP):
-	$(DOCKER_COMPOSE) run --rm test_acceptance || { $(DOCKER_COMPOSE) logs mongo; exit 42; }
+	$(DOCKER_COMPOSE) run --rm test_acceptance
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # We are using _make magic_ for turning these file-targets into calls to
@@ -361,7 +369,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS = \
 	test_acceptance_modules_merged_server_pro \
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS):
-	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner || { $(DOCKER_COMPOSE) logs mongo; exit 42; }
+	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # outer loop for running saas tests in parallel
@@ -382,7 +390,7 @@ test_acceptance_modules_merged_saas_4: export COMPOSE_PROJECT_NAME = \
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export BASE_CONFIG = $(CFG_SAAS)
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): test_acceptance_modules_merged_saas_%:
-	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner_$* || { $(DOCKER_COMPOSE) logs mongo; exit 42; }
+	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner_$*
 	$(DOCKER_COMPOSE) down -v -t 0
 
 test_acceptance_modules: $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS)
@@ -472,6 +480,10 @@ format: format_pug
 format_pug:
 	npm run --silent format:pug
 
+format: format_jenkins
+format_jenkins:
+	npm run --silent format:jenkins
+
 format_fix:
 	npm run --silent format:fix
 
@@ -480,6 +492,9 @@ format_styles_fix:
 
 format_pug_fix:
 	npm run --silent format:pug:fix
+
+format_jenkins_fix:
+	npm run --silent format:jenkins:fix
 
 format_in_docker:
 	$(RUN_LINT_FORMAT) make format -j2 --output-sync
@@ -589,13 +604,19 @@ tar:
 
 build_storybook:
 	npm run lezer-latex:generate
-	npm run build-storybook
-	if [ -n "$(BRANCH_NAME)" ]; then \
-	  echo "Renaming storybook-static -> $(BRANCH_NAME)."; \
-	  d=$$(dirname "$(BRANCH_NAME)"); \
-	  mkdir -p "storybook-output/$$d"; \
-	  mv storybook-static "storybook-output/$$d/$$(basename "$(BRANCH_NAME)")/"; \
-	fi
+	mkdir -p data/storybook/
+	npm run build-storybook -- --output-dir data/storybook/$(BRANCH_NAME)
+
+storybook_index:
+	mkdir -p data/storybook/
+	m4 \
+		-DLIST="$(shell gsutil ls "${BUCKET}/" \
+										| sed -E "s@^${BUCKET}/([^/]+)/@\1@" \
+										| grep -v -e index.html \
+										| sort \
+										| tr '\n' ,)" \
+		-DBRANCH_NAME="${BRANCH_NAME}" .storybook/index.html.m4 \
+	> data/storybook/index.html
 
 MODULE_TARGETS = \
 	$(TEST_ACCEPTANCE_MODULES_SAAS) \

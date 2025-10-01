@@ -11,7 +11,11 @@ import {
   populateEditorRedesignSegmentation,
   useEditorAnalytics,
 } from '@/shared/hooks/use-editor-analytics'
-import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
+import {
+  isNewUser,
+  useIsNewEditorEnabled,
+} from '@/features/ide-redesign/utils/new-editor-utils'
+import { getSplitTestVariant } from '@/utils/splitTestUtils'
 
 export const ShortCompileTimeoutErrorState = () => {
   const { t } = useTranslation()
@@ -40,6 +44,22 @@ export const ShortCompileTimeoutErrorState = () => {
       content: 'blog',
     })
   }, [segmentation, sendEvent])
+
+  const extraSearchParams = useMemo(() => {
+    if (!isNewUser()) {
+      return undefined
+    }
+
+    const variant = getSplitTestVariant('editor-redesign-new-users')
+
+    if (!variant) {
+      return undefined
+    }
+
+    return {
+      itm_content: variant,
+    }
+  }, [])
 
   return (
     <ErrorState
@@ -75,7 +95,7 @@ export const ShortCompileTimeoutErrorState = () => {
           <p>
             <em>
               <Trans
-                i18nKey="were_reducing_compile_timeout"
+                i18nKey="weve_reduced_compile_timeout"
                 components={[
                   /* eslint-disable-next-line jsx-a11y/anchor-has-content, react/jsx-key */
                   <a
@@ -100,6 +120,7 @@ export const ShortCompileTimeoutErrorState = () => {
             source="compile-timeout"
             buttonProps={{ variant: 'premium', size: 'sm' }}
             segmentation={segmentation}
+            extraSearchParams={extraSearchParams}
           >
             {t('start_a_free_trial')}
           </StartFreeTrialButton>

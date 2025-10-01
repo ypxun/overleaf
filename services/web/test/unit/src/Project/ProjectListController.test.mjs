@@ -20,7 +20,8 @@ describe('ProjectListController', function () {
       first_name: 'bjkdsjfk',
       features: {},
       emails: [{ email: 'test@overleaf.com' }],
-      lastActive: new Date(1),
+      lastActive: new Date(2),
+      signUpDate: new Date(1),
       lastLoginIp: '111.111.111.112',
     }
     ctx.users = {
@@ -570,7 +571,25 @@ describe('ProjectListController', function () {
         }
         ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
       })
-      it('should show a linked group notification via domain capture', function (ctx) {
+      it('should show a group linked notification when domain capture enabled', function (ctx) {
+        ctx.req.session.saml = {
+          institutionEmail: ctx.institutionEmail,
+          linked: {
+            hasEntitlement: false,
+            universityName: ctx.institutionName,
+          },
+          domainCaptureEnabled: true,
+        }
+        ctx.res.render = (pageName, opts) => {
+          expect(opts.notificationsInstitution).to.deep.include({
+            email: ctx.institutionEmail,
+            institutionName: ctx.institutionName,
+            templateKey: 'notification_group_sso_linked',
+          })
+        }
+        ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+      })
+      it('should show a success notification when joining group via domain capture page', function (ctx) {
         ctx.req.session.saml = {
           linkedGroup: true,
           universityName: ctx.institutionName,

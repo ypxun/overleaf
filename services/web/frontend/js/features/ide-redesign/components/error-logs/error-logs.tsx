@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { ElementType, memo, useMemo, useState } from 'react'
+import { ElementType, memo, useCallback, useMemo, useState } from 'react'
 import { usePdfPreviewContext } from '@/features/pdf-preview/components/pdf-preview-provider'
 import StopOnFirstErrorPrompt from '@/features/pdf-preview/components/stop-on-first-error-prompt'
 import PdfPreviewError from '@/features/pdf-preview/components/pdf-preview-error'
@@ -14,6 +14,9 @@ import LogEntry from './log-entry'
 import importOverleafModules from '../../../../../macros/import-overleaf-module.macro'
 import TimeoutUpgradePromptNew from '@/features/pdf-preview/components/timeout-upgrade-prompt-new'
 import getMeta from '@/utils/meta'
+import PdfClearCacheButton from '@/features/pdf-preview/components/pdf-clear-cache-button'
+import PdfDownloadFilesButton from '@/features/pdf-preview/components/pdf-download-files-button'
+import { useIsNewErrorLogsPositionEnabled } from '../../utils/new-editor-utils'
 
 const logsComponents: Array<{
   import: { default: ElementType }
@@ -26,25 +29,42 @@ type ErrorLogTab = {
   entries: LogEntryData[] | undefined
 }
 
-function ErrorLogs() {
+function ErrorLogs({
+  includeActionButtons,
+}: {
+  includeActionButtons?: boolean
+}) {
   const { error, logEntries, rawLog, validationIssues, stoppedOnFirstError } =
     useCompileContext()
   const { compileTimeout } = getMeta('ol-compileSettings')
+  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
+  const { t } = useTranslation()
 
   const tabs = useMemo(() => {
     return [
-      { key: 'all', label: 'All', entries: logEntries?.all },
-      { key: 'errors', label: 'Errors', entries: logEntries?.errors },
-      { key: 'warnings', label: 'Warnings', entries: logEntries?.warnings },
-      { key: 'info', label: 'Info', entries: logEntries?.typesetting },
+      {
+        key: 'all',
+        label: newLogsPosition ? t('all') : t('all_logs'),
+        entries: logEntries?.all,
+      },
+      { key: 'errors', label: t('errors'), entries: logEntries?.errors },
+      { key: 'warnings', label: t('warnings'), entries: logEntries?.warnings },
+      { key: 'info', label: t('info'), entries: logEntries?.typesetting },
     ]
-  }, [logEntries])
+  }, [logEntries, newLogsPosition, t])
 
   const { loadingError } = usePdfPreviewContext()
 
-  const { t } = useTranslation()
-
   const [activeTab, setActiveTab] = useState<string | null>('all')
+
+  const changeTab = useCallback(
+    (key: string | null) => {
+      if (tabs.some(tab => tab.key === key)) {
+        setActiveTab(key)
+      }
+    },
+    [tabs]
+  )
 
   const entries = useMemo(() => {
     return tabs.find(tab => tab.key === activeTab)?.entries || []
@@ -54,7 +74,7 @@ function ErrorLogs() {
   const includeWarnings = activeTab === 'all' || activeTab === 'warnings'
 
   return (
-    <TabContainer onSelect={setActiveTab} defaultActiveKey={activeTab ?? 'all'}>
+    <TabContainer onSelect={changeTab} defaultActiveKey={activeTab ?? 'all'}>
       <Nav defaultActiveKey="all" className="error-logs-tabs">
         {tabs.map(tab => (
           <TabHeader key={tab.key} tab={tab} active={activeTab === tab.key} />
@@ -63,7 +83,7 @@ function ErrorLogs() {
       {logsComponents.map(({ import: { default: Component }, path }) => (
         <Component key={path} />
       ))}
-      <TabContent className="error-logs">
+      <TabContent className="error-logs new-error-logs">
         <div className="logs-pane-content">
           {stoppedOnFirstError && includeErrors && <StopOnFirstErrorPrompt />}
 
@@ -107,6 +127,13 @@ function ErrorLogs() {
               alwaysExpandRawContent
               showSourceLocationLink={false}
             />
+          )}
+
+          {includeActionButtons && (
+            <div className="logs-pane-actions">
+              <PdfClearCacheButton />
+              <PdfDownloadFilesButton />
+            </div>
           )}
         </div>
       </TabContent>

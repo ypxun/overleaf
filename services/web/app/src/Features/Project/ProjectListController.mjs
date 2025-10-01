@@ -25,7 +25,7 @@ import NotificationsBuilder from '../Notifications/NotificationsBuilder.js'
 import GeoIpLookup from '../../infrastructure/GeoIpLookup.js'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.js'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.js'
-import TutorialHandler from '../Tutorial/TutorialHandler.js'
+import TutorialHandler from '../Tutorial/TutorialHandler.mjs'
 import SubscriptionHelper from '../Subscription/SubscriptionHelper.js'
 import PermissionsManager from '../Authorization/PermissionsManager.js'
 import AnalyticsManager from '../Analytics/AnalyticsManager.js'
@@ -319,7 +319,9 @@ async function projectListPage(req, res, next) {
           institutionName:
             samlSession.linked.universityName ||
             samlSession.linked.providerName,
-          templateKey: 'notification_institution_sso_linked',
+          templateKey: samlSession.domainCaptureEnabled
+            ? 'notification_group_sso_linked'
+            : 'notification_institution_sso_linked',
         })
       }
 
@@ -534,6 +536,7 @@ async function projectListPage(req, res, next) {
     aiBlocked,
     hasAiAssist,
     lastActive: user.lastActive,
+    signUpDate: user.signUpDate,
   })
 }
 

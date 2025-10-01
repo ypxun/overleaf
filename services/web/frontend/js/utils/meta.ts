@@ -5,7 +5,7 @@ import { UserSettings } from '../../../types/user-settings'
 import { OAuthProviders } from '../../../types/oauth-providers'
 import { ExposedSettings } from '../../../types/exposed-settings'
 import {
-  type AllowedImageName,
+  type ImageName,
   OverallThemeMeta,
   type SpellCheckLanguage,
 } from '../../../types/project-settings'
@@ -64,8 +64,8 @@ import type { ScriptLogType } from '../../../modules/admin-panel/frontend/js/fea
 import { ActiveExperiment } from './labs-utils'
 import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
 import { AdminCapability } from '../../../types/admin-capabilities'
-import { GroupAuditLog } from '../../../modules/group-audit-log/frontend/js/components/logs'
 import { AlgoliaConfig } from '../../../modules/algolia-search/frontend/js/types'
+import { WritefullPublicEnv } from '@wf/domain/writefull-public-env'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -79,7 +79,6 @@ export interface Meta {
   'ol-algolia': AlgoliaConfig | undefined
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
   'ol-allowedExperiments': string[]
-  'ol-allowedImageNames': AllowedImageName[]
   'ol-anonymous': boolean
   'ol-baseAssetPath': string
   'ol-brandVariation': Record<string, any>
@@ -113,6 +112,7 @@ export interface Meta {
   'ol-detachRole': 'detached' | 'detacher' | ''
   'ol-dictionariesRoot': 'string'
   'ol-domainCaptureEnabled': boolean | undefined
+  'ol-domainCaptureTestURL': string | undefined
   'ol-dropbox': { error: boolean; registered: boolean }
   'ol-editorThemes': string[]
   'ol-email': string
@@ -162,6 +162,7 @@ export interface Meta {
     owned?: boolean
   }[]
   'ol-i18n': { currentLangCode: string }
+  'ol-imageNames': ImageName[]
   'ol-inactiveTutorials': string[]
   'ol-institutionEmailNonCanonical': string | undefined
   'ol-institutionLinked': InstitutionLink | undefined
@@ -186,7 +187,6 @@ export interface Meta {
   'ol-legacyEditorThemes': string[]
   'ol-licenseQuantity'?: number
   'ol-loadingText': string
-  'ol-logsForRendering': GroupAuditLog[]
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
   'ol-managedInstitutions': ManagedInstitution[]
   'ol-managedPublishers': Publisher[]
@@ -255,6 +255,7 @@ export interface Meta {
   'ol-showAiErrorAssistant': boolean
   'ol-showBrlGeoBanner': boolean
   'ol-showCouponField': boolean
+  'ol-showFilters': boolean
   'ol-showGroupDiscount': boolean
   'ol-showGroupsAndEnterpriseBanner': boolean
   'ol-showInrGeoBanner': boolean
@@ -277,6 +278,7 @@ export interface Meta {
     customerId: string
     subscriptionState: string | null
     paymentProviderService: StripePaymentProviderService | null
+    segment: string | null
   }
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
@@ -314,9 +316,8 @@ export interface Meta {
   'ol-validationStatus': ValidationStatus
   'ol-viaDomainCapture': boolean
   'ol-wikiEnabled': boolean
-  'ol-writefullCssUrl': string
   'ol-writefullEnabled': boolean
-  'ol-writefullJsUrl': string
+  'ol-writefullEnv': WritefullPublicEnv
   'ol-wsUrl': string
 }
 

@@ -8,10 +8,20 @@ import UserSessionsManager from '../User/UserSessionsManager.js'
 import OError from '@overleaf/o-error'
 import EmailsHelper from '../Helpers/EmailHelper.js'
 import { expressify } from '@overleaf/promise-utils'
+import { z, validateReq } from '../../infrastructure/Validation.js'
+
+const setNewUserPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().optional(),
+    password: z.string(),
+    passwordResetToken: z.string(),
+  }),
+})
 
 async function setNewUserPassword(req, res, next) {
   let user
-  let { passwordResetToken, password, email } = req.body
+  const { body } = validateReq(req, setNewUserPasswordSchema)
+  let { passwordResetToken, password, email } = body
   if (!passwordResetToken || !password) {
     return res.status(400).json({
       message: {
@@ -102,8 +112,15 @@ async function setNewUserPassword(req, res, next) {
   AuthenticationController.finishLogin(user, req, res, next)
 }
 
+const requestResetSchema = z.object({
+  body: z.object({
+    email: z.string(),
+  }),
+})
+
 async function requestReset(req, res, next) {
-  const email = EmailsHelper.parseEmail(req.body.email)
+  const { body } = validateReq(req, requestResetSchema)
+  const email = EmailsHelper.parseEmail(body.email)
   if (!email) {
     return res.status(400).json({
       message: req.i18n.translate('must_be_email_address'),
@@ -147,23 +164,32 @@ async function requestReset(req, res, next) {
   }
 }
 
+const renderSetPasswordFormSchema = z.object({
+  query: z.object({
+    email: z.string(),
+    passwordResetToken: z.string().optional(),
+  }),
+})
+
 async function renderSetPasswordForm(req, res, next) {
-  if (req.query.passwordResetToken != null) {
+  const { query } = validateReq(req, renderSetPasswordFormSchema)
+
+  if (query.passwordResetToken != null) {
     try {
       const result =
         await PasswordResetHandler.promises.getUserForPasswordResetToken(
-          req.query.passwordResetToken
+          query.passwordResetToken
         )
 
       const { user, remainingPeeks } = result || {}
       if (!user || remainingPeeks <= 0) {
         return res.redirect('/user/password/reset?error=token_expired')
       }
-      req.session.resetToken = req.query.passwordResetToken
+      req.session.resetToken = query.passwordResetToken
       let emailQuery = ''
 
-      if (typeof req.query.email === 'string') {
-        const email = EmailsHelper.parseEmail(req.query.email)
+      if (typeof query.email === 'string') {
+        const email = EmailsHelper.parseEmail(query.email)
         if (email) {
           emailQuery = `?email=${encodeURIComponent(email)}`
         }
@@ -182,7 +208,7 @@ async function renderSetPasswordForm(req, res, next) {
     return res.redirect('/user/password/reset')
   }
 
-  const email = EmailsHelper.parseEmail(req.query.email)
+  const email = EmailsHelper.parseEmail(query.email)
 
   // clean up to avoid leaking the token in the session object
   const passwordResetToken = req.session.resetToken
@@ -195,8 +221,15 @@ async function renderSetPasswordForm(req, res, next) {
   })
 }
 
+const renderRequestResetFormSchema = z.object({
+  query: z.object({
+    error: z.string().optional(),
+  }),
+})
+
 async function renderRequestResetForm(req, res) {
-  const errorQuery = req.query.error
+  const { query } = validateReq(req, renderRequestResetFormSchema)
+  const errorQuery = query.error
   let error = null
   if (errorQuery === 'token_expired') {
     error = 'password_reset_token_expired'

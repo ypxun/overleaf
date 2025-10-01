@@ -126,6 +126,7 @@ module.exports = {
         'chai-expect/missing-assertion': 'error',
         'chai-expect/terminating-properties': 'error',
         '@typescript-eslint/no-unused-expressions': 'off',
+        '@overleaf/require-vi-doMock-valid-path': 'error',
       },
     },
     {
@@ -530,6 +531,7 @@ module.exports = {
       rules: {
         '@overleaf/no-unnecessary-trans': 'error',
         '@overleaf/should-unescape-trans': 'error',
+        '@overleaf/require-loading-label': 'error',
 
         // https://astexplorer.net/
         'no-restricted-syntax': [

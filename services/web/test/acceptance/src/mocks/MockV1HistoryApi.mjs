@@ -4,7 +4,7 @@ import {
   zipAttachment,
   prepareZipAttachment,
 } from '../../../../app/src/infrastructure/Response.js'
-import Joi from 'joi'
+import { z } from 'zod'
 
 class MockV1HistoryApi extends AbstractMockApi {
   reset() {
@@ -15,20 +15,70 @@ class MockV1HistoryApi extends AbstractMockApi {
     this.blobs = {}
   }
 
+  computeBlobStats(historyId, blobHashes) {
+    let textBlobBytes = 0
+    let binaryBlobBytes = 0
+    let nTextBlobs = 0
+    let nBinaryBlobs = 0
+    if (!blobHashes) {
+      blobHashes = this.blobs[historyId]
+        ? Object.keys(this.blobs[historyId])
+        : []
+    }
+    for (const hash of blobHashes) {
+      const buf = this.blobs[historyId][hash]
+      if (buf) {
+        const size = buf.byteLength
+
+        // Check if the blob content is valid UTF-8
+        let isText = false
+        try {
+          const decoder = new TextDecoder('utf-8', { fatal: true })
+          decoder.decode(buf)
+          isText = true
+        } catch (e) {
+          // Not valid UTF-8, treat as binary
+          isText = false
+        }
+
+        if (isText) {
+          textBlobBytes += size
+          nTextBlobs++
+        } else {
+          binaryBlobBytes += size
+          nBinaryBlobs++
+        }
+      }
+    }
+
+    const totalBytes = textBlobBytes + binaryBlobBytes
+
+    return {
+      projectId: historyId,
+      textBlobBytes,
+      binaryBlobBytes,
+      totalBytes,
+      nTextBlobs,
+      nBinaryBlobs,
+    }
+  }
+
   applyRoutes() {
     this.app.post('/api/projects/blob-stats', (req, res, next) => {
       res.json(
+        // Calculate actual sizes from uploaded blobs
         req.body.projectIds.map(projectId => {
-          return {
-            projectId,
-            textBlobBytes: 7331,
-            binaryBlobBytes: 1337,
-            totalBytes: 7331 + 1337,
-            nTextBlobs: 13,
-            nBinaryBlobs: 42,
-          }
+          return this.computeBlobStats(projectId)
         })
       )
+    })
+
+    this.app.post('/api/projects/:historyId/blob-stats', (req, res, next) => {
+      const { historyId } = req.params
+      const { blobHashes } = req.body
+      // Calculate actual sizes from uploaded blobs
+      const result = this.computeBlobStats(historyId, blobHashes)
+      res.json(result)
     })
 
     this.app.get(
@@ -123,10 +173,10 @@ class MockV1HistoryApi extends AbstractMockApi {
     })
 
     this.app.post('/api/projects/:project_id/blobs/:hash', (req, res, next) => {
-      const schema = Joi.object({
-        copyFrom: Joi.number().required(),
+      const schema = z.object({
+        copyFrom: z.coerce.number(),
       })
-      const { error } = schema.validate(req.query)
+      const { error } = schema.safeParse(req.query)
       if (error) {
         return res.sendStatus(400)
       }

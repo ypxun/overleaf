@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { SubscriptionDashModalIds } from '../../../../../../../../types/subscription/dashboard/modal-ids'
 import { Trans, useTranslation } from 'react-i18next'
 import { useSubscriptionDashboardContext } from '@/features/subscription/context/subscription-dashboard-context'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
@@ -93,6 +94,7 @@ export function ConfirmUnpauseSubscriptionModal() {
           variant="primary"
           disabled={inflight}
           isLoading={inflight}
+          loadingLabel={t('unpausing')}
           onClick={handleConfirmUnpause}
         >
           {t('unpause_subscription')}

@@ -28,7 +28,7 @@ function activateUserVersion1x(url: string, password = DEFAULT_PASSWORD) {
 }
 
 describe('filestore migration', function () {
-  if (isExcludedBySharding('LOCAL_ONLY')) return
+  if (isExcludedBySharding('PRO_CUSTOM_5')) return
   const email = 'user@example.com'
   // Branding of env vars changed in 5.x
   const sharelatexBrandedVars = {
@@ -39,7 +39,7 @@ describe('filestore migration', function () {
   const projectName = `project-${uuid()}`
   let defaultImage: string
   let projectId: string
-  let waitForCompileRateLimitCoolOff: (fn: () => void) => void
+  let waitForCompile: (fn: () => void) => void
   const previousBinaryFiles: (() => void)[] = []
 
   function avoid502() {
@@ -55,7 +55,7 @@ describe('filestore migration', function () {
   ) {
     before(function () {
       login(email)
-      waitForCompileRateLimitCoolOff(() => {
+      waitForCompile(() => {
         cy.visit(`/project/${projectId}`)
       })
       previousBinaryFiles.push(prepareFileUploadTest(true))
@@ -112,8 +112,7 @@ describe('filestore migration', function () {
         .should('match', /\/project\/[a-fA-F0-9]{24}/)
         .then(url => (projectId = url.split('/').pop()!))
       let queueReset
-      ;({ waitForCompileRateLimitCoolOff, queueReset } =
-        prepareWaitForNextCompileSlot())
+      ;({ waitForCompile, queueReset } = prepareWaitForNextCompileSlot())
       queueReset()
 
       // Create a new binary file
@@ -265,7 +264,7 @@ describe('filestore migration', function () {
       createProject(projectName, { type: 'Example project', open: false }).then(
         id => (projectId = id)
       )
-      ;({ waitForCompileRateLimitCoolOff } = prepareWaitForNextCompileSlot())
+      ;({ waitForCompile } = prepareWaitForNextCompileSlot())
     })
   }
   addNewBinaryFileAndCheckPrevious()
@@ -298,7 +297,7 @@ describe('filestore migration', function () {
   // filestore-migration
   beforeEach(() => {
     login(email)
-    waitForCompileRateLimitCoolOff(() => {
+    waitForCompile(() => {
       openProjectById(projectId)
     })
     ensureStopOnFirstErrorIsActive()
@@ -327,7 +326,7 @@ describe('filestore migration', function () {
         .parent()
         .type(`\n\\section{{}Test Section ${id}}`)
 
-      waitForCompileRateLimitCoolOff(() => {
+      waitForCompile(() => {
         cy.findByRole('button', { name: 'Toggle compile options menu' }).click()
 
         cy.findByRole('menuitem', {
@@ -386,15 +385,39 @@ describe('filestore migration', function () {
 
         describe('purge filestore data', function () {
           before(async function () {
-            await purgeFilestoreData()
+            const deleted = await purgeFilestoreData()
+            expect(deleted).to.have.length.greaterThan(
+              previousBinaryFiles.length
+            )
+            expect(deleted).to.include(
+              "removed directory '/var/lib/overleaf/data/user_files'"
+            )
           })
           checkFilesAreAccessible()
+
+          describe('after next restart', function () {
+            startWith({
+              version: '5.5.5',
+              pro: true,
+              withDataDir: true,
+              vars: {
+                OVERLEAF_APP_NAME: 'change-config',
+                OVERLEAF_FILESTORE_MIGRATION_LEVEL: '2',
+              },
+            })
+            it('should not recreate the user_files folder', async function () {
+              expect(await purgeFilestoreData()).to.deep.equal([])
+            })
+          })
 
           describe('latest', function () {
             startWith({
               pro: true,
               withDataDir: true,
               vars: { OVERLEAF_FILESTORE_MIGRATION_LEVEL: '2' },
+            })
+            it('should not recreate the user_files folder', async function () {
+              expect(await purgeFilestoreData()).to.deep.equal([])
             })
             checkFilesAreAccessible()
           })

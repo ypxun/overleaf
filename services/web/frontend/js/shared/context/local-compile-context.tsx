@@ -25,7 +25,7 @@ import {
   buildRuleDeltas,
   handleLogFiles,
   handleOutputFiles,
-} from '../../features/pdf-preview/util/output-files'
+} from '@/features/pdf-preview/util/output-files'
 import { useProjectContext } from './project-context'
 import { useEditorContext } from './editor-context'
 import { buildFileList } from '../../features/pdf-preview/util/file-list'
@@ -81,7 +81,7 @@ export type CompileContext = {
   logEntryAnnotations?: Record<string, Annotation[]>
   outputFilesArchive?: string
   pdfDownloadUrl?: string
-  pdfFile?: PdfFile
+  pdfFile?: PdfFile | null
   pdfUrl?: string
   pdfViewer?: string
   position?: PdfScrollPosition
@@ -141,7 +141,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
 
   const { pdfPreviewOpen } = useLayoutContext()
 
-  const { features, alphaProgram, labsProgram } = useUserContext()
+  const { features, alphaProgram } = useUserContext()
 
   const { fileTreeData } = useFileTreeData()
   const { findEntityByPath } = useFileTreePathContext()
@@ -167,7 +167,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   const { pdfViewer, syntaxValidation } = userSettings
 
   // low level details for metrics
-  const [pdfFile, setPdfFile] = useState<PdfFile | undefined>()
+  const [pdfFile, setPdfFile] = useState<PdfFile | null | undefined>()
 
   // the project is considered to be "uncompiled" if a doc has changed, or finished saving, since the last compile started.
   const [uncompiled, setUncompiled] = useState(false)
@@ -296,7 +296,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   }, [compiling])
 
   const _buildLogEntryAnnotations = useCallback(
-    (entries: any) =>
+    (entries: LogEntry[]) =>
       buildLogEntryAnnotations(entries, fileTreeData, lastCompileRootDocId),
     [fileTreeData, lastCompileRootDocId]
   )
@@ -532,7 +532,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
                 )
               }
 
-              if (hasCompileLogsEvents || labsProgram) {
+              if (hasCompileLogsEvents) {
                 const ruleCounts = buildRuleCounts(
                   result.logEntries.all
                 ) as Record<string, number>
@@ -629,7 +629,6 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
     joinedOnce,
     data,
     alphaProgram,
-    labsProgram,
     features,
     hasCompileLogsEvents,
     hasPremiumCompile,

@@ -207,6 +207,7 @@ async function requestBlob(historyId, hash, method = 'GET', range = '') {
     url,
     stream,
     contentLength: parseInt(response.headers.get('Content-Length'), 10),
+    contentRange: response.headers.get('Content-Range'),
   }
 }
 
@@ -280,8 +281,8 @@ async function getLatestHistory(projectId) {
  * Get history changes since a given version
  *
  * @param {string} projectId
- * @param {object} opts
- * @param {number} opts.since - The start version of changes to get
+ * @param {object} [opts]
+ * @param {number} [opts.since] - The start version of changes to get
  */
 async function getChanges(projectId, opts = {}) {
   const historyId = await getHistoryId(projectId)
@@ -305,6 +306,14 @@ async function getHistoryId(projectId) {
     throw new OError('project does not have a history id', { projectId })
   }
   return historyId
+}
+
+async function getBlobStats(historyId, blobHashes) {
+  return await fetchJson(`${HISTORY_V1_URL}/projects/${historyId}/blob-stats`, {
+    method: 'POST',
+    basicAuth: HISTORY_V1_BASIC_AUTH,
+    json: { blobHashes: blobHashes.map(id => id.toString()) },
+  })
 }
 
 async function getProjectBlobStats(historyIds) {
@@ -427,5 +436,6 @@ module.exports = {
     getLatestHistory,
     getChanges,
     getProjectBlobStats,
+    getBlobStats,
   },
 }

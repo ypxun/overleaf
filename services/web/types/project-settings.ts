@@ -1,9 +1,11 @@
 import { Brand } from './helpers/brand'
 import { OverallTheme } from '@/shared/utils/styles'
 
-export type AllowedImageName = {
+export type ImageName = {
   imageDesc: string
   imageName: string
+  allowed: boolean
+  rolling?: boolean
 }
 
 export type DocId = Brand<string, 'DocId'>
