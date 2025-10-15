@@ -30,6 +30,14 @@ class HasPastDueInvoiceError extends OError {}
 
 class HasNoAdditionalLicenseWhenManuallyCollectedError extends OError {}
 
+class InvalidTaxIdError extends OError {}
+
+class StripeClientIdempotencyKeyInUseError extends OError {
+  constructor() {
+    super('Stripe idempotency key was already in use')
+  }
+}
+
 /**
  * @typedef {Object} PaymentActionRequiredInfo
  * @property {string} PaymentActionRequiredInfo.clientSecret
@@ -72,4 +80,6 @@ module.exports = {
   SubtotalLimitExceededError,
   HasPastDueInvoiceError,
   HasNoAdditionalLicenseWhenManuallyCollectedError,
+  InvalidTaxIdError,
+  StripeClientIdempotencyKeyInUseError,
 }

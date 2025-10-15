@@ -14,7 +14,7 @@ import TagsHandler from '../Tags/TagsHandler.js'
 import { expressify } from '@overleaf/promise-utils'
 import logger from '@overleaf/logger'
 import Features from '../../infrastructure/Features.js'
-import SubscriptionViewModelBuilder from '../Subscription/SubscriptionViewModelBuilder.js'
+import SubscriptionViewModelBuilder from '../Subscription/SubscriptionViewModelBuilder.mjs'
 import NotificationsHandler from '../Notifications/NotificationsHandler.js'
 import Modules from '../../infrastructure/Modules.js'
 import { OError, V1ConnectionError } from '../Errors/Errors.js'
@@ -27,7 +27,7 @@ import SplitTestHandler from '../SplitTests/SplitTestHandler.js'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.js'
 import TutorialHandler from '../Tutorial/TutorialHandler.mjs'
 import SubscriptionHelper from '../Subscription/SubscriptionHelper.js'
-import PermissionsManager from '../Authorization/PermissionsManager.js'
+import PermissionsManager from '../Authorization/PermissionsManager.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.js'
 
 /**
@@ -535,8 +535,12 @@ async function projectListPage(req, res, next) {
     customerIoEnabled,
     aiBlocked,
     hasAiAssist,
-    lastActive: user.lastActive,
-    signUpDate: user.signUpDate,
+    lastActive: user.lastActive
+      ? Math.floor(user.lastActive.getTime() / 1000)
+      : null,
+    signUpDate: user.signUpDate
+      ? Math.floor(user.signUpDate.getTime() / 1000)
+      : null,
   })
 }
 

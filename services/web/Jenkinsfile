@@ -1,17 +1,3 @@
-// Initialize variables to signal that a given stage finished.
-// We use them to build a graph of interconnected steps/dependencies.
-// - Incoming edges use "waitUntil" and reference the given variables of dependencies.
-// - Outgoing edges set the given variable to true.
-def action_test_frontend_ct_build = false
-def action_build_deps = false
-def action_copy_external_pages = false
-def action_build_dev = false
-def action_test_acceptance_app_server_pro = false
-def action_build_webpack = false
-def action_test_acceptance_app_saas = false
-def action_build_pug = false
-def action_build_production = false
-
 pipeline {
   agent {
     node {
@@ -24,9 +10,6 @@ pipeline {
   options {
     // Print timestamp next to each log line.
     timestamps()
-    // Abort build after hitting first failure.
-    parallelsAlwaysFailFast()
-    retry(3)
     timeout(time: 15, unit: 'MINUTES')
   }
   environment {
@@ -45,34 +28,8 @@ pipeline {
     CDN_PROD = "gs://mgcp-1117973-ol-prod-web-assets-1"
   }
   stages {
-    // Retries will use the same pipeline instance. Reset the vars.
-    stage('Reset vars') {
-      steps {
-        script {
-          action_test_frontend_ct_build = false
-          action_build_deps = false
-          action_copy_external_pages = false
-          action_build_dev = false
-          action_test_acceptance_app_server_pro = false
-          action_build_webpack = false
-          action_test_acceptance_app_saas = false
-          action_build_pug = false
-          action_build_production = false
-        }
-      }
-    }
-    stage ('Build, Test and Push') {
+    stage('Stage 1') {
       parallel {
-        stage('Copy external pages') {
-          steps {
-            dir('services/web') {
-              sh 'bin/copy_external_pages'
-              script {
-                action_copy_external_pages = true
-              }
-            }
-          }
-        }
         stage('Prefetch Tests Images') {
           steps {
             dir('services/web') {
@@ -80,50 +37,33 @@ pipeline {
             }
           }
         }
-        stage('Build Deps') {
+        stage('Build') {
           steps {
             dir('services/web') {
-              sh 'make build_deps'
-            }
-            script {
-              action_build_deps = true
+              sh 'bin/copy_external_pages'
+              retry(count: 3) {
+                sh 'make build_deps'
+              }
+              retry(count: 3) {
+                sh 'make build_dev'
+              }
+              sh 'make build_test_frontend_ct'
             }
           }
         }
+      }
+    }
+    stage('Stage 2') {
+      parallel {
         stage('Push Deps') {
           steps {
-            script {
-              waitUntil {
-                return action_build_deps
-              }
-            }
             dir('services/web') {
               sh 'docker push ${AR_URL}/${IMAGE_NAME}:${BRANCH_NAME}-deps'
             }
           }
         }
-        stage('Build Dev') {
+        stage('Format') {
           steps {
-            script {
-              waitUntil {
-                return action_build_deps && action_copy_external_pages
-              }
-            }
-            dir('services/web') {
-              sh 'make build_dev'
-            }
-            script {
-              action_build_dev = true
-            }
-          }
-        }
-        stage ('Format') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
               sh 'make format_in_docker'
             }
@@ -131,13 +71,14 @@ pipeline {
         }
         stage('Lint') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
               sh 'make lint_in_docker'
+            }
+          }
+          post {
+            always {
+              recordIssues checksAnnotationScope: 'ALL', enabledForFailure: true, failOnError: true, id: 'web-eslint', name: 'Web eslint', qualityGates: [[integerThreshold: 1, threshold: 1.0, type: 'TOTAL']], sourceCodeRetention: 'LAST_BUILD', tools: [esLint(pattern: 'services/web/data/reports/eslint.json')]
+              recordIssues checksAnnotationScope: 'ALL', enabledForFailure: true, failOnError: true, id: 'web-stylelint', name: 'Web stylelint', qualityGates: [[integerThreshold: 1, threshold: 1.0, type: 'TOTAL']], sourceCodeRetention: 'LAST_BUILD', tools: [styleLint(pattern: 'services/web/data/reports/stylelint.json')]
             }
           }
         }
@@ -150,154 +91,100 @@ pipeline {
         }
         stage('Acceptance SaaS') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh 'make test_acceptance_app_saas'
-            }
-            script {
-              action_test_acceptance_app_saas = true
+              retry(count: 3) {
+                sh 'make test_acceptance_app_saas'
+              }
             }
           }
         }
         stage('Acceptance Server CE') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_app_server_ce"
+              retry(count: 3) {
+                sh "make test_acceptance_app_server_ce"
+              }
             }
           }
         }
         stage('Acceptance Server Pro') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_app_server_pro"
-            }
-            script {
-              action_test_acceptance_app_server_pro = true
+              retry(count: 3) {
+                sh "make test_acceptance_app_server_pro"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_saas_1') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_saas_1"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_saas_1"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_saas_2') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_saas_2"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_saas_2"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_saas_3') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_saas_3"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_saas_3"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_saas_4') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_saas_4"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_saas_4"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_server_ce') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_server_ce"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_server_ce"
+              }
             }
           }
         }
         stage('test_acceptance_modules_merged_server_pro') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_acceptance_modules_merged_server_pro"
+              retry(count: 3) {
+                sh "make test_acceptance_modules_merged_server_pro"
+              }
             }
           }
         }
         stage('test_frontend') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend"
+              retry(count: 3) {
+                sh "make test_frontend"
+              }
             }
           }
         }
         stage('test_writefull') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_writefull"
-            }
-          }
-        }
-        stage('test_frontend_ct_build') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_dev
+              retry(count: 3) {
+                sh "make test_writefull"
               }
-            }
-            dir('services/web') {
-              sh "make build_test_frontend_ct"
-            }
-            script {
-              action_test_frontend_ct_build = true
             }
           }
         }
@@ -306,13 +193,10 @@ pipeline {
             CYPRESS_INTERNAL_BROWSER_CONNECT_TIMEOUT = '120000'
           }
           steps {
-            script {
-              waitUntil {
-                return action_test_frontend_ct_build
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend_ct_core_other"
+              retry(count: 3) {
+                sh "make test_frontend_ct_core_other"
+              }
             }
           }
         }
@@ -321,13 +205,10 @@ pipeline {
             CYPRESS_INTERNAL_BROWSER_CONNECT_TIMEOUT = '120000'
           }
           steps {
-            script {
-              waitUntil {
-                return action_test_frontend_ct_build
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend_ct_core_features"
+              retry(count: 3) {
+                sh "make test_frontend_ct_core_features"
+              }
             }
           }
         }
@@ -336,138 +217,102 @@ pipeline {
             CYPRESS_INTERNAL_BROWSER_CONNECT_TIMEOUT = '120000'
           }
           steps {
-            script {
-              waitUntil {
-                return action_test_frontend_ct_build
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend_ct_modules"
+              retry(count: 3) {
+                sh "make test_frontend_ct_modules"
+              }
             }
           }
         }
         stage('test_frontend_ct_editor_visual') {
           steps {
-            script {
-              waitUntil {
-                return action_test_frontend_ct_build
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend_ct_editor_visual"
+              retry(count: 3) {
+                sh "make test_frontend_ct_editor_visual"
+              }
             }
           }
         }
         stage('test_frontend_ct_editor_other') {
           steps {
-            script {
-              waitUntil {
-                return action_test_frontend_ct_build
-              }
-            }
             dir('services/web') {
-              sh "make test_frontend_ct_editor_other"
+              retry(count: 3) {
+                sh "make test_frontend_ct_editor_other"
+              }
             }
           }
         }
         stage('Test Unit ESM') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_unit_esm"
+              retry(count: 3) {
+                sh "make test_unit_esm"
+              }
             }
           }
         }
         stage('Test Unit Mocha') {
           steps {
-            script {
-              waitUntil {
-                return action_build_dev
-              }
-            }
             dir('services/web') {
-              sh "make test_unit_mocha"
+              retry(count: 3) {
+                sh "make test_unit_mocha"
+              }
             }
           }
         }
-        stage('Build Webpack') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_dev && action_test_acceptance_app_server_pro
+        stage('Build webpack + production + cdn upload + sentry upload') {
+          stages {
+            stage('Wait a bit to give tests all the CPU capacity') {
+              steps {
+                sh 'sleep 90'
               }
             }
-            dir('services/web') {
-              sh 'make build_webpack'
-            }
-            script {
-              action_build_webpack = true
-            }
-          }
-        }
-        stage('Build Pug') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_dev && action_test_acceptance_app_server_pro
+            stage('Build Webpack') {
+              steps {
+                dir('services/web') {
+                  sh 'make build_webpack'
+                }
               }
             }
-            dir('services/web') {
-              sh 'make build_pug'
-            }
-            script {
-              action_build_pug = true
-            }
-          }
-        }
-        stage('CDN Upload Image') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_webpack
+            stage('Build Pug') {
+              steps {
+                dir('services/web') {
+                  sh 'make build_pug'
+                }
               }
             }
-            dir('services/web') {
-              sh 'make tar'
-              sh 'bin/cdn_upload'
-            }
-          }
-        }
-        stage('Build Production') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_webpack && action_build_pug
+            stage('CDN Upload Image') {
+              steps {
+                dir('services/web') {
+                  sh 'make tar'
+                  retry(count: 3) {
+                    sh 'bin/cdn_upload'
+                  }
+                }
               }
             }
-            dir('services/web') {
-              sh 'make build'
-            }
-            script {
-              action_build_production = true
-            }
-          }
-        }
-        stage('Sentry Upload') {
-          steps {
-            script {
-              waitUntil {
-                return action_build_webpack && action_build_production
+            stage('Build Production') {
+              steps {
+                dir('services/web') {
+                  sh 'make build'
+                }
               }
             }
-            dir('services/web') {
-              sh 'gcloud secrets versions access latest --secret=web-sentryclirc > .sentryclirc'
-              sh 'make sentry_upload'
-            }
-          }
-          post {
-            cleanup {
-              dir('services/web') {
-                sh 'rm -f .sentryclirc'
+            stage('Sentry Upload') {
+              steps {
+                dir('services/web') {
+                  sh 'gcloud secrets versions access latest --secret=web-sentryclirc > .sentryclirc'
+                  retry(count: 3) {
+                    sh 'make sentry_upload'
+                  }
+                }
+              }
+              post {
+                cleanup {
+                  dir('services/web') {
+                    sh 'rm -f .sentryclirc'
+                  }
+                }
               }
             }
           }
@@ -483,12 +328,15 @@ pipeline {
     }
   }
   post {
+    always {
+      junit checksName: 'Web test results', testResults: 'services/web/data/reports/junit-*.xml,services/web/data/reports/junit-*/**/*.xml'
+    }
     // Ensure tear down of test containers, then run general Jenkins VM cleanup.
     cleanup {
       dir('services/web') {
         sh 'make clean -j10'
       }
-      sh 'make clean_jenkins'
+      sh 'make clean_jenkins -j10'
     }
   }
 }

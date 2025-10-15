@@ -23,8 +23,7 @@ pipeline {
     timestamps()
     // Abort build after hitting first failure.
     parallelsAlwaysFailFast()
-    retry(3)
-    timeout(time: 15, unit: 'MINUTES')
+    timeout(time: 20, unit: 'MINUTES')
   }
   environment {
     BRANCH_NAME = "${GIT_BRANCH.replace('origin/', '')}"
@@ -64,8 +63,9 @@ pipeline {
       parallel {
         stage('Install deps') {
           steps {
-            sh 'make install -j10'
-            sh 'make -C server-ce/test npm_install_in_docker'
+            retry(count: 3) {
+              sh 'make monorepo_setup'
+            }
             script {
               job_npm_install_done = true
             }
@@ -85,9 +85,7 @@ pipeline {
                 return job_npm_install_done
               }
             }
-            dir('server-ce/test') {
-              sh 'make format_in_docker'
-            }
+            sh 'bin/run -w /overleaf/server-ce/test monorepo npm run format'
           }
         }
         stage('Copybara') {
@@ -106,8 +104,12 @@ pipeline {
               }
             }
             dir('copybara/public/repo/server-ce') {
-              sh 'make build-base'
-              sh 'make build-community'
+              retry(count: 3) {
+                sh 'make build-base'
+              }
+              retry(count: 3) {
+                sh 'make build-community'
+              }
             }
             script {
               job_server_ce_build_done = true
@@ -138,7 +140,9 @@ pipeline {
               }
             }
             dir('server-pro') {
-              sh 'make build-ci'
+              retry(count: 3) {
+                sh 'make build-ci'
+              }
             }
             script {
               job_server_pro_build_done = true
@@ -189,7 +193,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -205,7 +211,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -221,7 +229,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -237,7 +247,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -253,7 +265,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -269,7 +283,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -285,7 +301,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -301,7 +319,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -317,7 +337,9 @@ pipeline {
               }
             }
             dir('server-ce/test') {
-              sh 'make test-e2e'
+              retry(count: 3) {
+                sh 'make test-e2e'
+              }
             }
           }
         }
@@ -340,7 +362,7 @@ pipeline {
       dir('server-pro') {
         sh 'make clean'
       }
-      sh 'make clean_jenkins'
+      sh 'make clean_jenkins -j10'
     }
   }
 }

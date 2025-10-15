@@ -158,7 +158,7 @@ async function generateUniqueName(userId, name, suffixes = []) {
     _.flattenDeep(_.values(allUsersProjectNames)),
     'name'
   )
-  const uniqueName = await ProjectHelper.promises.ensureNameIsUnique(
+  const uniqueName = ProjectHelper.ensureNameIsUnique(
     projectNameList,
     name,
     suffixes,
@@ -233,7 +233,7 @@ async function clearTokens(projectId) {
   ).exec()
 }
 
-async function _generateTokens(project, callback) {
+async function _generateTokens(project) {
   if (!project.tokens) {
     project.tokens = {}
   }

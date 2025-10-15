@@ -10,10 +10,12 @@ services:
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     user: node
     volumes:
+      - ./reports:/overleaf/services/history-v1/reports
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: npm run test:unit:_run
     environment:
+      CI:
       MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
@@ -32,6 +34,7 @@ services:
     build: .
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
+      CI:
       ELASTIC_SEARCH_DSN: es:9200
       REDIS_HOST: redis_test
       QUEUES_REDIS_HOST: redis_test
@@ -41,6 +44,7 @@ services:
       POSTGRES_HOST: postgres
       AWS_S3_ENDPOINT: https://minio:9000
       AWS_S3_PATH_STYLE: 'true'
+      DELETE_OBJECTS_MD5_FALLBACK: true
       AWS_ACCESS_KEY_ID: OVERLEAF_HISTORY_S3_ACCESS_KEY_ID
       AWS_SECRET_ACCESS_KEY: OVERLEAF_HISTORY_S3_SECRET_ACCESS_KEY
       MINIO_ROOT_USER: MINIO_ROOT_USER
@@ -52,6 +56,7 @@ services:
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
     volumes:
+      - ./reports:/overleaf/services/history-v1/reports
       - minio-certs:/certs
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
     depends_on:
@@ -119,7 +124,7 @@ services:
     build:
       dockerfile_inline: |
         FROM node:22.18.0
-        RUN wget -O /certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-$(dpkg --print-architecture)"
+        RUN wget -O /certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-"`dpkg --print-architecture`
         RUN chmod +x /certgen
     volumes:
       - minio-certs:/certs
@@ -188,7 +193,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-chunks/*"
               },
@@ -204,7 +212,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-deks/*"
               },
@@ -220,7 +231,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-global-blobs/*"
               },
@@ -236,7 +250,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-project-blobs/*"
               }
