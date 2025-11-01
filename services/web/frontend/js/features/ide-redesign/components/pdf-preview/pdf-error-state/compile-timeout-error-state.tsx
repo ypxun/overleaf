@@ -3,25 +3,25 @@ import MaterialIcon from '@/shared/components/material-icon'
 import { Trans, useTranslation } from 'react-i18next'
 import { useDetachCompileContext as useCompileContext } from '@/shared/context/detach-compile-context'
 import { useStopOnFirstError } from '@/shared/hooks/use-stop-on-first-error'
+import { sendMB } from '@/infrastructure/event-tracking'
 import { useCallback, useMemo } from 'react'
 import ErrorState from './error-state'
 import StartFreeTrialButton from '@/shared/components/start-free-trial-button'
 import getMeta from '@/utils/meta'
-import {
-  populateEditorRedesignSegmentation,
-  useEditorAnalytics,
-} from '@/shared/hooks/use-editor-analytics'
+import { populateEditorRedesignSegmentation } from '@/shared/hooks/use-editor-analytics'
 import {
   isNewUser,
   useIsNewEditorEnabled,
 } from '@/features/ide-redesign/utils/new-editor-utils'
-import { getSplitTestVariant } from '@/utils/splitTestUtils'
+import { getSplitTestVariant, isSplitTestEnabled } from '@/utils/splitTestUtils'
 
 export const ShortCompileTimeoutErrorState = () => {
   const { t } = useTranslation()
   const { isProjectOwner } = useCompileContext()
-  const { sendEvent } = useEditorAnalytics()
   const newEditor = useIsNewEditorEnabled()
+  const shouldHideCompileTimeoutInfo = isSplitTestEnabled(
+    'compile-timeout-remove-info'
+  )
 
   const { compileTimeout } = getMeta('ol-compileSettings')
   const segmentation = useMemo(
@@ -36,14 +36,6 @@ export const ShortCompileTimeoutErrorState = () => {
       ),
     [isProjectOwner, compileTimeout, newEditor]
   )
-
-  const sendInfoClickEvent = useCallback(() => {
-    sendEvent('paywall-info-click', {
-      ...segmentation,
-      'paywall-type': 'compile-timeout',
-      content: 'blog',
-    })
-  }, [segmentation, sendEvent])
 
   const extraSearchParams = useMemo(() => {
     if (!isNewUser()) {
@@ -91,28 +83,11 @@ export const ShortCompileTimeoutErrorState = () => {
       }
       iconType="running_with_errors"
       extraContent={
-        <div className="pdf-error-state-info-box">
-          <p>
-            <em>
-              <Trans
-                i18nKey="weve_reduced_compile_timeout"
-                components={[
-                  /* eslint-disable-next-line jsx-a11y/anchor-has-content, react/jsx-key */
-                  <a
-                    aria-label={t(
-                      'read_more_about_free_compile_timeouts_servers'
-                    )}
-                    href="/blog/changes-to-free-compile-timeout"
-                    rel="noopener noreferrer"
-                    target="_blank"
-                    onClick={sendInfoClickEvent}
-                  />,
-                ]}
-              />
-            </em>
-          </p>
-          <ReasonsForTimeoutInfo />
-        </div>
+        !shouldHideCompileTimeoutInfo && (
+          <div className="pdf-error-state-info-box">
+            <ReasonsForTimeoutInfo />
+          </div>
+        )
       }
       actions={
         isProjectOwner && (
@@ -175,7 +150,16 @@ const ReasonsForTimeoutInfo = () => {
               i18nKey="project_timed_out_optimize_images"
               components={[
                 // eslint-disable-next-line jsx-a11y/anchor-has-content, react/jsx-key
-                <a href="https://www.overleaf.com/learn/how-to/Optimising_very_large_image_files" />,
+                <a
+                  href="https://www.overleaf.com/learn/how-to/Optimising_very_large_image_files"
+                  onClick={() => {
+                    sendMB('paywall-info-click', {
+                      'paywall-type': 'compile-timeout',
+                      content: 'docs',
+                      type: 'optimize',
+                    })
+                  }}
+                />,
               ]}
             />
           </li>
@@ -184,7 +168,16 @@ const ReasonsForTimeoutInfo = () => {
               i18nKey="a_fatal_compile_error_that_completely_blocks_compilation"
               components={[
                 // eslint-disable-next-line jsx-a11y/anchor-has-content, react/jsx-key
-                <a href="https://www.overleaf.com/learn/how-to/Why_do_I_keep_getting_the_compile_timeout_error_message%3F#Fatal_compile_errors_blocking_the_compilation" />,
+                <a
+                  href="https://www.overleaf.com/learn/how-to/Why_do_I_keep_getting_the_compile_timeout_error_message%3F#Fatal_compile_errors_blocking_the_compilation"
+                  onClick={() => {
+                    sendMB('paywall-info-click', {
+                      'paywall-type': 'compile-timeout',
+                      content: 'docs',
+                      type: 'fatal-error',
+                    })
+                  }}
+                />,
               ]}
             />
             {!lastCompileOptions.stopOnFirstError && (
@@ -217,6 +210,13 @@ const ReasonsForTimeoutInfo = () => {
                 href="/learn/how-to/Fixing_and_preventing_compile_timeouts"
                 rel="noopener noreferrer"
                 target="_blank"
+                onClick={() => {
+                  sendMB('paywall-info-click', {
+                    'paywall-type': 'compile-timeout',
+                    content: 'docs',
+                    type: 'learn-more',
+                  })
+                }}
               />,
             ]}
           />

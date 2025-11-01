@@ -4,10 +4,10 @@ import Settings from '@overleaf/settings'
 import PlansLocator from './PlansLocator.js'
 import { isStandaloneAiAddOnPlanCode } from './AiHelper.js'
 import { MEMBERS_LIMIT_ADD_ON_CODE } from './PaymentProviderEntities.js'
-import SubscriptionFormatters from './SubscriptionFormatters.js'
+import SubscriptionFormatters from './SubscriptionFormatters.mjs'
 import SubscriptionLocator from './SubscriptionLocator.js'
-import InstitutionsGetter from '../Institutions/InstitutionsGetter.js'
-import InstitutionsManager from '../Institutions/InstitutionsManager.js'
+import InstitutionsGetter from '../Institutions/InstitutionsGetter.mjs'
+import InstitutionsManager from '../Institutions/InstitutionsManager.mjs'
 import PublishersGetter from '../Publishers/PublishersGetter.js'
 import sanitizeHtml from 'sanitize-html'
 import _ from 'lodash'
@@ -34,20 +34,6 @@ function serializeMongooseObject(object) {
   return object && typeof object.toObject === 'function'
     ? object.toObject()
     : object
-}
-
-async function isEligibleForGroupPlan(service, isInTrial) {
-  if (isInTrial) {
-    return false
-  }
-
-  if (service === 'recurly') {
-    return true
-  }
-  const [result] = await Modules.promises.hooks.fire(
-    'canUpgradeFromIndividualToGroup'
-  )
-  return result
 }
 
 async function buildUsersSubscriptionViewModel(user, locale = 'en') {
@@ -310,10 +296,7 @@ async function buildUsersSubscriptionViewModel(user, locale = 'en') {
       pausedAt: paymentRecord.subscription.pausePeriodStart,
       remainingPauseCycles: paymentRecord.subscription.remainingPauseCycles,
       isEligibleForPause,
-      isEligibleForGroupPlan: await isEligibleForGroupPlan(
-        paymentRecord.subscription.service,
-        isInTrial
-      ),
+      isEligibleForGroupPlan: !isInTrial,
     }
 
     const isMonthlyCollaboratorPlan =

@@ -5,10 +5,13 @@ import Errors from '../../../../app/src/Features/Errors/Errors.js'
 
 const ObjectId = mongodb.ObjectId
 
-const MODULE_PATH = new URL(
-  '../../../../app/src/Features/Project/ProjectListController',
-  import.meta.url
-).pathname
+const MODULE_PATH = `${import.meta.dirname}/../../../../app/src/Features/Project/ProjectListController`
+
+// Mock AnalyticsManager as it isn't used in these tests but causes the User model to be imported
+// TODO: remove this once all models are ESM and this kind of mocking is no longer necessary
+vi.mock('../../../../app/src/Features/Analytics/AnalyticsManager.js', () => {
+  return {}
+})
 
 describe('ProjectListController', function () {
   beforeEach(async function (ctx) {
@@ -23,6 +26,16 @@ describe('ProjectListController', function () {
       lastActive: new Date(2),
       signUpDate: new Date(1),
       lastLoginIp: '111.111.111.112',
+      ace: {
+        syntaxValidation: true,
+        pdfViewer: 'pdfjs',
+        spellCheckLanguage: 'en',
+        autoPairDelimiters: true,
+        autoComplete: true,
+        fontSize: 12,
+        theme: 'textmate',
+        mode: 'none',
+      },
     }
     ctx.users = {
       'user-1': {
@@ -54,6 +67,22 @@ describe('ProjectListController', function () {
     ctx.settings = {
       siteUrl: 'https://overleaf.com',
     }
+    ctx.onboardingDataCollection = {
+      companyDivisionDepartment: '',
+      companyJobTitle: '',
+      firstName: 'Dos',
+      governmentJobTitle: '',
+      institutionName: '',
+      lastName: 'Mukasan',
+      nonprofitDivisionDepartment: '',
+      nonprofitJobTitle: '',
+      otherJobTitle: '',
+      primaryOccupation: 'company',
+      role: 'conductor',
+      subjectArea: 'music',
+      updatedAt: '2025-09-04T12:12:21.628Z',
+      usedLatex: 'occasionally',
+    }
     ctx.TagsHandler = {
       promises: {
         getAllTags: sinon.stub().resolves(ctx.tags),
@@ -66,6 +95,9 @@ describe('ProjectListController', function () {
     }
     ctx.UserModel = {
       findById: sinon.stub().resolves(ctx.user),
+    }
+    ctx.OnboardingDataCollectionModel = {
+      findById: sinon.stub().resolves(ctx.onboardingDataCollection),
     }
     ctx.UserPrimaryEmailCheckHandler = {
       requiresPrimaryEmailCheck: sinon.stub().returns(false),
@@ -207,6 +239,10 @@ describe('ProjectListController', function () {
 
     vi.doMock('../../../../app/src/models/User', () => ({
       User: ctx.UserModel,
+    }))
+
+    vi.doMock('../../../../app/src/models/OnboardingDataCollection', () => ({
+      OnboardingDataCollection: ctx.OnboardingDataCollectionModel,
     }))
 
     vi.doMock('../../../../app/src/Features/Project/ProjectGetter', () => ({
@@ -518,6 +554,101 @@ describe('ProjectListController', function () {
       })
     })
 
+    describe('when user linked to SSO', function () {
+      const linkedEmail = 'picard@starfleet.com'
+      const universityName = 'Starfleet'
+      const notificationData = {
+        email: linkedEmail,
+        institutionName: universityName,
+      }
+      beforeEach(function (ctx) {
+        ctx.Features.hasFeature.withArgs('saml').returns(true)
+        ctx.req.session.saml = {
+          institutionEmail: linkedEmail,
+          linked: {
+            universityName,
+          },
+        }
+      })
+
+      it('should render with Commons template when Commons was linked', async function (ctx) {
+        await new Promise(resolve => {
+          ctx.res.render = (pageName, opts) => {
+            expect(opts.notificationsInstitution).to.deep.equal([
+              Object.assign(
+                { templateKey: 'notification_institution_sso_linked' },
+                notificationData
+              ),
+            ])
+            resolve()
+          }
+          ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+        })
+      })
+
+      describe('when via domain capture', function () {
+        beforeEach(function (ctx) {
+          ctx.req.session.saml.domainCaptureEnabled = true
+        })
+
+        it('should render with group template', async function (ctx) {
+          await new Promise(resolve => {
+            ctx.res.render = (pageName, opts) => {
+              expect(opts.notificationsInstitution).to.deep.equal([
+                Object.assign(
+                  { templateKey: 'notification_group_sso_linked' },
+                  notificationData
+                ),
+              ])
+              resolve()
+            }
+            ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+          })
+        })
+
+        describe('user created via domain capture and group is managed', function () {
+          beforeEach(function (ctx) {
+            ctx.req.session.saml.userCreatedViaDomainCapture = true
+          })
+          it('should render with notification_group_sso_linked', async function (ctx) {
+            await new Promise(resolve => {
+              ctx.res.render = (pageName, opts) => {
+                expect(opts.notificationsInstitution).to.deep.equal([
+                  Object.assign(
+                    {
+                      templateKey: 'notification_group_sso_linked',
+                    },
+                    notificationData
+                  ),
+                ])
+                resolve()
+              }
+              ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+            })
+          })
+
+          it('should render with notification_account_created_via_group_domain_capture_and_managed_users_enabled when managed user is enabled', async function (ctx) {
+            ctx.req.session.saml.managedUsersEnabled = true
+            await new Promise(resolve => {
+              ctx.res.render = (pageName, opts) => {
+                expect(opts.notificationsInstitution).to.deep.equal([
+                  Object.assign(
+                    {
+                      templateKey:
+                        'notification_account_created_via_group_domain_capture_and_managed_users_enabled',
+                    },
+                    notificationData
+                  ),
+                ])
+                resolve()
+              }
+              ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+            })
+          })
+        })
+      })
+    })
+
     describe('With Institution SSO feature', function () {
       beforeEach(async function (ctx) {
         await new Promise(resolve => {
@@ -774,6 +905,29 @@ describe('ProjectListController', function () {
             })
           }
           ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+        })
+      })
+      describe('group domain capture enabled for domain', function () {
+        it('does not show institution SSO available notification', function (ctx) {
+          ctx.UserGetter.promises.getUserFullEmails.resolves([
+            {
+              email: 'test@overleaf.com',
+              affiliation: {
+                group: { domainCaptureEnabled: true },
+                institution: {
+                  id: 1,
+                  confirmed: true,
+                  name: 'Overleaf',
+                  ssoBeta: false,
+                  ssoEnabled: true,
+                },
+              },
+            },
+          ])
+          ctx.res.render = (pageName, opts) => {
+            expect(opts.notificationsInstitution).to.deep.equal([])
+            ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+          }
         })
       })
     })

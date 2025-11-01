@@ -223,6 +223,7 @@ describe('CompileController', function () {
                 url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
                 type: 'zip',
               },
+              clsiCachePromptVariant: 'default',
               pdfDownloadDomain: 'https://compiles.overleaf.test',
             })
           )
@@ -247,6 +248,7 @@ describe('CompileController', function () {
             timings: undefined,
             outputUrlPrefix: '/zone/b',
             buildId: ctx.build_id,
+            clsiCachePromptVariant: 'default',
           })
           await ctx.CompileController.compile(ctx.req, ctx.res, ctx.next)
         })
@@ -268,6 +270,7 @@ describe('CompileController', function () {
                 url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
                 type: 'zip',
               },
+              clsiCachePromptVariant: 'default',
               outputUrlPrefix: '/zone/b',
               pdfDownloadDomain: 'https://compiles.overleaf.test/zone/b',
             })
@@ -318,6 +321,7 @@ describe('CompileController', function () {
               url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
               type: 'zip',
             },
+            clsiCachePromptVariant: 'default',
           })
         )
       })
@@ -779,7 +783,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'priority',
-              compileBackendClass: 'c2d',
+              compileBackendClass: 'c4d',
             })
           await ctx.CompileController._proxyToClsi(
             ctx.projectId,
@@ -794,7 +798,7 @@ describe('CompileController', function () {
 
         it('should open a request to the CLSI', function (ctx) {
           ctx.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=priority&compileBackendClass=c2d`
+            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=priority&compileBackendClass=c4d`
           )
         })
       })

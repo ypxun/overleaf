@@ -8,7 +8,7 @@ const {
   LezerGrammarCompilerPlugin,
 } = require('./webpack-plugins/lezer-grammar-compiler')
 
-const PackageVersions = require('./app/src/infrastructure/PackageVersions')
+const PackageVersions = require('./app/src/infrastructure/PackageVersions.js')
 const invalidateBabelCacheIfNeeded = require('./frontend/macros/invalidate-babel-cache-if-needed')
 
 // Make sure that babel-macros are re-evaluated after changing the modules config
@@ -233,6 +233,30 @@ module.exports = {
               },
               {
                 loader: 'postcss-loader',
+              },
+            ],
+          },
+          {
+            // CSS from writefull module - inject directly into DOM
+            include: path.resolve(__dirname, 'modules/writefull/'),
+            use: [
+              'style-loader',
+              {
+                loader: 'css-loader',
+                options: {
+                  importLoaders: 1,
+                },
+              },
+              {
+                loader: 'postcss-loader',
+                options: {
+                  postcssOptions: {
+                    config: path.resolve(
+                      __dirname,
+                      'modules/writefull/frontend/js/integration/postcss.config.js'
+                    ),
+                  },
+                },
               },
             ],
           },

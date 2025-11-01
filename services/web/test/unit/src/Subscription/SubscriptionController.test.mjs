@@ -264,17 +264,6 @@ describe('SubscriptionController', function () {
       })
     )
 
-    vi.doMock('celebrate', () => ({
-      default: (ctx.celebrate = {
-        celebrate: sinon.stub(),
-        errors: sinon.stub(),
-        Joi: {
-          any: sinon.stub(),
-          extend: sinon.stub(),
-        },
-      }),
-    }))
-
     vi.doMock(
       '../../../../app/src/Features/Subscription/GroupPlansData',
       () => ({
@@ -506,6 +495,28 @@ describe('SubscriptionController', function () {
 
     it('should load an empty list of groups with settings available', function (ctx) {
       expect(ctx.data.groupSettingsEnabledFor).to.deep.equal([])
+    })
+
+    describe('when errorCode query param is present', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.query.errorCode = 'payment_failed'
+        await new Promise((resolve, reject) => {
+          ctx.res.render = (view, data) => {
+            ctx.data = data
+            expect(view).to.equal('subscriptions/dashboard-react')
+            resolve()
+          }
+          ctx.SubscriptionController.userSubscriptionPage(
+            ctx.req,
+            ctx.res,
+            ctx.rejectOnError(reject)
+          )
+        })
+      })
+
+      it('should pass redirectedPaymentErrorCode to the view', function (ctx) {
+        expect(ctx.data.redirectedPaymentErrorCode).to.equal('payment_failed')
+      })
     })
   })
 
@@ -1527,11 +1538,41 @@ describe('SubscriptionController', function () {
         await ctx.SubscriptionController.previewAddonPurchase(ctx.req, ctx.res)
 
         expect(ctx.res.render).to.have.been.calledWith(
-          'subscriptions/preview-change'
+          'subscriptions/preview-change',
+          sinon.match({
+            changePreview: sinon.match.object,
+            purchaseReferrer: 'fake-referrer',
+            redirectedPaymentErrorCode: undefined,
+          })
         )
         expect(
           ctx.SubscriptionHandler.promises.previewAddonPurchase
         ).to.have.been.calledWith(ctx.user._id, 'assistant')
+      })
+
+      it('should pass redirectedPaymentErrorCode to the view when errorCode query param is present', async function (ctx) {
+        const normalSubscription = {
+          _id: 'sub-123',
+          customAccount: false,
+          collectionMethod: 'automatic',
+        }
+        ctx.SubscriptionLocator.promises.getUsersSubscription.resolves(
+          normalSubscription
+        )
+        ctx.req.query.errorCode = 'payment_failed'
+
+        ctx.res.render = sinon.stub()
+
+        await ctx.SubscriptionController.previewAddonPurchase(ctx.req, ctx.res)
+
+        expect(ctx.res.render).to.have.been.calledWith(
+          'subscriptions/preview-change',
+          sinon.match({
+            changePreview: sinon.match.object,
+            purchaseReferrer: 'fake-referrer',
+            redirectedPaymentErrorCode: 'payment_failed',
+          })
+        )
       })
 
       it('should proceed with preview when customAccount is undefined and collectionMethod is automatic', async function (ctx) {

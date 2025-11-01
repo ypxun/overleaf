@@ -1,8 +1,8 @@
 import Crypto from 'node:crypto'
 import Settings from '@overleaf/settings'
 import RedisWrapper from '../../infrastructure/RedisWrapper.js'
-import ProjectGetter from '../Project/ProjectGetter.js'
-import ProjectRootDocManager from '../Project/ProjectRootDocManager.js'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
+import ProjectRootDocManager from '../Project/ProjectRootDocManager.mjs'
 import UserGetter from '../User/UserGetter.js'
 import ClsiManager from './ClsiManager.mjs'
 import Metrics from '@overleaf/metrics'
@@ -135,7 +135,7 @@ async function _getProjectCompileLimits(project) {
     timeout:
       ownerFeatures.compileTimeout || Settings.defaultFeatures.compileTimeout,
     compileGroup,
-    compileBackendClass: compileGroup === 'standard' ? 'n2d' : 'c2d',
+    compileBackendClass: compileGroup === 'standard' ? 'n2d' : 'c4d',
     ownerAnalyticsId: analyticsId,
   }
   return limits

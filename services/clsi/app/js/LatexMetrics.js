@@ -8,6 +8,9 @@ function convertToMs(timeStr) {
   return Math.floor(parseFloat(timeStr, 10) * 1000)
 }
 
+const NOTEWORTHY_DEPENDENCIES_REGEXP =
+  /\/(beamer\.cls|tikz\.sty|microtype\.sty|minted\.sty)$/
+
 /* An array of metric parsers for `latexmk` time output (`-time` flag).
  * Each entry is a tuple containing a metric name and a function to parse that
  * metric from the `latexmk` log output.
@@ -19,7 +22,7 @@ function convertToMs(timeStr) {
  * There are different formats of `latexmk` output depending on the version.
  * The parsers attempt to handle these variations gracefully.
  */
-const LATEX_MK_METRICS = [
+const LATEX_MK_METRICS_STDOUT = [
   // Extract individual latexmk rule times as an array of objects, each with 'rule'
   // and 'time_ms' properties
   [
@@ -97,18 +100,71 @@ const LATEX_MK_METRICS = [
   ],
 ]
 
+const LATEX_MK_METRICS_STDERR = [
+  [
+    'latexmk-img-times',
+    s => {
+      const pngCategoriesByFile = new Map()
+      const pngCopyMatches = s.matchAll(/^PNG copy: (.*)$/gm)
+      for (const match of pngCopyMatches) {
+        const filename = match[1]
+        pngCategoriesByFile.set(filename, 'fast-copy')
+      }
+
+      const pngCopySkipMatches = s.matchAll(
+        /^PNG copy skipped \((alpha|gamma|palette|interlaced)\): (.*)$/gm
+      )
+      for (const match of pngCopySkipMatches) {
+        const category = match[1]
+        const filename = match[2]
+        pngCategoriesByFile.set(filename, category)
+      }
+
+      const timingMatches = s.matchAll(
+        /^Image written \((PNG|JPG|JBIG2|PDF), (\d+) ms\): (.*)$/gm
+      )
+      const timingsByType = new Map()
+      for (const match of timingMatches) {
+        let type = match[1]
+        const timeMs = parseInt(match[2], 10)
+        const filename = match[3]
+
+        if (type === 'PNG') {
+          const pngCategory = pngCategoriesByFile.get(filename)
+          if (pngCategory != null) {
+            type = `PNG-${pngCategory}`
+          }
+        }
+
+        const accumulatedTime = timingsByType.get(type) ?? 0
+        timingsByType.set(type, accumulatedTime + timeMs)
+      }
+      return Array.from(timingsByType.entries()).map(([type, timeMs]) => ({
+        type,
+        time_ms: timeMs,
+      }))
+    },
+  ],
+]
+
 /**
  * Parses latexmk stdout for metrics and adds them to the stats object.
  * It iterates through a predefined list of metric matchers (LATEX_MK_METRICS),
  * applies them to the stdout, and adds any successful matches to the
  * `stats.latexmk` object.
  *
- * @param {{stdout?: string}} output - The output from the latexmk process.
+ * @param {{stdout?: string, stderr?: string}} output - The output from the latexmk process.
  * @param {{latexmk: object}} stats - The statistics object to update. This object is mutated.
  */
 function addLatexMkMetrics(output, stats) {
-  for (const [stat, matcher] of LATEX_MK_METRICS) {
+  for (const [stat, matcher] of LATEX_MK_METRICS_STDOUT) {
     const match = matcher(output?.stdout || '', stats.latexmk)
+    if (match) {
+      stats.latexmk[stat] = match
+    }
+  }
+  for (const [stat, matcher] of LATEX_MK_METRICS_STDERR) {
+    const match = matcher(output?.stderr || '', stats.latexmk)
     if (match) {
       stats.latexmk[stat] = match
     }
@@ -152,33 +208,36 @@ function addLatexFdbMetrics(fdbContent, stats) {
   if (!fdbContent) {
     return
   }
-  const { systemFileTypes, userFileTypes } = parseFdbContent(fdbContent)
+  const { systemFileTypes, userFileTypes, dependencies } =
+    parseFdbContent(fdbContent)
 
   if (
-    Object.keys(systemFileTypes).length === 0 &&
-    Object.keys(userFileTypes).length === 0
+    Object.keys(systemFileTypes).length > 0 ||
+    Object.keys(userFileTypes).length > 0
   ) {
-    return
+    const userSummary = summarizeFileTypes(userFileTypes)
+    const systemSummary = summarizeFileTypes(systemFileTypes)
+
+    stats.latexmk['fdb-file-types'] = {
+      total: {
+        systemFileCount: systemSummary.total.count,
+        systemFileSize: systemSummary.total.size,
+        imageFileCount: userSummary.image.count,
+        imageFileSize: userSummary.image.size,
+        textFileCount: userSummary.text.count,
+        textFileSize: userSummary.text.size,
+        fontFileCount: userSummary.font.count,
+        fontFileSize: userSummary.font.size,
+        otherFileCount: userSummary.other.count,
+        otherFileSize: userSummary.other.size,
+      },
+      system: convertToArray(systemFileTypes),
+      user: convertToArray(userFileTypes),
+    }
   }
 
-  const userSummary = summarizeFileTypes(userFileTypes)
-  const systemSummary = summarizeFileTypes(systemFileTypes)
-
-  stats.latexmk['fdb-file-types'] = {
-    total: {
-      systemFileCount: systemSummary.total.count,
-      systemFileSize: systemSummary.total.size,
-      imageFileCount: userSummary.image.count,
-      imageFileSize: userSummary.image.size,
-      textFileCount: userSummary.text.count,
-      textFileSize: userSummary.text.size,
-      fontFileCount: userSummary.font.count,
-      fontFileSize: userSummary.font.size,
-      otherFileCount: userSummary.other.count,
-      otherFileSize: userSummary.other.size,
-    },
-    system: convertToArray(systemFileTypes),
-    user: convertToArray(userFileTypes),
+  if (dependencies.length > 0) {
+    stats.latexmk['fdb-dependencies'] = dependencies
   }
 }
 
@@ -186,6 +245,7 @@ function parseFdbContent(fdbContent) {
   const systemFileTypes = {}
   const userFileTypes = {}
   const seenFiles = new Set()
+  const dependencies = new Set()
   // Extract the file path and size from lines like:
   //  FILENAME TIMESTAMP SIZE CHECKSUM ...
   //  "main.tex" 1760016467 6147 9da336eb1132ecb1d61cd1f5a70cfa62 ""
@@ -208,9 +268,19 @@ function parseFdbContent(fdbContent) {
     }
     fileTypes[ext].count++
     fileTypes[ext].size += fileSize
+
+    const depMatch = filePath.match(NOTEWORTHY_DEPENDENCIES_REGEXP)
+    if (depMatch) {
+      dependencies.add(depMatch[1])
+    }
+
     seenFiles.add(filePath)
   }
-  return { systemFileTypes, userFileTypes }
+  return {
+    systemFileTypes,
+    userFileTypes,
+    dependencies: Array.from(dependencies),
+  }
 }
 
 function getFileTypeCategory(ext) {

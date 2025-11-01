@@ -33,6 +33,8 @@ block append meta
 	meta(name='ol-survey' data-type='json' content=survey)
 	meta(name='ol-tags' data-type='json' content=tags)
 	meta(name='ol-portalTemplates' data-type='json' content=portalTemplates)
+	meta(name='ol-userSettings' data-type='json' content=userSettings)
+	meta(name='ol-overallThemes' data-type='json' content=overallThemes)
 	meta(
 		name='ol-prefetchedProjectsBlob'
 		data-type='json'
@@ -89,6 +91,7 @@ block append meta
 		data-type='string'
 		content=usGovBannerVariant
 	)
+	meta(name='ol-inactiveTutorials' data-type='json' content=inactiveTutorials)
 
 block content
 	#project-list-root

@@ -40,6 +40,8 @@ const KNOWN_LATEXMK_RULES = new Set([
   'xelatex',
 ])
 
+const LATEX_PASSES_RULES = new Set(['latex', 'lualatex', 'xelatex', 'pdflatex'])
+
 function getCompileName(projectId, userId) {
   if (userId != null) {
     return `${projectId}-${userId}`
@@ -559,6 +561,13 @@ async function _runSynctex(projectId, userId, command, opts) {
       let downloadedFromCache = false
       try {
         await _checkFileExists(directory, 'output.synctex.gz')
+        if (compileFromClsiCache) {
+          try {
+            await _checkFileExists(directory, 'output.log')
+          } catch (err) {
+            if (err instanceof Errors.NotFoundError) downloadedFromCache = true
+          }
+        }
       } catch (err) {
         if (
           err instanceof Errors.NotFoundError &&
@@ -735,6 +744,48 @@ function _emitMetrics(request, status, stats, timings) {
     }
   }
 
+  const runs = stats.latexmk?.['latexmk-rule-times']
+  let passes = 0
+  if (runs != null) {
+    let cumulativeRuleTimeMs = 0
+    for (const run of runs) {
+      if (LATEX_PASSES_RULES.has(run.rule)) {
+        passes += 1
+      }
+
+      const rule = KNOWN_LATEXMK_RULES.has(run.rule) ? run.rule : 'other'
+      ClsiMetrics.latexmkRuleDurationSeconds.observe(
+        {
+          group: request.compileGroup,
+          rule,
+        },
+        run.time_ms / 1000
+      )
+      cumulativeRuleTimeMs += run.time_ms
+    }
+
+    const totalTimeMs = stats.latexmk?.['latexmk-time']?.total
+    if (totalTimeMs != null) {
+      ClsiMetrics.latexmkRuleDurationSeconds.observe(
+        { group: request.compileGroup, rule: 'overhead' },
+        (totalTimeMs - cumulativeRuleTimeMs) / 1000
+      )
+    }
+  }
+
+  const imgTimings = stats.latexmk?.['latexmk-img-times']
+  if (imgTimings != null) {
+    for (const timing of imgTimings) {
+      ClsiMetrics.imageProcessingDurationSeconds.observe(
+        {
+          group: request.compileGroup,
+          type: timing.type,
+        },
+        timing.time_ms / 1000
+      )
+    }
+  }
+
   ClsiMetrics.compilesTotal.inc({
     status,
     engine: request.compiler,
@@ -743,6 +794,7 @@ function _emitMetrics(request, status, stats, timings) {
     group: request.compileGroup,
     draft: request.draft ? 'true' : 'false',
     stop_on_first_error: request.stopOnFirstError ? 'true' : 'false',
+    passes,
   })
 
   if (timings.sync != null) {
@@ -763,6 +815,7 @@ function _emitMetrics(request, status, stats, timings) {
         engine: request.compiler,
         compile: request.metricsOpts.compile,
         group: request.compileGroup,
+        passes: passes === 0 ? 'none' : passes === 1 ? 'single' : 'multiple',
       },
       timings.compile / 1000
     )
@@ -780,20 +833,6 @@ function _emitMetrics(request, status, stats, timings) {
 
   if (timings.compileE2E != null) {
     ClsiMetrics.e2eCompileDurationSeconds.observe(timings.compileE2E / 1000)
-  }
-
-  const runs = stats.latexmk?.['latexmk-rule-times']
-  if (runs != null) {
-    for (const run of runs) {
-      const rule = KNOWN_LATEXMK_RULES.has(run.rule) ? run.rule : 'other'
-      ClsiMetrics.latexmkRuleDurationSeconds.observe(
-        {
-          group: request.compileGroup,
-          rule,
-        },
-        run.time_ms / 1000
-      )
-    }
   }
 }
 

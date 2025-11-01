@@ -146,7 +146,7 @@ test_unit_module: mongo_migrations_for_tests
 	$(MAKE) modules/$(MODULE_NAME)/test_unit
 
 mongo_migrations_for_tests:
-	$(DOCKER_COMPOSE) run --rm test_unit npm run migrations -- migrate -t saas
+	$(DOCKER_COMPOSE) run --rm --workdir /overleaf/tools/migrations test_unit npm run migrations -- migrate -t saas
 
 #
 # Frontend tests
@@ -183,21 +183,26 @@ test_writefull:
 build_test_frontend_ct:
 	docker run --rm --volume /dev/shm:/dev/shm --user root $(IMAGE_CI) bash -ec 'for path in /overleaf/services/web/cypress/results /overleaf/services/web/node_modules/.cache; do mkdir -p $$path; chown -R node:node $$path; done && tar -cC / overleaf | tar -xC /dev/shm'
 
+test_frontend_ct_core_other: export CYPRESS_DOWNLOADS=./cypress/downloads/core
 test_frontend_ct_core_other: export CYPRESS_RESULTS=./cypress/results/core
 test_frontend_ct_core_other: export CYPRESS_SPEC_PATTERN=./test/frontend/**/*.spec.{js,jsx,ts,tsx}
 test_frontend_ct_core_other: export CYPRESS_EXCLUDE_SPEC_PATTERN=./test/frontend/features/**/*.spec.{js,jsx,ts,tsx}
 
+test_frontend_ct_core_features: export CYPRESS_DOWNLOADS=./cypress/downloads/core
 test_frontend_ct_core_features: export CYPRESS_RESULTS=./cypress/results/core
 test_frontend_ct_core_features: export CYPRESS_SPEC_PATTERN=./test/frontend/features/**/*.spec.{js,jsx,ts,tsx}
 test_frontend_ct_core_features: export CYPRESS_EXCLUDE_SPEC_PATTERN=./test/frontend/features/source-editor/**/*.spec.{js,jsx,ts,tsx}
 
+test_frontend_ct_modules: export CYPRESS_DOWNLOADS=./cypress/downloads/modules
 test_frontend_ct_modules: export CYPRESS_RESULTS=./cypress/results/modules
 test_frontend_ct_modules: export CYPRESS_SPEC_PATTERN=./modules/**/test/frontend/**/*.spec.{js,jsx,ts,tsx}
 
+test_frontend_ct_editor_other: export CYPRESS_DOWNLOADS=./cypress/downloads/editor_other
 test_frontend_ct_editor_other: export CYPRESS_RESULTS=./cypress/results/editor_other
 test_frontend_ct_editor_other: export CYPRESS_SPEC_PATTERN=./test/frontend/features/source-editor/**/*.spec.{js,jsx,ts,tsx}
 test_frontend_ct_editor_other: export CYPRESS_EXCLUDE_SPEC_PATTERN=./test/frontend/features/source-editor/components/codemirror-editor-visual*.spec.{js,jsx,ts,tsx}
 
+test_frontend_ct_editor_visual: export CYPRESS_DOWNLOADS=./cypress/downloads/editor_visual
 test_frontend_ct_editor_visual: export CYPRESS_RESULTS=./cypress/results/editor_visual
 test_frontend_ct_editor_visual: export CYPRESS_SPEC_PATTERN=./test/frontend/features/source-editor/components/codemirror-editor-visual*.spec.{js,jsx,ts,tsx}
 
@@ -546,18 +551,40 @@ shellcheck_fix:
 
 IMAGE_CI ?= ci/$(PROJECT_NAME):$(BRANCH_NAME)-$(BUILD_NUMBER)
 IMAGE_REPO ?= us-east1-docker.pkg.dev/overleaf-ops/ol-docker/$(PROJECT_NAME)
-IMAGE_REPO_BRANCH ?= $(IMAGE_REPO):$(BRANCH_NAME)
-IMAGE_REPO_MAIN ?= $(IMAGE_REPO):main
-IMAGE_REPO_FINAL ?= $(IMAGE_REPO_BRANCH)-$(BUILD_NUMBER)
+IMAGE_REPO_FINAL ?= $(IMAGE_REPO):$(BRANCH_NAME)-$(BUILD_NUMBER)
+# A shared scratch tag that is used by all the pipelines for pushing the layers of the production image ASAP from a parallel step.
+# We do not want to make the image available before all the tests have passed.
+# Using a single tag avoids generating cruft in our docker repository / AR.
+IMAGE_SCRATCH ?= $(IMAGE_REPO):do-not-use-this-tag-for-deploys--it-is-used-for-early-pushes-in-ci
+IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
+	$(MONOREPO)/package.json \
+	$(MONOREPO)/package-lock.json \
+	$(MONOREPO)/libraries/access-token-encryptor/package.json \
+  $(MONOREPO)/libraries/eslint-plugin/package.json \
+  $(MONOREPO)/libraries/fetch-utils/package.json \
+  $(MONOREPO)/libraries/logger/package.json \
+  $(MONOREPO)/libraries/metrics/package.json \
+  $(MONOREPO)/libraries/mongo-utils/package.json \
+  $(MONOREPO)/libraries/o-error/package.json \
+  $(MONOREPO)/libraries/object-persistor/package.json \
+  $(MONOREPO)/libraries/overleaf-editor-core/package.json \
+  $(MONOREPO)/libraries/promise-utils/package.json \
+  $(MONOREPO)/libraries/ranges-tracker/package.json \
+  $(MONOREPO)/libraries/redis-wrapper/package.json \
+  $(MONOREPO)/libraries/settings/package.json \
+  $(MONOREPO)/libraries/stream-utils/package.json \
+  $(MONOREPO)/libraries/validation-tools/package.json \
+	$(MONOREPO)/services/web/package.json \
+	$(MONOREPO)/patches/* \
+| sha256sum | cut -d '-' -f1)
 
 export SENTRY_RELEASE ?= ${COMMIT_SHA}
 
 build_deps:
 	docker build --pull \
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
-		--cache-from $(IMAGE_REPO_BRANCH)-deps \
-		--cache-from $(IMAGE_REPO_MAIN)-deps \
-		--tag $(IMAGE_REPO_BRANCH)-deps \
+		--cache-from $(IMAGE_CACHE) \
+		--tag $(IMAGE_CACHE) \
 		--target deps \
 		--file Dockerfile \
 		../..
@@ -578,8 +605,6 @@ build_webpack:
 build_webpack_once:
 	docker build \
 		--build-arg SENTRY_RELEASE \
-		--cache-from $(IMAGE_CI)-dev \
-		--cache-from $(IMAGE_CI)-webpack \
 		--tag $(IMAGE_CI)-webpack \
 		--target webpack \
 		--file Dockerfile \
@@ -588,7 +613,6 @@ build_webpack_once:
 build_pug:
 	docker build \
 		--build-arg SENTRY_RELEASE \
-		--cache-from $(IMAGE_CI)-dev \
 		--tag $(IMAGE_CI)-pug \
 		--target pug \
 		--file Dockerfile \
@@ -597,16 +621,20 @@ build_pug:
 build:
 	docker build \
 		--build-arg SENTRY_RELEASE \
-		--cache-from $(IMAGE_CI)-webpack \
-		--cache-from $(IMAGE_CI)-pug \
-		--cache-from $(IMAGE_REPO_FINAL) \
 		--tag $(IMAGE_REPO_FINAL) \
+		--tag $(IMAGE_SCRATCH) \
 		--target app \
 		--file Dockerfile \
 		../..
 
 publish:
 	docker push $(IMAGE_REPO_FINAL)
+
+push_branch:
+	docker push $(IMAGE_CACHE)
+
+push_scratch:
+	docker push $(IMAGE_SCRATCH)
 
 SENTRY_IMAGE=getsentry/sentry-cli:2.16.1
 sentry_prefetch:

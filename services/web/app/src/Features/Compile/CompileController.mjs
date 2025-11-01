@@ -3,7 +3,7 @@ import { pipeline } from 'node:stream/promises'
 import { Cookie } from 'tough-cookie'
 import OError from '@overleaf/o-error'
 import Metrics from '@overleaf/metrics'
-import ProjectGetter from '../Project/ProjectGetter.js'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
 import CompileManager from './CompileManager.mjs'
 import ClsiManager from './ClsiManager.mjs'
 import logger from '@overleaf/logger'
@@ -12,7 +12,7 @@ import Errors from '../Errors/Errors.js'
 import SessionManager from '../Authentication/SessionManager.js'
 import { RateLimiter } from '../../infrastructure/RateLimiter.js'
 import Validation from '../../infrastructure/Validation.js'
-import ClsiCookieManagerFactory from './ClsiCookieManager.js'
+import ClsiCookieManagerFactory from './ClsiCookieManager.mjs'
 import Path from 'node:path'
 import AnalyticsManager from '../Analytics/AnalyticsManager.js'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.js'
@@ -73,8 +73,27 @@ async function _getSplitTestOptions(req, res) {
       res,
       'populate-clsi-cache'
     )
-  const populateClsiCache = populateClsiCacheVariant === 'enabled'
-  const compileFromClsiCache = populateClsiCache // use same split-test
+  let populateClsiCache = populateClsiCacheVariant === 'enabled'
+  let compileFromClsiCache = populateClsiCache // use same split-test
+
+  let clsiCachePromptVariant = 'default'
+  if (!populateClsiCache) {
+    // Pre-populate the cache for the users in the split-test for prompts.
+    // Keep the compile from cache disabled for now.
+    const { variant } = await SplitTestHandler.promises.getAssignment(
+      editorReq,
+      res,
+      'populate-clsi-cache-for-prompt'
+    )
+    ;({ variant: clsiCachePromptVariant } =
+      await SplitTestHandler.promises.getAssignment(
+        editorReq,
+        res,
+        'clsi-cache-prompt'
+      ))
+    populateClsiCache = variant === 'enabled'
+    compileFromClsiCache = populateClsiCache
+  }
 
   const pdfDownloadDomain = Settings.pdfDownloadDomain
 
@@ -83,6 +102,7 @@ async function _getSplitTestOptions(req, res) {
     return {
       compileFromClsiCache,
       populateClsiCache,
+      clsiCachePromptVariant,
       pdfDownloadDomain,
       enablePdfCaching: false,
     }
@@ -102,6 +122,7 @@ async function _getSplitTestOptions(req, res) {
     return {
       compileFromClsiCache,
       populateClsiCache,
+      clsiCachePromptVariant,
       pdfDownloadDomain,
       enablePdfCaching: false,
     }
@@ -110,6 +131,7 @@ async function _getSplitTestOptions(req, res) {
   return {
     compileFromClsiCache,
     populateClsiCache,
+    clsiCachePromptVariant,
     pdfDownloadDomain,
     enablePdfCaching,
     pdfCachingMinChunkSize,
@@ -201,6 +223,7 @@ const _CompileController = {
     let {
       compileFromClsiCache,
       populateClsiCache,
+      clsiCachePromptVariant,
       enablePdfCaching,
       pdfCachingMinChunkSize,
       pdfDownloadDomain,
@@ -256,12 +279,7 @@ const _CompileController = {
           status,
           compileTime: timings?.compileE2E,
           timeout: limits.timeout,
-          server:
-            clsiServerId?.includes('-c2d-') ||
-            clsiServerId?.includes('-c3d-') ||
-            clsiServerId?.includes('-c4d-')
-              ? 'faster'
-              : 'normal',
+          server: clsiServerId?.includes('-c4d-') ? 'faster' : 'normal',
           clsiServerId,
           isAutoCompile,
           isInitialCompile: stats?.isInitialCompile === 1,
@@ -283,6 +301,11 @@ const _CompileController = {
       compileGroup: limits?.compileGroup,
       clsiServerId,
       clsiCacheShard,
+      clsiCachePromptVariant: ['alpha', 'priority'].includes(
+        limits?.compileGroup
+      )
+        ? clsiCachePromptVariant
+        : 'default',
       validationProblems,
       stats,
       timings,

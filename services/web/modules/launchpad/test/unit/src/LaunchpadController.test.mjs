@@ -1,4 +1,4 @@
-import { expect, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as path from 'node:path'
 import sinon from 'sinon'
 import MockResponse from '../../../../../test/unit/src/helpers/MockResponse.js'
@@ -34,7 +34,7 @@ describe('LaunchpadController', function () {
     }))
 
     vi.doMock(
-      '../../../../../app/src/Features/User/UserRegistrationHandler.js',
+      '../../../../../app/src/Features/User/UserRegistrationHandler.mjs',
       () => ({
         default: (ctx.UserRegistrationHandler = {
           promises: {},
@@ -57,7 +57,7 @@ describe('LaunchpadController', function () {
     }))
 
     vi.doMock(
-      '../../../../../app/src/Features/Authentication/AuthenticationController.js',
+      '../../../../../app/src/Features/Authentication/AuthenticationController.mjs',
       () => ({
         default: (ctx.AuthenticationController = {}),
       })

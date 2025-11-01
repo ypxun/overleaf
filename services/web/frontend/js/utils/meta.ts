@@ -255,7 +255,6 @@ export interface Meta {
   'ol-showAiErrorAssistant': boolean
   'ol-showBrlGeoBanner': boolean
   'ol-showCouponField': boolean
-  'ol-showFilters': boolean
   'ol-showGroupDiscount': boolean
   'ol-showGroupsAndEnterpriseBanner': boolean
   'ol-showInrGeoBanner': boolean
@@ -301,6 +300,7 @@ export interface Meta {
   'ol-translationLoadErrorMessage': string
   'ol-translationMaintenance': string
   'ol-translationUnableToJoin': string
+  'ol-trialDisabledReason': string | undefined
   'ol-usGovBannerVariant': USGovBannerVariant
   'ol-useShareJsHash': boolean
   'ol-user': User

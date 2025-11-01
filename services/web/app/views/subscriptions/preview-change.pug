@@ -11,6 +11,16 @@ block append meta
 		content=changePreview
 	)
 	meta(name='ol-purchaseReferrer' data-type='string' content=purchaseReferrer)
+	meta(
+		name='ol-subscriptionPaymentErrorCode'
+		data-type='string'
+		content=redirectedPaymentErrorCode
+	)
+	meta(
+		name='ol-trialDisabledReason'
+		data-type='string'
+		content=trialDisabledReason
+	)
 
 block content
 	main#main-content.content.content-alt

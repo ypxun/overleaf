@@ -22,12 +22,15 @@ describe('DocumentUpdaterController', function () {
       default: ctx.settings,
     }))
 
-    vi.doMock('../../../../app/src/Features/Project/ProjectLocator.js', () => ({
-      default: ctx.ProjectLocator,
-    }))
+    vi.doMock(
+      '../../../../app/src/Features/Project/ProjectLocator.mjs',
+      () => ({
+        default: ctx.ProjectLocator,
+      })
+    )
 
     vi.doMock(
-      '../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.js',
+      '../../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs',
       () => ({
         default: ctx.DocumentUpdaterHandler,
       })

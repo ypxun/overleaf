@@ -1,7 +1,7 @@
 import settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
 import OError from '@overleaf/o-error'
-import TeamInvitesHandler from './TeamInvitesHandler.js'
+import TeamInvitesHandler from './TeamInvitesHandler.mjs'
 import SessionManager from '../Authentication/SessionManager.js'
 import SubscriptionLocator from './SubscriptionLocator.js'
 import SubscriptionHelper from './SubscriptionHelper.js'
@@ -15,7 +15,7 @@ import EmailHandler from '../Email/EmailHandler.js'
 import { RateLimiter } from '../../infrastructure/RateLimiter.js'
 import Modules from '../../infrastructure/Modules.js'
 import UserAuditLogHandler from '../User/UserAuditLogHandler.js'
-import { sanitizeSessionUserForFrontEnd } from '../../infrastructure/FrontEndUser.js'
+import { sanitizeSessionUserForFrontEnd } from '../../infrastructure/FrontEndUser.mjs'
 
 const rateLimiters = {
   resendGroupInvite: new RateLimiter('resend-group-invite', {

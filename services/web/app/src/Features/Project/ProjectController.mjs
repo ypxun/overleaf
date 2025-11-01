@@ -6,28 +6,28 @@ import pProps from 'p-props'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
 import mongodb from 'mongodb-legacy'
-import ProjectDeleter from './ProjectDeleter.js'
+import ProjectDeleter from './ProjectDeleter.mjs'
 import ProjectDuplicator from './ProjectDuplicator.mjs'
-import ProjectCreationHandler from './ProjectCreationHandler.js'
-import EditorController from '../Editor/EditorController.js'
+import ProjectCreationHandler from './ProjectCreationHandler.mjs'
+import EditorController from '../Editor/EditorController.mjs'
 import ProjectHelper from './ProjectHelper.js'
 import metrics from '@overleaf/metrics'
 import { User } from '../../models/User.js'
 import SubscriptionLocator from '../Subscription/SubscriptionLocator.js'
 import { isPaidSubscription } from '../Subscription/SubscriptionHelper.js'
-import LimitationsManager from '../Subscription/LimitationsManager.js'
+import LimitationsManager from '../Subscription/LimitationsManager.mjs'
 import Settings from '@overleaf/settings'
-import AuthorizationManager from '../Authorization/AuthorizationManager.js'
+import AuthorizationManager from '../Authorization/AuthorizationManager.mjs'
 import InactiveProjectManager from '../InactiveData/InactiveProjectManager.mjs'
 import ProjectUpdateHandler from './ProjectUpdateHandler.js'
-import ProjectGetter from './ProjectGetter.js'
+import ProjectGetter from './ProjectGetter.mjs'
 import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
 import SessionManager from '../Authentication/SessionManager.js'
 import Sources from '../Authorization/Sources.js'
 import TokenAccessHandler from '../TokenAccess/TokenAccessHandler.js'
-import CollaboratorsGetter from '../Collaborators/CollaboratorsGetter.js'
-import ProjectEntityHandler from './ProjectEntityHandler.js'
-import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.js'
+import CollaboratorsGetter from '../Collaborators/CollaboratorsGetter.mjs'
+import ProjectEntityHandler from './ProjectEntityHandler.mjs'
+import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.mjs'
 import Features from '../../infrastructure/Features.js'
 import BrandVariationsHandler from '../BrandVariations/BrandVariationsHandler.mjs'
 import UserController from '../User/UserController.mjs'
@@ -36,9 +36,9 @@ import SplitTestHandler from '../SplitTests/SplitTestHandler.js'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.js'
 import FeaturesUpdater from '../Subscription/FeaturesUpdater.js'
 import SpellingHandler from '../Spelling/SpellingHandler.mjs'
-import { hasAdminAccess } from '../Helpers/AdminAuthorizationHelper.js'
+import AdminAuthorizationHelper from '../Helpers/AdminAuthorizationHelper.mjs'
 import InstitutionsFeatures from '../Institutions/InstitutionsFeatures.js'
-import InstitutionsGetter from '../Institutions/InstitutionsGetter.js'
+import InstitutionsGetter from '../Institutions/InstitutionsGetter.mjs'
 import ProjectAuditLogHandler from './ProjectAuditLogHandler.mjs'
 import PublicAccessLevels from '../Authorization/PublicAccessLevels.js'
 import TagsHandler from '../Tags/TagsHandler.js'
@@ -50,7 +50,9 @@ import UserGetter from '../User/UserGetter.js'
 import { isStandaloneAiAddOnPlanCode } from '../Subscription/AiHelper.js'
 import SubscriptionController from '../Subscription/SubscriptionController.mjs'
 import { formatCurrency } from '../../util/currency.js'
+import UserSettingsHelper from './UserSettingsHelper.mjs'
 
+const { hasAdminAccess } = AdminAuthorizationHelper
 const { ObjectId } = mongodb
 /**
  * @import { GetProjectsRequest, GetProjectsResponse, Project } from "./types"
@@ -384,6 +386,7 @@ const _ProjectController = {
       'external-socket-heartbeat',
       'null-test-share-modal',
       'populate-clsi-cache',
+      'populate-clsi-cache-for-prompt',
       'pdf-caching-cached-url-lookup',
       'pdf-caching-mode',
       'pdf-caching-prefetch-large',
@@ -394,14 +397,15 @@ const _ProjectController = {
       'track-pdf-download',
       !anonymous && 'writefull-oauth-promotion',
       'hotjar',
+      'hotjar-editor-onboarding',
       'editor-redesign',
       'overleaf-assist-bundle',
       'word-count-client',
       'editor-popup-ux-survey',
-      'client-side-references',
       'editor-redesign-new-users',
       'writefull-frontend-migration',
       'chat-edit-delete',
+      'compile-timeout-remove-info',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -452,17 +456,10 @@ const _ProjectController = {
             ),
         })
       )
-    const splitTestAssignments = {}
 
     try {
       const responses = await pProps({
         userValues: userId ? getUserValues(userId) : defaultUserValues(),
-        splitTestAssignments: Promise.all(
-          splitTests.map(async splitTest => {
-            splitTestAssignments[splitTest] =
-              await SplitTestHandler.promises.getAssignment(req, res, splitTest)
-          })
-        ),
         project: ProjectGetter.promises.getProject(projectId, {
           name: 1,
           lastUpdated: 1,
@@ -502,7 +499,56 @@ const _ProjectController = {
         subscription,
         isTokenMember,
         isInvitedMember,
+        affiliations,
       } = userValues
+
+      let inEnterpriseCommons = false
+      for (const affiliation of affiliations || []) {
+        inEnterpriseCommons =
+          inEnterpriseCommons || affiliation.institution?.enterpriseCommons
+      }
+
+      const getSplitTestAssignment = async splitTest => {
+        if (splitTest === 'hotjar-editor-onboarding') {
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+          const userRegisteredMoreThan7DaysAgo =
+            user.signUpDate && user.signUpDate < sevenDaysAgo
+
+          const isExcluded =
+            user.betaProgram ||
+            inEnterpriseCommons ||
+            userIsMemberOfGroupSubscription ||
+            userRegisteredMoreThan7DaysAgo
+
+          if (!isExcluded) {
+            return await SplitTestHandler.promises.getAssignment(
+              req,
+              res,
+              splitTest
+            )
+          } else {
+            return {
+              variant: 'default',
+              analytics: {
+                segmentation: {},
+              },
+            }
+          }
+        } else {
+          return await SplitTestHandler.promises.getAssignment(
+            req,
+            res,
+            splitTest
+          )
+        }
+      }
+      const splitTestAssignments = {}
+      await Promise.all(
+        splitTests.map(async splitTest => {
+          splitTestAssignments[splitTest] =
+            await getSplitTestAssignment(splitTest)
+        })
+      )
 
       const brandVariation = project?.brandVariationId
         ? await BrandVariationsHandler.promises.getBrandVariationById(
@@ -774,14 +820,26 @@ const _ProjectController = {
 
       const planDetails = Settings.plans.find(p => p.planCode === planCode)
 
+      const projectOwnerHasPremiumOnPageLoad =
+        ownerFeatures?.compileGroup === 'priority'
+      if (
+        projectOwnerHasPremiumOnPageLoad &&
+        splitTestAssignments['populate-clsi-cache']?.variant !== 'enabled'
+      ) {
+        await SplitTestHandler.promises.getAssignment(
+          req,
+          res,
+          'clsi-cache-prompt'
+        )
+      }
+
       res.render(template, {
         title: project.name,
         priority_title: true,
         bodyClasses: ['editor'],
         project_id: project._id,
         projectName: project.name,
-        projectOwnerHasPremiumOnPageLoad:
-          ownerFeatures?.compileGroup === 'priority',
+        projectOwnerHasPremiumOnPageLoad,
         user: {
           id: userId,
           email: user.email,
@@ -811,22 +869,7 @@ const _ProjectController = {
           isMemberOfGroupSubscription: userIsMemberOfGroupSubscription,
           hasInstitutionLicence: userHasInstitutionLicence,
         },
-        userSettings: {
-          mode: user.ace.mode,
-          editorTheme: user.ace.theme,
-          fontSize: user.ace.fontSize,
-          autoComplete: user.ace.autoComplete,
-          autoPairDelimiters: user.ace.autoPairDelimiters,
-          pdfViewer: user.ace.pdfViewer,
-          syntaxValidation: user.ace.syntaxValidation,
-          fontFamily: user.ace.fontFamily || 'lucida',
-          lineHeight: user.ace.lineHeight || 'normal',
-          overallTheme: user.ace.overallTheme,
-          mathPreview: user.ace.mathPreview,
-          breadcrumbs: user.ace.breadcrumbs,
-          referencesSearchMode: user.ace.referencesSearchMode,
-          enableNewEditor: user.ace.enableNewEditor ?? true,
-        },
+        userSettings: UserSettingsHelper.buildUserSettings(user),
         labsExperiments: user.labsExperiments ?? [],
         privilegeLevel,
         anonymous,
@@ -867,7 +910,9 @@ const _ProjectController = {
         otMigrationStage: project.overleaf?.history?.otMigrationStage ?? 0,
         projectTags,
         isSaas: Features.hasFeature('saas'),
-        shouldLoadHotjar: splitTestAssignments.hotjar?.variant === 'enabled',
+        shouldLoadHotjar:
+          splitTestAssignments['hotjar-editor-onboarding']?.variant ===
+          'enabled',
         isOverleafAssistBundleEnabled,
         customerIoEnabled,
         addonPrices,
@@ -1209,6 +1254,7 @@ const defaultUserValues = () => ({
   learnedWords: [],
   projectTags: [],
   userHasInstitutionLicence: false,
+  affiliations: [],
   subscription: undefined,
   isTokenMember: false,
   isInvitedMember: false,
