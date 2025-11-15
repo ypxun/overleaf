@@ -31,6 +31,16 @@ describe('ProjectController', function () {
       algolia: {},
       plans: [],
       features: {},
+      localizedPlanPricing: {
+        USD: {
+          collaborator: {
+            monthly: 15,
+            annual: 180,
+            annualDividedByTwelve: 15,
+            monthlyTimesTwelve: 180,
+          },
+        },
+      },
     }
     ctx.brandVariationDetails = {
       id: '12',
@@ -64,6 +74,7 @@ describe('ProjectController', function () {
       },
     }
     ctx.SubscriptionController = {
+      getRecommendedCurrency: sinon.stub().resolves({ currency: 'USD' }),
       promises: {
         getRecommendedCurrency: sinon.stub().resolves({ currency: 'USD' }),
       },
@@ -204,6 +215,7 @@ describe('ProjectController', function () {
       getSurvey: sinon.stub().yields(null, {}),
     }
     ctx.ProjectAuditLogHandler = {
+      addEntryIfManagedInBackground: sinon.stub().resolves(),
       promises: {
         addEntry: sinon.stub().resolves(),
       },
@@ -738,6 +750,18 @@ describe('ProjectController', function () {
           ctx.ProjectCreationHandler.promises.createBasicProject
             .calledWith(ctx.user._id, ctx.projectName)
             .should.equal(true)
+          resolve()
+        }
+        ctx.ProjectController.newProject(ctx.req, ctx.res)
+      })
+    })
+
+    it('adds project audit log for managed for managed users', async function (ctx) {
+      await new Promise(resolve => {
+        ctx.req.body.template = 'basic'
+        ctx.res.json = () => {
+          expect(ctx.ProjectAuditLogHandler.addEntryIfManagedInBackground).to
+            .have.been.called
           resolve()
         }
         ctx.ProjectController.newProject(ctx.req, ctx.res)

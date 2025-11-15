@@ -40,7 +40,7 @@ describe('CompileController', function () {
       apis: {
         clsi: {
           url: 'http://clsi.example.com',
-          submissionBackendClass: 'n2d',
+          submissionBackendClass: 'c3d',
         },
         clsi_priority: {
           url: 'http://clsi-priority.example.com',
@@ -223,7 +223,6 @@ describe('CompileController', function () {
                 url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
                 type: 'zip',
               },
-              clsiCachePromptVariant: 'default',
               pdfDownloadDomain: 'https://compiles.overleaf.test',
             })
           )
@@ -248,7 +247,6 @@ describe('CompileController', function () {
             timings: undefined,
             outputUrlPrefix: '/zone/b',
             buildId: ctx.build_id,
-            clsiCachePromptVariant: 'default',
           })
           await ctx.CompileController.compile(ctx.req, ctx.res, ctx.next)
         })
@@ -270,7 +268,6 @@ describe('CompileController', function () {
                 url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
                 type: 'zip',
               },
-              clsiCachePromptVariant: 'default',
               outputUrlPrefix: '/zone/b',
               pdfDownloadDomain: 'https://compiles.overleaf.test/zone/b',
             })
@@ -296,8 +293,8 @@ describe('CompileController', function () {
           ctx.user_id,
           {
             isAutoCompile: false,
-            compileFromClsiCache: false,
-            populateClsiCache: false,
+            compileFromClsiCache: true,
+            populateClsiCache: true,
             enablePdfCaching: false,
             fileLineErrors: false,
             stopOnFirstError: false,
@@ -321,7 +318,6 @@ describe('CompileController', function () {
               url: `/project/${ctx.projectId}/user/wat/build/${ctx.build_id}/output/output.zip`,
               type: 'zip',
             },
-            clsiCachePromptVariant: 'default',
           })
         )
       })
@@ -339,8 +335,8 @@ describe('CompileController', function () {
           ctx.user_id,
           {
             isAutoCompile: true,
-            compileFromClsiCache: false,
-            populateClsiCache: false,
+            compileFromClsiCache: true,
+            populateClsiCache: true,
             enablePdfCaching: false,
             fileLineErrors: false,
             stopOnFirstError: false,
@@ -362,8 +358,8 @@ describe('CompileController', function () {
           ctx.user_id,
           {
             isAutoCompile: false,
-            compileFromClsiCache: false,
-            populateClsiCache: false,
+            compileFromClsiCache: true,
+            populateClsiCache: true,
             enablePdfCaching: false,
             draft: true,
             fileLineErrors: false,
@@ -386,8 +382,8 @@ describe('CompileController', function () {
           ctx.user_id,
           {
             isAutoCompile: false,
-            compileFromClsiCache: false,
-            populateClsiCache: false,
+            compileFromClsiCache: true,
+            populateClsiCache: true,
             enablePdfCaching: false,
             fileLineErrors: false,
             stopOnFirstError: false,
@@ -442,7 +438,7 @@ describe('CompileController', function () {
         ctx.ClsiManager.promises.sendExternalRequest.should.have.been.calledWith(
           ctx.submission_id,
           { compileGroup: 'special', timeout: 600 },
-          { compileGroup: 'special', compileBackendClass: 'n2d', timeout: 600 }
+          { compileGroup: 'special', compileBackendClass: 'c3d', timeout: 600 }
         )
       })
     })
@@ -473,7 +469,7 @@ describe('CompileController', function () {
             draft: true,
             check: 'validate',
             compileGroup: 'standard',
-            compileBackendClass: 'n2d',
+            compileBackendClass: 'c3d',
             timeout: 60,
           }
         )
@@ -606,7 +602,7 @@ describe('CompileController', function () {
           'output-file',
           ctx.expected_url,
           {},
-          { compileGroup: 'standard', compileBackendClass: 'n2d' }
+          { compileGroup: 'standard', compileBackendClass: 'c3d' }
         )
       })
     })
@@ -629,7 +625,7 @@ describe('CompileController', function () {
           {},
           {
             compileGroup: 'special',
-            compileBackendClass: 'n2d',
+            compileBackendClass: 'c3d',
           }
         )
       })
@@ -671,7 +667,7 @@ describe('CompileController', function () {
         ctx.user_id,
         {
           direction: 'code',
-          compileFromClsiCache: false,
+          compileFromClsiCache: true,
           validatedOptions: {
             file,
             line,
@@ -721,7 +717,7 @@ describe('CompileController', function () {
         ctx.user_id,
         {
           direction: 'pdf',
-          compileFromClsiCache: false,
+          compileFromClsiCache: true,
           validatedOptions: {
             page,
             h,
@@ -753,7 +749,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'n2d',
+              compileBackendClass: 'c3d',
             })
           await ctx.CompileController._proxyToClsi(
             ctx.projectId,
@@ -768,7 +764,7 @@ describe('CompileController', function () {
 
         it('should open a request to the CLSI', function (ctx) {
           ctx.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=n2d&query=foo`
+            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=c3d&query=foo`
           )
         })
 
@@ -810,7 +806,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'n2d',
+              compileBackendClass: 'c3d',
             })
           await ctx.CompileController._proxyToClsi(
             ctx.projectId,
@@ -825,7 +821,7 @@ describe('CompileController', function () {
 
         it('should open a request to the CLSI', function (ctx) {
           ctx.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=n2d`
+            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=c3d`
           )
         })
 
@@ -841,7 +837,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'n2d',
+              compileBackendClass: 'c3d',
             })
           await ctx.CompileController._proxyToClsi(
             ctx.projectId,
@@ -856,7 +852,7 @@ describe('CompileController', function () {
 
         it('should proxy to the standard url', function (ctx) {
           ctx.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=n2d`
+            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=c3d`
           )
         })
       })
@@ -867,7 +863,7 @@ describe('CompileController', function () {
             .stub()
             .resolves({
               compileGroup: 'standard',
-              compileBackendClass: 'n2d',
+              compileBackendClass: 'c3d',
             })
           ctx.req.query = { build: 1234 }
           await ctx.CompileController._proxyToClsi(
@@ -883,7 +879,7 @@ describe('CompileController', function () {
 
         it('should proxy to the standard url without the build parameter', function (ctx) {
           ctx.fetchUtils.fetchStreamWithResponse.should.have.been.calledWith(
-            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=n2d`
+            `${ctx.settings.apis.clsi.url}${ctx.url}?compileGroup=standard&compileBackendClass=c3d`
           )
         })
       })

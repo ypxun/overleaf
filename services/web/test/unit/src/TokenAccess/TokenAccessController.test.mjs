@@ -4,8 +4,9 @@ import mongodb from 'mongodb-legacy'
 import MockRequest from '../helpers/MockRequest.js'
 import MockResponse from '../helpers/MockResponse.js'
 import PrivilegeLevels from '../../../../app/src/Features/Authorization/PrivilegeLevels.js'
-import { getSafeRedirectPath } from '../../../../app/src/Features/Helpers/UrlHelper.js'
+import UrlHelper from '../../../../app/src/Features/Helpers/UrlHelper.mjs'
 
+const { getSafeRedirectPath } = UrlHelper
 const ObjectId = mongodb.ObjectId
 
 const MODULE_PATH =
@@ -245,17 +246,15 @@ describe('TokenAccessController', function () {
       () => ({ default: ctx.AdminAuthorizationHelper })
     )
 
-    vi.doMock(
-      '../../../../app/src/Features/Helpers/UrlHelper',
-      () =>
-        (ctx.UrlHelper = {
-          getSafeAdminDomainRedirect: sinon
-            .stub()
-            .callsFake(
-              path => `${ctx.Settings.adminUrl}${getSafeRedirectPath(path)}`
-            ),
-        })
-    )
+    vi.doMock('../../../../app/src/Features/Helpers/UrlHelper', () => ({
+      default: (ctx.UrlHelper = {
+        getSafeAdminDomainRedirect: sinon
+          .stub()
+          .callsFake(
+            path => `${ctx.Settings.adminUrl}${getSafeRedirectPath(path)}`
+          ),
+      }),
+    }))
 
     vi.doMock(
       '../../../../app/src/Features/Analytics/AnalyticsManager',

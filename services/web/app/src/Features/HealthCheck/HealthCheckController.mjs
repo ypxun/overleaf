@@ -1,11 +1,10 @@
 import RedisWrapper from '../../infrastructure/RedisWrapper.js'
 import settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
-import UserGetter from '../User/UserGetter.js'
-import {
-  SmokeTestFailure,
-  runSmokeTests,
-} from './../../../../test/smoke/src/SmokeTests.js'
+import UserGetter from '../User/UserGetter.mjs'
+import SmokeTests from './../../../../test/smoke/src/SmokeTests.mjs'
+
+const { SmokeTestFailure, runSmokeTests } = SmokeTests
 
 const rclient = RedisWrapper.client('health_check')
 

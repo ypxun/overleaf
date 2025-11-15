@@ -42,11 +42,22 @@ export default function StartFreeTrialButton({
     (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
       event.preventDefault()
 
+      let shouldNavigate = true
+
       if (handleClick) {
         handleClick(event)
+        if (event.isPropagationStopped()) {
+          shouldNavigate = false
+        }
       }
 
-      startFreeTrial(source, variant, segmentation, extraSearchParams)
+      startFreeTrial(
+        source,
+        variant,
+        segmentation,
+        extraSearchParams,
+        shouldNavigate
+      )
     },
     [handleClick, source, variant, segmentation, extraSearchParams]
   )

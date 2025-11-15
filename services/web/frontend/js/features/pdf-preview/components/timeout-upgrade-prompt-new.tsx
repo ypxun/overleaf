@@ -1,19 +1,16 @@
 import { Trans, useTranslation } from 'react-i18next'
 import { useDetachCompileContext } from '../../../shared/context/detach-compile-context'
 import StartFreeTrialButton from '../../../shared/components/start-free-trial-button'
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import PdfLogEntry from './pdf-log-entry'
 import { useStopOnFirstError } from '../../../shared/hooks/use-stop-on-first-error'
 import OLButton from '@/shared/components/ol/ol-button'
 import * as eventTracking from '../../../infrastructure/event-tracking'
 import getMeta from '@/utils/meta'
 import { populateEditorRedesignSegmentation } from '@/shared/hooks/use-editor-analytics'
-import {
-  isNewUser,
-  useIsNewEditorEnabled,
-  useIsNewErrorLogsPositionEnabled,
-} from '@/features/ide-redesign/utils/new-editor-utils'
-import { getSplitTestVariant, isSplitTestEnabled } from '@/utils/splitTestUtils'
+import CompileTimeoutPaywallModal from '@/features/pdf-preview/components/compile-timeout-paywall-modal'
+import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
+import { isSplitTestEnabled } from '@/utils/splitTestUtils'
 
 function TimeoutUpgradePromptNew() {
   const {
@@ -26,6 +23,13 @@ function TimeoutUpgradePromptNew() {
   const shouldHideCompileTimeoutInfo = isSplitTestEnabled(
     'compile-timeout-remove-info'
   )
+
+  const isCompileTimeoutTargetPlansEnabled = isSplitTestEnabled(
+    'compile-timeout-target-plans'
+  )
+
+  const [showCompileTimeoutPaywall, setShowCompileTimeoutPaywall] =
+    useState(false)
 
   const { enableStopOnFirstError } = useStopOnFirstError({
     eventSource: 'timeout-new',
@@ -57,6 +61,8 @@ function TimeoutUpgradePromptNew() {
       <CompileTimeout
         isProjectOwner={isProjectOwner}
         segmentation={sharedSegmentation}
+        onShowPaywallModal={() => setShowCompileTimeoutPaywall(true)}
+        isCompileTimeoutTargetPlansEnabled={isCompileTimeoutTargetPlansEnabled}
       />
       {getMeta('ol-ExposedSettings').enableSubscriptions &&
         !shouldHideCompileTimeoutInfo && (
@@ -67,6 +73,10 @@ function TimeoutUpgradePromptNew() {
             lastCompileOptions={lastCompileOptions}
           />
         )}
+      <CompileTimeoutPaywallModal
+        show={showCompileTimeoutPaywall}
+        onHide={() => setShowCompileTimeoutPaywall(false)}
+      />
     </>
   )
 }
@@ -74,34 +84,38 @@ function TimeoutUpgradePromptNew() {
 type CompileTimeoutProps = {
   isProjectOwner: boolean
   segmentation: eventTracking.Segmentation
+  onShowPaywallModal: () => void
+  isCompileTimeoutTargetPlansEnabled: boolean
 }
 
 const CompileTimeout = memo(function CompileTimeout({
   isProjectOwner,
   segmentation,
+  onShowPaywallModal,
+  isCompileTimeoutTargetPlansEnabled,
 }: CompileTimeoutProps) {
   const { t } = useTranslation()
-  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
-
+  const newEditor = useIsNewEditorEnabled()
   const extraSearchParams = useMemo(() => {
-    if (!isNewUser()) {
-      return undefined
-    }
-
-    const variant = getSplitTestVariant('editor-redesign-new-users')
-
-    if (!variant) {
-      return undefined
-    }
-
     return {
-      itm_content: variant,
+      itm_content: newEditor ? 'new-editor' : 'old-editor',
     }
-  }, [])
+  }, [newEditor])
+
+  const handleFreeTrialClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (isCompileTimeoutTargetPlansEnabled) {
+        event.preventDefault()
+        event.stopPropagation()
+        onShowPaywallModal()
+      }
+    },
+    [isCompileTimeoutTargetPlansEnabled, onShowPaywallModal]
+  )
 
   return (
     <PdfLogEntry
-      autoExpand={!newLogsPosition}
+      autoExpand
       headerTitle={t('your_compile_timed_out')}
       formattedContent={
         getMeta('ol-ExposedSettings').enableSubscriptions && (
@@ -135,6 +149,7 @@ const CompileTimeout = memo(function CompileTimeout({
                   buttonProps={{ variant: 'primary', className: 'w-100' }}
                   segmentation={segmentation}
                   extraSearchParams={extraSearchParams}
+                  handleClick={handleFreeTrialClick}
                 >
                   {t('start_a_free_trial')}
                 </StartFreeTrialButton>
@@ -160,11 +175,10 @@ const PreventTimeoutHelpMessage = memo(function PreventTimeoutHelpMessage({
   handleEnableStopOnFirstErrorClick,
 }: PreventTimeoutHelpMessageProps) {
   const { t } = useTranslation()
-  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
 
   return (
     <PdfLogEntry
-      autoExpand={!newLogsPosition}
+      autoExpand
       headerTitle={t('reasons_for_compile_timeouts')}
       formattedContent={
         <>

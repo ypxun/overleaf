@@ -1,5 +1,4 @@
 import logger from '@overleaf/logger'
-import Metrics from '@overleaf/metrics'
 import Settings from '@overleaf/settings'
 import _ from 'lodash'
 import { URL } from 'node:url'
@@ -8,7 +7,7 @@ import moment from 'moment'
 import { fetchJson } from '@overleaf/fetch-utils'
 import contentDisposition from 'content-disposition'
 import Features from './Features.js'
-import SessionManager from '../Features/Authentication/SessionManager.js'
+import SessionManager from '../Features/Authentication/SessionManager.mjs'
 import PackageVersions from './PackageVersions.js'
 import Modules from './Modules.js'
 import Errors from '../Features/Errors/Errors.js'
@@ -127,27 +126,9 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
 
     const cdnAvailable =
       Settings.cdn && Settings.cdn.web && !!Settings.cdn.web.host
-    const cdnBlocked =
-      req.query.nocdn === 'true' || req.session.cdnBlocked || false
-    const userId = SessionManager.getLoggedInUserId(req.session)
-    if (cdnBlocked && req.session.cdnBlocked == null) {
-      logger.debug(
-        { userId, ip: req != null ? req.ip : undefined },
-        'cdnBlocked for user, not using it and turning it off for future requets'
-      )
-      Metrics.inc('no_cdn', 1, {
-        path: userId ? 'logged-in' : 'pre-login',
-        method: 'true',
-      })
-      req.session.cdnBlocked = true
-    }
-    Metrics.inc('cdn_blocked', 1, {
-      path: userId ? 'logged-in' : 'pre-login',
-      method: String(cdnBlocked),
-    })
     const host = req.headers && req.headers.host
     const isSmoke = host.slice(0, 5).toLowerCase() === 'smoke'
-    if (cdnAvailable && !isSmoke && !cdnBlocked) {
+    if (cdnAvailable && !isSmoke) {
       staticFilesBase = Settings.cdn.web.host
     } else {
       staticFilesBase = ''
@@ -232,7 +213,6 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
     }
 
     // Don't include the query string parameters, otherwise Google
-    // treats ?nocdn=true as the canonical version
     try {
       const parsedOriginalUrl = new URL(req.originalUrl, Settings.siteUrl)
       res.locals.currentUrl = parsedOriginalUrl.pathname
@@ -262,7 +242,7 @@ export default async function (webRouter, privateApiRouter, publicApiRouter) {
   webRouter.use(
     expressify(async function (req, res, next) {
       res.locals.StringHelper = (
-        await import('../Features/Helpers/StringHelper.js')
+        await import('../Features/Helpers/StringHelper.mjs')
       ).default
       next()
     })

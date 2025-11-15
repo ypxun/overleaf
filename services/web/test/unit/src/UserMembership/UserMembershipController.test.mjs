@@ -1,7 +1,7 @@
 import { expect, vi, describe, it, beforeEach } from 'vitest'
 import MockRequest from '../helpers/MockRequestVitest.mjs'
 import MockResponse from '../helpers/MockResponseVitest.mjs'
-import EntityConfigs from '../../../../app/src/Features/UserMembership/UserMembershipEntityConfigs.js'
+import EntityConfigs from '../../../../app/src/Features/UserMembership/UserMembershipEntityConfigs.mjs'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
 import UserMembershipErrors from '../../../../app/src/Features/UserMembership/UserMembershipErrors.mjs'
 
@@ -103,6 +103,24 @@ describe('UserMembershipController', () => {
       managedUsers: {
         enabled: false,
       },
+      plans: [
+        {
+          planCode: 'personal',
+          name: 'Personal',
+          price_in_cents: 0,
+          features: {
+            collaborators: -1,
+            dropbox: true,
+            github: true,
+            gitBridge: true,
+            versioning: true,
+            compileTimeout: 180,
+            compileGroup: 'standard',
+            references: true,
+            trackChanges: true,
+          },
+        },
+      ],
     }
 
     ctx.SessionManager = {

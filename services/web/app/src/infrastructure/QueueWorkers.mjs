@@ -2,14 +2,14 @@ import Features from './Features.js'
 import Queues from './Queues.js'
 import UserOnboardingEmailManager from '../Features/User/UserOnboardingEmailManager.mjs'
 import UserPostRegistrationAnalyticsManager from '../Features/User/UserPostRegistrationAnalyticsManager.mjs'
-import FeaturesUpdater from '../Features/Subscription/FeaturesUpdater.js'
+import FeaturesUpdater from '../Features/Subscription/FeaturesUpdater.mjs'
 
 import {
   addOptionalCleanupHandlerBeforeStoppingTraffic,
   addRequiredCleanupHandlerBeforeDrainingConnections,
 } from './GracefulShutdown.js'
 
-import EmailHandler from '../Features/Email/EmailHandler.js'
+import EmailHandler from '../Features/Email/EmailHandler.mjs'
 import logger from '@overleaf/logger'
 import OError from '@overleaf/o-error'
 import Modules from './Modules.js'
@@ -104,6 +104,20 @@ function start() {
         'failed to handle deferred subscription webhook event'
       )
       logger.warn({ error, eventId, eventType, serviceId }, error.message)
+      throw error
+    }
+  })
+
+  registerQueue('project-notification', async job => {
+    const { projectId, timestamp } = job.data
+    try {
+      await Modules.promises.hooks.fire('projectModified', {
+        projectId,
+        timestamp,
+      })
+    } catch (e) {
+      const error = OError.tag(e, 'failed to process project notification')
+      logger.warn({ error, projectId }, error.message)
       throw error
     }
   })

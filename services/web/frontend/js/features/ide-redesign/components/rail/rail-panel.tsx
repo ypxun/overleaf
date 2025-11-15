@@ -36,7 +36,7 @@ export default function RailPanel({
       id={`ide-redesign-sidebar-panel-${isHistoryView ? 'file-tree' : selectedTab}`}
       className={classNames({ hidden: isReviewPanelOpen })}
       order={1}
-      defaultSize={selectedTab === 'errors' ? 20 : 15}
+      defaultSize={15}
       minSize={5}
       maxSize={80}
       ref={panelRef}
@@ -52,7 +52,9 @@ export default function RailPanel({
       >
         <Tab.Content className="ide-rail-tab-content">
           {railTabs
-            .filter(({ hide }) => !hide)
+            .filter(({ hide }) => {
+              return typeof hide === 'function' ? !hide() : !hide
+            })
             .map(({ key, component, mountOnFirstLoad }) => (
               <Tab.Pane
                 eventKey={key}

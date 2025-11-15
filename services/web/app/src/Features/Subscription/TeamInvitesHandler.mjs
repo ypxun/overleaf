@@ -5,16 +5,15 @@ import Modules from '../../infrastructure/Modules.js'
 import mongodb from 'mongodb-legacy'
 import { Subscription } from '../../models/Subscription.js'
 import { SSOConfig } from '../../models/SSOConfig.js'
-import UserGetter from '../User/UserGetter.js'
-import SubscriptionLocator from './SubscriptionLocator.js'
-import SubscriptionUpdater from './SubscriptionUpdater.js'
+import UserGetter from '../User/UserGetter.mjs'
+import SubscriptionLocator from './SubscriptionLocator.mjs'
+import SubscriptionUpdater from './SubscriptionUpdater.mjs'
 import LimitationsManager from './LimitationsManager.mjs'
-import EmailHandler from '../Email/EmailHandler.js'
+import EmailHandler from '../Email/EmailHandler.mjs'
 import EmailHelper from '../Helpers/EmailHelper.js'
 import Errors from '../Errors/Errors.js'
 import { callbackify, callbackifyMultiResult } from '@overleaf/promise-utils'
-import NotificationsBuilder from '../Notifications/NotificationsBuilder.js'
-import RecurlyClient from './RecurlyClient.js'
+import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
 
 const { ObjectId } = mongodb
 
@@ -78,18 +77,13 @@ async function _deleteUserSubscription(subscription, userId, ipAddress) {
     deleterData
   )
 
-  // Terminate the subscription in Recurly
-  if (subscription.recurlySubscription_id) {
-    try {
-      await RecurlyClient.promises.terminateSubscriptionByUuid(
-        subscription.recurlySubscription_id
-      )
-    } catch (err) {
-      logger.error(
-        { err, subscriptionId: subscription._id },
-        'terminating subscription failed'
-      )
-    }
+  try {
+    await Modules.promises.hooks.fire('terminateSubscription', subscription)
+  } catch (err) {
+    logger.error(
+      { err, subscriptionId: subscription._id },
+      'terminating subscription failed'
+    )
   }
 }
 

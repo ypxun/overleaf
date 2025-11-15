@@ -1,12 +1,8 @@
 import { useCallback } from 'react'
 import { useLayoutContext } from '@/shared/context/layout-context'
-import {
-  useAreNewErrorLogsEnabled,
-  useIsNewErrorLogsPositionEnabled,
-} from '@/features/ide-redesign/utils/new-editor-utils'
-import { useRailContext } from '@/features/ide-redesign/contexts/rail-context'
 import { useEditorContext } from '@/shared/context/editor-context'
 import useEventListener from '@/shared/hooks/use-event-listener'
+import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
 
 function scrollIntoView(element: Element) {
   setTimeout(() => {
@@ -22,9 +18,7 @@ function scrollIntoView(element: Element) {
  */
 export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
   const { pdfLayout, setView } = useLayoutContext()
-  const newLogs = useAreNewErrorLogsEnabled()
-  const newLogsPosition = useIsNewErrorLogsPositionEnabled()
-  const { openTab: openRailTab } = useRailContext()
+  const newEditor = useIsNewEditorEnabled()
   const { hasPremiumSuggestion } = useEditorContext()
 
   const selectLogOldLogs = useCallback((id: string, suggestFix: boolean) => {
@@ -103,11 +97,7 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
     [hasPremiumSuggestion]
   )
 
-  const openNewLogsPosition = useCallback(() => {
-    openRailTab('errors')
-  }, [openRailTab])
-
-  const openOldLogsPosition = useCallback(() => {
+  const openLogs = useCallback(() => {
     setShowLogs(true)
 
     if (pdfLayout === 'flat') {
@@ -125,13 +115,9 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
         }>
       ).detail
 
-      if (newLogsPosition) {
-        openNewLogsPosition()
-      } else {
-        openOldLogsPosition()
-      }
+      openLogs()
 
-      if (newLogs) {
+      if (newEditor) {
         selectLogNewLogs(
           id,
           Boolean(suggestFix),
@@ -141,14 +127,7 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
         selectLogOldLogs(id, Boolean(suggestFix))
       }
     },
-    [
-      openNewLogsPosition,
-      openOldLogsPosition,
-      selectLogNewLogs,
-      selectLogOldLogs,
-      newLogs,
-      newLogsPosition,
-    ]
+    [openLogs, selectLogNewLogs, selectLogOldLogs, newEditor]
   )
 
   useEventListener(

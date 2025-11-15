@@ -2,15 +2,14 @@ import express from 'express'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
 import metrics from '@overleaf/metrics'
-import Validation from './Validation.js'
 import csp, { removeCSPHeaders } from './CSP.mjs'
 import Router from '../router.mjs'
 import helmet from 'helmet'
-import UserSessionsRedis from '../Features/User/UserSessionsRedis.js'
+import UserSessionsRedis from '../Features/User/UserSessionsRedis.mjs'
 import Csrf from './Csrf.mjs'
 import HttpPermissionsPolicyMiddleware from './HttpPermissionsPolicy.js'
 import SessionAutostartMiddleware from './SessionAutostartMiddleware.mjs'
-import AnalyticsManager from '../Features/Analytics/AnalyticsManager.js'
+import AnalyticsManager from '../Features/Analytics/AnalyticsManager.mjs'
 import session from 'express-session'
 import CookieMetrics from './CookieMetrics.mjs'
 import CustomSessionStore from './CustomSessionStore.mjs'
@@ -26,10 +25,10 @@ import translations from './Translations.mjs'
 import Views from './Views.js'
 import Features from './Features.js'
 import ErrorController from '../Features/Errors/ErrorController.mjs'
-import HttpErrorHandler from '../Features/Errors/HttpErrorHandler.js'
-import UserSessionsManager from '../Features/User/UserSessionsManager.js'
+import HttpErrorHandler from '../Features/Errors/HttpErrorHandler.mjs'
+import UserSessionsManager from '../Features/User/UserSessionsManager.mjs'
 import AuthenticationController from '../Features/Authentication/AuthenticationController.mjs'
-import SessionManager from '../Features/Authentication/SessionManager.js'
+import SessionManager from '../Features/Authentication/SessionManager.mjs'
 import AdminAuthorizationHelper from '../Features/Helpers/AdminAuthorizationHelper.mjs'
 import Modules from './Modules.js'
 import expressLocals from './ExpressLocals.mjs'
@@ -38,6 +37,7 @@ import os from 'node:os'
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
 import serveStaticWrapper from './ServeStaticWrapper.mjs'
+import { handleValidationError } from '@overleaf/validation-tools'
 
 const { hasAdminAccess } = AdminAuthorizationHelper
 const sessionsRedisClient = UserSessionsRedis.client()
@@ -356,17 +356,17 @@ const server = http.createServer(app)
 if (Settings.enabledServices.includes('api')) {
   logger.debug({}, 'providing api router')
   app.use(privateApiRouter)
-  app.use(Validation.errorMiddleware)
+  app.use(handleValidationError)
   app.use(ErrorController.handleApiError)
 }
 
 if (Settings.enabledServices.includes('web')) {
   logger.debug({}, 'providing web router')
   app.use(publicApiRouter) // public API goes with web router for public access
-  app.use(Validation.errorMiddleware)
+  app.use(handleValidationError)
   app.use(ErrorController.handleApiError)
   app.use(webRouter)
-  app.use(Validation.errorMiddleware)
+  app.use(handleValidationError)
   app.use(ErrorController.handleError)
 }
 
