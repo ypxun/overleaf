@@ -24,7 +24,7 @@ describe('Upgrading', function () {
   ) {
     const startOptions = steps.shift()!
 
-    before(async () => {
+    before(async function () {
       cy.log('Create old instance')
     })
     startWith({
@@ -38,7 +38,7 @@ describe('Upgrading', function () {
       cy.log('Create initial user after deleting it')
     })
     ensureUserExists({ email: USER })
-    before(() => {
+    before(function () {
       cy.log('Populate old instance')
       login(USER)
       ;({ recompile, waitForCompile } = prepareWaitForNextCompileSlot())
@@ -49,7 +49,7 @@ describe('Upgrading', function () {
       })
 
       cy.log('Wait for successful compile')
-      cy.get('.pdf-viewer').should('contain.text', PROJECT_NAME)
+      cy.findByLabelText(/Page.*1/i).findByText(PROJECT_NAME)
 
       cy.log('Increment the doc version three times')
       for (let i = 0; i < 3; i++) {
@@ -66,22 +66,22 @@ describe('Upgrading', function () {
         })
           .findByRole('button', { name: 'Menu' })
           .click()
-        cy.findByText('Source').click()
-        cy.get('.left-menu-modal-backdrop').click({ force: true })
+        cy.findByRole('link', { name: 'Source' }).click()
+        cy.get('body').type('{esc}')
       }
 
       cy.log('Check compile and history')
       for (let i = 0; i < 3; i++) {
-        cy.get('.pdf-viewer').should('contain.text', `Old Section ${i}`)
+        cy.findByLabelText(/Page.*1/i).findByText(`Old Section ${i}`)
       }
-      cy.findByText('History').click()
+      cy.findByRole('button', { name: 'History' }).click()
       for (let i = 0; i < 3; i++) {
-        cy.findByText(new RegExp(`\\\\section\{Old Section ${i}}`))
+        cy.findByText(new RegExp(`\\\\section{Old Section ${i}}`))
       }
     })
 
     for (const step of steps) {
-      before(() => {
+      before(function () {
         cy.log(`Upgrade to version ${step.version}`)
 
         // Navigate way from editor to avoid redirect to /login when the next instance comes up (which slows down tests)
@@ -113,16 +113,16 @@ describe('Upgrading', function () {
 
       step.hook?.()
     }
-    beforeEach(() => {
+    beforeEach(function () {
       login(USER)
     })
 
-    it('should list the old project', () => {
+    it('should list the old project', function () {
       cy.visit('/project')
-      cy.findByText(PROJECT_NAME)
+      cy.findByRole('link', { name: PROJECT_NAME })
     })
 
-    it('should open the old project', () => {
+    it('should open the old project', function () {
       waitForCompile(() => {
         openProjectByName(PROJECT_NAME)
       })
@@ -135,8 +135,8 @@ describe('Upgrading', function () {
       })
 
       cy.log('wait for successful compile')
-      cy.get('.pdf-viewer').should('contain.text', PROJECT_NAME)
-      cy.get('.pdf-viewer').should('contain.text', 'Old Section 2')
+      cy.findByLabelText(/Page.*1/i).findByText(PROJECT_NAME)
+      cy.findByLabelText(/Page.*1/i).findByText('Old Section 2')
 
       cy.log('Add more content')
       const newSection = `New Section ${uuid()}`
@@ -145,8 +145,8 @@ describe('Upgrading', function () {
 
       cy.log('Check compile and history')
       recompile()
-      cy.get('.pdf-viewer').should('contain.text', newSection)
-      cy.findByText('History').click()
+      cy.findByLabelText(/Page.*1/i).findByText(newSection)
+      cy.findByRole('button', { name: 'History' }).click()
       cy.findByText(/\\section\{Old Section 2}/)
       cy.findByText(new RegExp(`\\\\section\\{${newSection}}`))
     })
@@ -174,21 +174,21 @@ describe('Upgrading', function () {
       })
     },
   }
-  describe('from 4.2 to latest', () => {
+  describe('from 4.2 to latest', function () {
     testUpgrade([
       optionsFourDotTwo,
       optionsBinaryFilesMigration,
       { version: 'latest' },
     ])
   })
-  describe('from 5.0 to latest', () => {
+  describe('from 5.0 to latest', function () {
     testUpgrade([
       { version: '5.0' },
       optionsBinaryFilesMigration,
       { version: 'latest' },
     ])
   })
-  describe('doc version recovery', () => {
+  describe('doc version recovery', function () {
     testUpgrade([
       optionsFourDotTwo,
       {
@@ -208,10 +208,10 @@ describe('Upgrading', function () {
 
             cy.log('Trigger flush')
             recompile()
-            cy.get('.pdf-viewer').should('contain.text', 'FiveOOne Section')
+            cy.findByLabelText(/Page.*1/i).findByText('FiveOOne Section')
 
             cy.log('Check for broken history, i.e. not synced with latest edit')
-            cy.findByText('History').click()
+            cy.findByRole('button', { name: 'History' }).click()
             cy.findByText(/\\section\{Old Section 2}/) // wait for lazy loading
             cy.findByText(/\\section\{FiveOOne Section}/).should('not.exist')
           })
@@ -246,7 +246,7 @@ describe('Upgrading', function () {
             cy.log(
               'The edit that was made while the history was broken should be there now.'
             )
-            cy.findByText('History').click()
+            cy.findByRole('button', { name: 'History' }).click()
             cy.findByText(/\\section\{FiveOOne Section}/)
 
             // TODO(das7pad): restore after https://github.com/overleaf/internal/issues/19588 is fixed.

@@ -2,12 +2,12 @@ import mongodb from 'mongodb-legacy'
 import {
   connectionPromise,
   db,
-} from '../../../app/src/infrastructure/mongodb.js'
+} from '../../../app/src/infrastructure/mongodb.mjs'
 
 const { ObjectId } = mongodb
 
-const MIN_MONGO_VERSION = [6, 0]
-const MIN_MONGO_FEATURE_COMPATIBILITY_VERSION = [6, 0]
+const MIN_MONGO_VERSION = [8, 0]
+const MIN_MONGO_FEATURE_COMPATIBILITY_VERSION = [7, 0]
 
 // Allow ignoring admin check failures via an environment variable
 const OVERRIDE_ENV_VAR_NAME = 'ALLOW_MONGO_ADMIN_CHECK_FAILURES'

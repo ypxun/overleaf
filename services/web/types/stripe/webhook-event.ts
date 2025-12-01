@@ -93,19 +93,6 @@ export interface SetupIntentSetupFailedWebhookEvent extends Stripe.EventBase {
   }
 }
 
-export interface SetupIntentSucceededWebhookEvent extends Stripe.EventBase {
-  type: 'setup_intent.succeeded'
-  data: {
-    object: Stripe.SetupIntent & {
-      metadata: {
-        userId?: string
-        isTrial?: string
-        checkoutSource?: 'hosted-checkout' | 'elements-checkout' | undefined
-      }
-    }
-  }
-}
-
 export interface InvoiceVoidedWebhookEvent extends Stripe.EventBase {
   type: 'invoice.voided'
   data: {
@@ -120,21 +107,25 @@ export interface InvoiceOverdueWebhookEvent extends Stripe.EventBase {
   }
 }
 
-export interface CheckoutSessionCompletedWebhookEvent extends Stripe.EventBase {
-  type: 'checkout.session.completed'
-  data: {
-    object: Stripe.Checkout.Session & {
-      metadata: {
-        userId?: string
-      }
-    }
-  }
-}
-
 export interface CustomerCreatedWebhookEvent extends Stripe.EventBase {
   type: 'customer.created'
   data: {
     object: Stripe.Customer
+  }
+}
+
+export interface CustomerUpdatedWebhookEvent extends Stripe.EventBase {
+  type: 'customer.updated'
+  data: {
+    object: Stripe.Customer
+    previous_attributes?: {
+      invoice_settings?: {
+        default_payment_method?: string
+      }
+      address?: Stripe.Address
+      name?: string
+      email?: string
+    }
   }
 }
 
@@ -149,7 +140,6 @@ export type WebhookEvent =
   | InvoiceVoidedWebhookEvent
   | PaymentIntentPaymentFailedWebhookEvent
   | SetupIntentSetupFailedWebhookEvent
-  | SetupIntentSucceededWebhookEvent
   | InvoiceOverdueWebhookEvent
-  | CheckoutSessionCompletedWebhookEvent
   | CustomerCreatedWebhookEvent
+  | CustomerUpdatedWebhookEvent

@@ -1,14 +1,14 @@
 import logger from '@overleaf/logger'
 import OError from '@overleaf/o-error'
-import { db } from '../../infrastructure/mongodb.js'
-import { normalizeQuery } from '../Helpers/Mongo.js'
+import { db } from '../../infrastructure/mongodb.mjs'
+import Mongo from '../Helpers/Mongo.mjs'
 import { callbackify } from 'node:util'
 import UserGetter from './UserGetter.mjs'
 import InstitutionsAPI from '../Institutions/InstitutionsAPI.mjs'
-import Features from '../../infrastructure/Features.js'
+import Features from '../../infrastructure/Features.mjs'
 import FeaturesUpdater from '../Subscription/FeaturesUpdater.mjs'
 import EmailHandler from '../Email/EmailHandler.mjs'
-import EmailHelper from '../Helpers/EmailHelper.js'
+import EmailHelper from '../Helpers/EmailHelper.mjs'
 import Errors from '../Errors/Errors.js'
 import NewsletterManager from '../Newsletter/NewsletterManager.mjs'
 import UserAuditLogHandler from './UserAuditLogHandler.mjs'
@@ -17,10 +17,12 @@ import EmailChangeHelper from '../Analytics/EmailChangeHelper.mjs'
 import SubscriptionLocator from '../Subscription/SubscriptionLocator.mjs'
 import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
 import _ from 'lodash'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 import UserSessionsManager from './UserSessionsManager.mjs'
 import ThirdPartyIdentityManager from './ThirdPartyIdentityManager.mjs'
-import AsyncLocalStorage from '../../infrastructure/AsyncLocalStorage.js'
+import AsyncLocalStorage from '../../infrastructure/AsyncLocalStorage.mjs'
+
+const { normalizeQuery } = Mongo
 
 async function _sendSecurityAlertPrimaryEmailChanged(
   userId,

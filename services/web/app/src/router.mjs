@@ -1,6 +1,6 @@
 import AdminController from './Features/ServerAdmin/AdminController.mjs'
 import ErrorController from './Features/Errors/ErrorController.mjs'
-import Features from './infrastructure/Features.js'
+import Features from './infrastructure/Features.mjs'
 import ProjectController from './Features/Project/ProjectController.mjs'
 import ProjectApiController from './Features/Project/ProjectApiController.mjs'
 import ProjectListController from './Features/Project/ProjectListController.mjs'
@@ -35,12 +35,12 @@ import ExportsController from './Features/Exports/ExportsController.mjs'
 import PasswordResetRouter from './Features/PasswordReset/PasswordResetRouter.mjs'
 import StaticPagesRouter from './Features/StaticPages/StaticPagesRouter.mjs'
 import ChatController from './Features/Chat/ChatController.mjs'
-import Modules from './infrastructure/Modules.js'
+import Modules from './infrastructure/Modules.mjs'
 import {
   RateLimiter,
   openProjectRateLimiter,
   overleafLoginRateLimiter,
-} from './infrastructure/RateLimiter.js'
+} from './infrastructure/RateLimiter.mjs'
 import RateLimiterMiddleware from './Features/Security/RateLimiterMiddleware.mjs'
 import InactiveProjectController from './Features/InactiveData/InactiveProjectController.mjs'
 import ContactRouter from './Features/Contacts/ContactRouter.mjs'
@@ -61,10 +61,10 @@ import CaptchaMiddleware from './Features/Captcha/CaptchaMiddleware.mjs'
 import UnsupportedBrowserMiddleware from './infrastructure/UnsupportedBrowserMiddleware.mjs'
 import logger from '@overleaf/logger'
 import _ from 'lodash'
-import { plainTextResponse } from './infrastructure/Response.js'
+import { plainTextResponse } from './infrastructure/Response.mjs'
 import SocketDiagnostics from './Features/SocketDiagnostics/SocketDiagnostics.mjs'
 import ClsiCacheController from './Features/Compile/ClsiCacheController.mjs'
-import AsyncLocalStorage from './infrastructure/AsyncLocalStorage.js'
+import AsyncLocalStorage from './infrastructure/AsyncLocalStorage.mjs'
 
 const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
   UnsupportedBrowserMiddleware
@@ -91,8 +91,8 @@ const rateLimiters = {
     duration: 60,
   }),
   compileProjectHttp: new RateLimiter('compile-project-http', {
-    points: 800,
-    duration: 60 * 60,
+    points: 200,
+    duration: 10 * 60,
   }),
   confirmEmail: new RateLimiter('confirm-email', {
     points: 10,

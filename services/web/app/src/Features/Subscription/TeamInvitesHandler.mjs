@@ -1,16 +1,16 @@
 import logger from '@overleaf/logger'
 import crypto from 'node:crypto'
 import settings from '@overleaf/settings'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 import mongodb from 'mongodb-legacy'
-import { Subscription } from '../../models/Subscription.js'
-import { SSOConfig } from '../../models/SSOConfig.js'
+import { Subscription } from '../../models/Subscription.mjs'
+import { SSOConfig } from '../../models/SSOConfig.mjs'
 import UserGetter from '../User/UserGetter.mjs'
 import SubscriptionLocator from './SubscriptionLocator.mjs'
 import SubscriptionUpdater from './SubscriptionUpdater.mjs'
 import LimitationsManager from './LimitationsManager.mjs'
 import EmailHandler from '../Email/EmailHandler.mjs'
-import EmailHelper from '../Helpers/EmailHelper.js'
+import EmailHelper from '../Helpers/EmailHelper.mjs'
 import Errors from '../Errors/Errors.js'
 import { callbackify, callbackifyMultiResult } from '@overleaf/promise-utils'
 import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
@@ -29,7 +29,7 @@ async function getInvite(token) {
   return { invite, subscription }
 }
 
-async function createInvite(teamManagerId, subscription, email) {
+async function createInvite(teamManagerId, subscription, email, auditLog) {
   email = EmailHelper.parseEmail(email)
   if (!email) {
     throw new Error('invalid email')
@@ -37,7 +37,7 @@ async function createInvite(teamManagerId, subscription, email) {
   const teamManager = await UserGetter.promises.getUser(teamManagerId)
 
   await _removeLegacyInvite(subscription.id, email)
-  return _createInvite(subscription, email, teamManager)
+  return _createInvite(subscription, email, teamManager, auditLog)
 }
 
 async function importInvite(subscription, inviterName, email, token, sentAt) {
@@ -171,7 +171,7 @@ async function createTeamInvitesForLegacyInvitedEmail(email) {
   )
 }
 
-async function _createInvite(subscription, email, inviter) {
+async function _createInvite(subscription, email, inviter, auditLog) {
   const { possible, reason } = await _checkIfInviteIsPossible(
     subscription,
     email
@@ -257,6 +257,23 @@ async function _createInvite(subscription, email, inviter) {
   await subscription.save()
 
   if (subscription.managedUsersEnabled) {
+    const auditLogData = {
+      initiatorId: auditLog?.initiatorId,
+      ipAddress: auditLog?.ipAddress,
+      groupId: subscription._id,
+      operation: 'group-invite-sent',
+      info: { invitedEmail: email },
+    }
+
+    try {
+      await Modules.promises.hooks.fire('addGroupAuditLogEntry', auditLogData)
+    } catch (error) {
+      logger.error(
+        { error, auditLog },
+        'Error adding group audit log entry for group-invite-sent'
+      )
+    }
+
     let admin = {}
     try {
       admin = await SubscriptionLocator.promises.getAdminEmailAndName(

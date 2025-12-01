@@ -1,12 +1,12 @@
-import { db, ObjectId } from '../../../../app/src/infrastructure/mongodb.js'
+import { db, ObjectId } from '../../../../app/src/infrastructure/mongodb.mjs'
 import { expect } from 'chai'
 import { callbackifyClass } from '@overleaf/promise-utils'
 import SubscriptionUpdater from '../../../../app/src/Features/Subscription/SubscriptionUpdater.mjs'
 import PermissionsManager from '../../../../app/src/Features/Authorization/PermissionsManager.mjs'
 import SSOConfigManager from '../../../../modules/group-settings/app/src/sso/SSOConfigManager.mjs'
-import { Subscription as SubscriptionModel } from '../../../../app/src/models/Subscription.js'
-import { DeletedSubscription as DeletedSubscriptionModel } from '../../../../app/src/models/DeletedSubscription.js'
-import Modules from '../../../../app/src/infrastructure/Modules.js'
+import { Subscription as SubscriptionModel } from '../../../../app/src/models/Subscription.mjs'
+import { DeletedSubscription as DeletedSubscriptionModel } from '../../../../app/src/models/DeletedSubscription.mjs'
+import Modules from '../../../../app/src/infrastructure/Modules.mjs'
 
 class PromisifiedSubscription {
   constructor(options = {}) {

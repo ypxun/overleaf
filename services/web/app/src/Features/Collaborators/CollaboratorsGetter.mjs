@@ -4,14 +4,14 @@ import { callbackify } from 'node:util'
 import pLimit from 'p-limit'
 import mongodb from 'mongodb-legacy'
 import OError from '@overleaf/o-error'
-import { Project } from '../../models/Project.js'
+import { Project } from '../../models/Project.mjs'
 import UserGetter from '../User/UserGetter.mjs'
 import ProjectGetter from '../Project/ProjectGetter.mjs'
 import PublicAccessLevels from '../Authorization/PublicAccessLevels.mjs'
 import Errors from '../Errors/Errors.js'
 import ProjectEditorHandler from '../Project/ProjectEditorHandler.mjs'
 import Sources from '../Authorization/Sources.mjs'
-import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
+import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
 
 const { ObjectId } = mongodb
 

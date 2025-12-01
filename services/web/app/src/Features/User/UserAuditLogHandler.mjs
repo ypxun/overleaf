@@ -1,6 +1,6 @@
 import OError from '@overleaf/o-error'
 import logger from '@overleaf/logger'
-import { UserAuditLogEntry } from '../../models/UserAuditLogEntry.js'
+import { UserAuditLogEntry } from '../../models/UserAuditLogEntry.mjs'
 import { callbackify } from 'node:util'
 import SubscriptionLocator from '../Subscription/SubscriptionLocator.mjs'
 
@@ -40,6 +40,8 @@ const MANAGED_GROUP_USER_EVENTS = [
   'unlink-dropbox',
   'link-github',
   'unlink-github',
+  'delete-account',
+  'leave-group-subscription',
 ]
 
 /**
@@ -100,12 +102,29 @@ async function addEntry(userId, operation, initiatorId, ipAddress, info = {}) {
   await UserAuditLogEntry.create(entry)
 }
 
+function addEntryInBackground(
+  userId,
+  operation,
+  initiatorId,
+  ipAddress,
+  info = {}
+) {
+  // Intentionally not awaited
+  addEntry(userId, operation, initiatorId, ipAddress, info).catch(err => {
+    logger.error(
+      { err, userId, operation, initiatorId, ipAddress, info },
+      'error adding user audit log entry'
+    )
+  })
+}
+
 const UserAuditLogHandler = {
   MANAGED_GROUP_USER_EVENTS,
   addEntry: callbackify(addEntry),
   promises: {
     addEntry,
   },
+  addEntryInBackground,
 }
 
 export default UserAuditLogHandler

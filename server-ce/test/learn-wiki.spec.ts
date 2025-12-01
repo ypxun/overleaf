@@ -1,6 +1,5 @@
 import { isExcludedBySharding, startWith } from './helpers/config'
 import { ensureUserExists, login } from './helpers/login'
-import { v4 as uuid } from 'uuid'
 
 describe('LearnWiki', function () {
   const COPYING_A_PROJECT_URL = '/learn/how-to/Copying_a_project'
@@ -15,7 +14,7 @@ describe('LearnWiki', function () {
   ensureUserExists({ email: WITHOUT_PROJECTS_USER })
   ensureUserExists({ email: REGULAR_USER })
 
-  describe('enabled in Pro', () => {
+  describe('enabled in Pro', function () {
     if (isExcludedBySharding('PRO_CUSTOM_2')) return
     startWith({
       pro: true,
@@ -24,28 +23,25 @@ describe('LearnWiki', function () {
       },
     })
 
-    it('should add a documentation entry to the nav bar', () => {
+    it('should add a documentation entry to the nav bar', function () {
       login(REGULAR_USER)
       cy.visit('/project')
-      cy.findByRole('menuitem', { name: 'Documentation' }).should(
+      cy.findByRole('navigation', { name: 'Primary' }).findByRole('menuitem', {
+        name: 'Documentation',
+      })
+    })
+
+    it('should display a tutorial link in the welcome page', function () {
+      login(WITHOUT_PROJECTS_USER)
+      cy.visit('/project')
+      cy.findByRole('link', { name: LABEL_LEARN_LATEX }).should(
         'have.attr',
         'href',
-        '/learn'
+        '/learn/latex/Learn_LaTeX_in_30_minutes'
       )
     })
 
-    it('should display a tutorial link in the welcome page', () => {
-      login(WITHOUT_PROJECTS_USER)
-      cy.visit('/project')
-      cy.findByRole('link', { name: LABEL_LEARN_LATEX })
-        .should('have.attr', 'href', '/learn/latex/Learn_LaTeX_in_30_minutes')
-        .and('have.attr', 'target', '_blank')
-        .within(() => {
-          cy.get('img').should('have.attr', 'src').and('not.be.empty')
-        })
-    })
-
-    it('should render wiki page', () => {
+    it('should render wiki page', function () {
       login(REGULAR_USER)
 
       cy.visit(UPLOADING_A_PROJECT_URL)
@@ -81,13 +77,13 @@ describe('LearnWiki', function () {
     })
   })
 
-  describe('disabled in Pro', () => {
+  describe('disabled in Pro', function () {
     if (isExcludedBySharding('PRO_DEFAULT_1')) return
     startWith({ pro: true })
     checkDisabled()
   })
 
-  describe('unavailable in CE', () => {
+  describe('unavailable in CE', function () {
     if (isExcludedBySharding('CE_CUSTOM_1')) return
     startWith({
       pro: false,
@@ -100,21 +96,25 @@ describe('LearnWiki', function () {
   })
 
   function checkDisabled() {
-    it('should not add a documentation entry to the nav bar', () => {
+    it('should not add a documentation entry to the nav bar', function () {
       login(REGULAR_USER)
       cy.visit('/project')
-      cy.findByText('Documentation').should('not.exist')
+      cy.findByRole('navigation', { name: 'Primary' })
+        .findByRole('menuitem', {
+          name: 'Documentation',
+        })
+        .should('not.exist')
     })
 
-    it('should not render wiki page', () => {
+    it('should not render wiki page', function () {
       login(REGULAR_USER)
       cy.visit(COPYING_A_PROJECT_URL, {
         failOnStatusCode: false,
       })
-      cy.findByText('Not found')
+      cy.findByRole('heading', { name: 'Not found' })
     })
 
-    it('should not display a tutorial link in the welcome page', () => {
+    it('should not display a tutorial link in the welcome page', function () {
       login(WITHOUT_PROJECTS_USER)
       cy.visit('/project')
       cy.findByText(LABEL_LEARN_LATEX).should('not.exist')

@@ -16,7 +16,7 @@ describe('Accounts', function () {
     cy.url().should('include', '/login')
   })
 
-  it('should render the email on the user activate screen', () => {
+  it('should render the email on the user activate screen', function () {
     const email = 'not-activated-user@example.com'
     cy.then(async () => {
       const { url } = await createMongoUser({ email })
@@ -25,13 +25,9 @@ describe('Accounts', function () {
     cy.get('@url').then(url => {
       cy.visit(`${url}`)
       cy.url().should('contain', '/user/activate')
-      cy.findByText('Please set a password')
-      cy.get('input[autocomplete="username"]').should(
-        'have.attr',
-        'value',
-        email
-      )
-      cy.get('input[name="password"]')
+      cy.findByRole('heading', { name: 'Please set a password' })
+      cy.findByLabelText('Email').should('be.visible')
+      cy.findByLabelText('Password').should('be.visible')
       cy.findByRole('button', { name: 'Activate' })
     })
   })

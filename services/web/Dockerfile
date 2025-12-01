@@ -18,13 +18,15 @@ RUN mkdir -p /overleaf/services/web/data/dumpFolder \
     &&  chmod -R 0755 /overleaf/services/web/data \
     &&  chown -R node:node /overleaf/services/web/data
 
+# Add intermediate certificate for prism.optica.org
+COPY services/web/certs/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt.pem /usr/local/share/ca-certificates/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt
+RUN update-ca-certificates
 
 # the deps image is used for caching npm ci
 FROM base AS deps-prod
 
 COPY package.json package-lock.json /overleaf/
 COPY libraries/access-token-encryptor/package.json /overleaf/libraries/access-token-encryptor/package.json
-COPY libraries/ai/package.json /overleaf/libraries/ai/package.json
 COPY libraries/eslint-plugin/package.json /overleaf/libraries/eslint-plugin/package.json
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
 COPY libraries/logger/package.json /overleaf/libraries/logger/package.json
@@ -59,7 +61,6 @@ FROM deps AS dev
 ARG SENTRY_RELEASE
 ENV SENTRY_RELEASE=$SENTRY_RELEASE
 COPY libraries/access-token-encryptor/ /overleaf/libraries/access-token-encryptor/
-COPY libraries/ai/ /overleaf/libraries/ai/
 COPY libraries/eslint-plugin/ /overleaf/libraries/eslint-plugin/
 COPY libraries/fetch-utils/ /overleaf/libraries/fetch-utils/
 COPY libraries/logger/ /overleaf/libraries/logger/
@@ -97,7 +98,6 @@ RUN nice find /overleaf/services/web/public -name '*.js.map' -delete
 # copy source code and precompile pug images
 FROM deps-prod AS pug
 COPY libraries/access-token-encryptor/ /overleaf/libraries/access-token-encryptor/
-COPY libraries/ai/ /overleaf/libraries/ai/
 COPY libraries/eslint-plugin/ /overleaf/libraries/eslint-plugin/
 COPY libraries/fetch-utils/ /overleaf/libraries/fetch-utils/
 COPY libraries/logger/ /overleaf/libraries/logger/
@@ -130,6 +130,7 @@ CMD ["node", "--expose-gc", "app.mjs"]
 FROM pug AS app
 ARG SENTRY_RELEASE
 ENV SENTRY_RELEASE=$SENTRY_RELEASE
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt
 COPY --from=webpack-no-sourcemaps /overleaf/services/web/public /overleaf/services/web/public
 USER node
 CMD ["node", "--expose-gc", "app.mjs"]

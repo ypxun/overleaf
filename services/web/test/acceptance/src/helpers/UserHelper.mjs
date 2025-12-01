@@ -9,11 +9,11 @@ import moment from 'moment'
 import fetch from 'node-fetch'
 import mongodb from 'mongodb-legacy'
 
-import { UserAuditLogEntry } from '../../../../app/src/models/UserAuditLogEntry.js'
+import { UserAuditLogEntry } from '../../../../app/src/models/UserAuditLogEntry.mjs'
 
 // Import the rate limiter so we can clear it between tests
 
-import { RateLimiter } from '../../../../app/src/infrastructure/RateLimiter.js'
+import { RateLimiter } from '../../../../app/src/infrastructure/RateLimiter.mjs'
 
 const { ObjectId } = mongodb
 
@@ -55,6 +55,16 @@ class UserHelper {
   getAuditLogWithoutNoise() {
     return (this.user.auditLog || []).filter(entry => {
       return entry.operation !== 'login'
+    })
+  }
+
+  /**
+   * Get auditLog by operation
+   * @return {object[]}
+   */
+  getAuditLogByOperation(operation) {
+    return (this.user.auditLog || []).filter(entry => {
+      return entry.operation === operation
     })
   }
 

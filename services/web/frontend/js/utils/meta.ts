@@ -104,6 +104,7 @@ export interface Meta {
   'ol-compilesUserContentDomain': string
   'ol-countryCode': PricingFormState['country']
   'ol-couponCode': PricingFormState['coupon']
+  'ol-createNewUserViaDomainCapture': boolean
   'ol-createdAt': Date
   'ol-csrfToken': string
   'ol-currentInstitutionsWithLicence': Institution[]
@@ -116,7 +117,7 @@ export interface Meta {
   'ol-domainCaptureEnabled': boolean | undefined
   'ol-domainCaptureTestURL': string | undefined
   'ol-dropbox': { error: boolean; registered: boolean }
-  'ol-editorThemes': string[]
+  'ol-editorThemes': { name: string; dark: boolean }[]
   'ol-email': string
   'ol-emailAddressLimit': number
   'ol-error': { name: string } | undefined
@@ -166,6 +167,7 @@ export interface Meta {
   'ol-i18n': { currentLangCode: string }
   'ol-imageNames': ImageName[]
   'ol-inactiveTutorials': string[]
+  'ol-institutionEmail': string | undefined
   'ol-institutionEmailNonCanonical': string | undefined
   'ol-institutionLinked': InstitutionLink | undefined
   'ol-inviteToken': string
@@ -186,7 +188,7 @@ export interface Meta {
   'ol-labsExperiments': ActiveExperiment[] | undefined
   'ol-languages': SpellCheckLanguage[]
   'ol-learnedWords': string[]
-  'ol-legacyEditorThemes': string[]
+  'ol-legacyEditorThemes': { name: string; dark: boolean }[]
   'ol-licenseQuantity'?: number
   'ol-loadingText': string
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
@@ -275,15 +277,17 @@ export interface Meta {
     annual?: string
     monthlyTimesTwelve?: string
   }
-  'ol-stripeAccountId': string
-  'ol-stripePublicKeyUK': string
-  'ol-stripePublicKeyUS': string
-  'ol-stripeSubscriptionData': {
+  'ol-stripeCustomerData': Array<{
     customerId: string
+    subscriptionId: string
     subscriptionState: string | null
     paymentProviderService: StripePaymentProviderService | null
-    segment: string | null
-  }
+    managementUrl: string
+    segment?: string | null
+    error?: string
+  }>
+  'ol-stripePublicKeyUK': string
+  'ol-stripePublicKeyUS': string
   'ol-subscription': any // TODO: mixed types, split into two fields
   'ol-subscriptionChangePreview': SubscriptionChangePreview
   'ol-subscriptionCreationPreview': SubscriptionCreationPreview

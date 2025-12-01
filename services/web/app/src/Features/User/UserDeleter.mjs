@@ -1,10 +1,10 @@
 import { callbackify } from 'node:util'
 import logger from '@overleaf/logger'
 import Settings from '@overleaf/settings'
-import { User } from '../../models/User.js'
-import { DeletedUser } from '../../models/DeletedUser.js'
-import { UserAuditLogEntry } from '../../models/UserAuditLogEntry.js'
-import { Feedback } from '../../models/Feedback.js'
+import { User } from '../../models/User.mjs'
+import { DeletedUser } from '../../models/DeletedUser.mjs'
+import { UserAuditLogEntry } from '../../models/UserAuditLogEntry.mjs'
+import { Feedback } from '../../models/Feedback.mjs'
 import NewsletterManager from '../Newsletter/NewsletterManager.mjs'
 import ProjectDeleter from '../Project/ProjectDeleter.mjs'
 import SubscriptionHandler from '../Subscription/SubscriptionHandler.mjs'
@@ -14,7 +14,7 @@ import UserMembershipsHandler from '../UserMembership/UserMembershipsHandler.mjs
 import UserSessionsManager from './UserSessionsManager.mjs'
 import UserAuditLogHandler from './UserAuditLogHandler.mjs'
 import InstitutionsAPI from '../Institutions/InstitutionsAPI.mjs'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 import Errors from '../Errors/Errors.js'
 import OnboardingDataCollectionManager from '../OnboardingDataCollection/OnboardingDataCollectionManager.mjs'
 import EmailHandler from '../Email/EmailHandler.mjs'
@@ -45,17 +45,22 @@ async function deleteUser(userId, options) {
     const user = await User.findById(userId).exec()
     logger.info({ userId }, 'deleting user')
     await ensureCanDeleteUser(user)
-    logger.info({ userId }, 'cleaning up user')
-    await _cleanupUser(user)
-    logger.info({ userId }, 'firing deleteUser hook')
-    await Modules.promises.hooks.fire('deleteUser', userId)
+
+    // add audit log entry before _cleanUpUser removes any group subscriptions
     logger.info({ userId }, 'adding delete-account audit log entry')
     await UserAuditLogHandler.promises.addEntry(
       userId,
       'delete-account',
       options.deleterUser ? options.deleterUser._id : userId,
-      options.ipAddress
+      options.ipAddress,
+      {}
     )
+
+    logger.info({ userId }, 'cleaning up user')
+    await _cleanupUser(user)
+    logger.info({ userId }, 'firing deleteUser hook')
+    await Modules.promises.hooks.fire('deleteUser', userId)
+
     logger.info({ userId }, 'creating deleted user record')
     await _createDeletedUser(user, options)
     logger.info({ userId }, 'deleting user projects')

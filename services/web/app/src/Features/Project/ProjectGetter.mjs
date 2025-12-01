@@ -1,12 +1,14 @@
-import { db } from '../../infrastructure/mongodb.js'
-import { normalizeQuery } from '../Helpers/Mongo.js'
+import { db } from '../../infrastructure/mongodb.mjs'
+import Mongo from '../Helpers/Mongo.mjs'
 import OError from '@overleaf/o-error'
-import { Project } from '../../models/Project.js'
-import LockManager from '../../infrastructure/LockManager.js'
-import { DeletedProject } from '../../models/DeletedProject.js'
+import { Project } from '../../models/Project.mjs'
+import LockManager from '../../infrastructure/LockManager.mjs'
+import { DeletedProject } from '../../models/DeletedProject.mjs'
 import { callbackifyAll } from '@overleaf/promise-utils'
 import ProjectEntityMongoUpdateHandler from './ProjectEntityMongoUpdateHandler.mjs'
 import CollaboratorsGetter from '../Collaborators/CollaboratorsGetter.mjs'
+
+const { normalizeQuery } = Mongo
 
 const ProjectGetter = {
   EXCLUDE_DEPTH: 8,

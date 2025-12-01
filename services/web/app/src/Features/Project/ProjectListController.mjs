@@ -6,7 +6,7 @@ import Metrics from '@overleaf/metrics'
 import Settings from '@overleaf/settings'
 import ProjectHelper from './ProjectHelper.mjs'
 import ProjectGetter from './ProjectGetter.mjs'
-import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
+import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import Sources from '../Authorization/Sources.mjs'
 import UserGetter from '../User/UserGetter.mjs'
@@ -14,12 +14,12 @@ import SurveyHandler from '../Survey/SurveyHandler.mjs'
 import TagsHandler from '../Tags/TagsHandler.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import logger from '@overleaf/logger'
-import Features from '../../infrastructure/Features.js'
+import Features from '../../infrastructure/Features.mjs'
 import SubscriptionViewModelBuilder from '../Subscription/SubscriptionViewModelBuilder.mjs'
 import NotificationsHandler from '../Notifications/NotificationsHandler.mjs'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 import { OError, V1ConnectionError } from '../Errors/Errors.js'
-import { User } from '../../models/User.js'
+import { User } from '../../models/User.mjs'
 import UserPrimaryEmailCheckHandler from '../User/UserPrimaryEmailCheckHandler.mjs'
 import UserController from '../User/UserController.mjs'
 import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
@@ -27,10 +27,10 @@ import GeoIpLookup from '../../infrastructure/GeoIpLookup.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.mjs'
 import TutorialHandler from '../Tutorial/TutorialHandler.mjs'
-import SubscriptionHelper from '../Subscription/SubscriptionHelper.js'
+import SubscriptionHelper from '../Subscription/SubscriptionHelper.mjs'
 import PermissionsManager from '../Authorization/PermissionsManager.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
-import { OnboardingDataCollection } from '../../models/OnboardingDataCollection.js'
+import { OnboardingDataCollection } from '../../models/OnboardingDataCollection.mjs'
 import UserSettingsHelper from './UserSettingsHelper.mjs'
 
 /**
@@ -542,6 +542,12 @@ async function projectListPage(req, res, next) {
     'themed-project-dashboard'
   )
 
+  const userSettings = await UserSettingsHelper.buildUserSettings(
+    req,
+    res,
+    user
+  )
+
   res.render('project/list-react', {
     title: 'your_projects',
     usersBestSubscription,
@@ -550,7 +556,7 @@ async function projectListPage(req, res, next) {
     user,
     userAffiliations,
     userEmails,
-    userSettings: UserSettingsHelper.buildUserSettings(user),
+    userSettings,
     reconfirmedViaSAML,
     allInReconfirmNotificationPeriods,
     survey,

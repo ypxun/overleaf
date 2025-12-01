@@ -7,7 +7,6 @@ export interface WritefullEvents {
 }
 
 export interface WritefullAPI {
-  init(): void
   addEventListener<eventName extends keyof WritefullEvents>(
     name: eventName,
     callback: (detail: WritefullEvents[eventName]) => void
@@ -18,4 +17,5 @@ export interface WritefullAPI {
   ): void
   openTableGenerator(): void
   openEquationGenerator(): void
+  openFigureGenerator(): void
 }

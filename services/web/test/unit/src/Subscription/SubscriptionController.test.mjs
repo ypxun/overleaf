@@ -2,9 +2,9 @@ import { vi, assert, expect } from 'vitest'
 import sinon from 'sinon'
 import MockRequest from '../helpers/MockRequest.js'
 import MockResponse from '../helpers/MockResponse.js'
-import SubscriptionErrors from '../../../../app/src/Features/Subscription/Errors.js'
-import SubscriptionHelper from '../../../../app/src/Features/Subscription/SubscriptionHelper.js'
-import { AI_ADD_ON_CODE } from '../../../../app/src/Features/Subscription/AiHelper.js'
+import SubscriptionErrors from '../../../../app/src/Features/Subscription/Errors.mjs'
+import SubscriptionHelper from '../../../../app/src/Features/Subscription/SubscriptionHelper.mjs'
+import { AI_ADD_ON_CODE } from '../../../../app/src/Features/Subscription/AiHelper.mjs'
 
 const modulePath =
   '../../../../app/src/Features/Subscription/SubscriptionController.mjs'
@@ -1123,6 +1123,57 @@ describe('SubscriptionController', function () {
           { addon: 'assistant' }
         )
       ).to.be.true
+    })
+  })
+
+  describe('removeAddon', function () {
+    beforeEach(function (ctx) {
+      ctx.SessionManager.getSessionUser.returns(ctx.user)
+      ctx.next = sinon.stub()
+      ctx.req.params = { addOnCode: AI_ADD_ON_CODE }
+      ctx.SubscriptionHandler.promises.removeAddon = sinon.stub().resolves()
+    })
+
+    it('should return 200 on successful removal of AI add-on', async function (ctx) {
+      ctx.res.sendStatus = sinon.spy()
+
+      await ctx.SubscriptionController.removeAddon(ctx.req, ctx.res, ctx.next)
+
+      expect(ctx.SubscriptionHandler.promises.removeAddon).to.have.been.called
+      expect(
+        ctx.SubscriptionHandler.promises.removeAddon
+      ).to.have.been.calledWith(ctx.user, AI_ADD_ON_CODE)
+      expect(ctx.res.sendStatus).to.have.been.calledWith(200)
+      expect(ctx.logger.debug).to.have.been.calledWith(
+        { userId: ctx.user._id, addOnCode: AI_ADD_ON_CODE },
+        'removing add-ons'
+      )
+    })
+
+    it('should return 404 if the add-on code is not AI_ADD_ON_CODE', async function (ctx) {
+      ctx.req.params = { addOnCode: 'some-other-addon' }
+      ctx.res.sendStatus = sinon.spy()
+
+      await ctx.SubscriptionController.removeAddon(ctx.req, ctx.res, ctx.next)
+
+      expect(ctx.SubscriptionHandler.promises.removeAddon).to.not.have.been
+        .called
+      expect(ctx.res.sendStatus).to.have.been.calledWith(404)
+    })
+
+    it('should handle AddOnNotPresentError and send badRequest', async function (ctx) {
+      ctx.SubscriptionHandler.promises.removeAddon.rejects(
+        new SubscriptionErrors.AddOnNotPresentError()
+      )
+
+      await ctx.SubscriptionController.removeAddon(ctx.req, ctx.res, ctx.next)
+
+      expect(ctx.HttpErrorHandler.badRequest).to.have.been.calledWith(
+        ctx.req,
+        ctx.res,
+        'Your subscription does not contain the requested add-on',
+        { addon: AI_ADD_ON_CODE }
+      )
     })
   })
 

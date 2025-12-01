@@ -10,8 +10,8 @@ import logger from '@overleaf/logger'
 import Settings from '@overleaf/settings'
 import Errors from '../Errors/Errors.js'
 import SessionManager from '../Authentication/SessionManager.mjs'
-import { RateLimiter } from '../../infrastructure/RateLimiter.js'
-import Validation from '../../infrastructure/Validation.js'
+import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
+import Validation from '../../infrastructure/Validation.mjs'
 import ClsiCookieManagerFactory from './ClsiCookieManager.mjs'
 import Path from 'node:path'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
@@ -21,7 +21,7 @@ import {
   fetchStreamWithResponse,
   RequestFailedError,
 } from '@overleaf/fetch-utils'
-import Features from '../../infrastructure/Features.js'
+import Features from '../../infrastructure/Features.mjs'
 
 const { z, zz, validateReq } = Validation
 const ClsiCookieManager = ClsiCookieManagerFactory(

@@ -1,3 +1,4 @@
+import FocusTrap from '../focus-trap'
 import {
   Modal,
   ModalProps,
@@ -6,18 +7,45 @@ import {
   ModalFooterProps,
 } from 'react-bootstrap'
 import { ModalBodyProps } from 'react-bootstrap/ModalBody'
+import type { Options as FocusTrapOptions } from 'focus-trap'
+import { useTranslation } from 'react-i18next'
 
 type OLModalProps = ModalProps & {
   size?: 'sm' | 'lg'
   onHide: () => void
-}
+  show?: boolean
+} & Pick<
+    FocusTrapOptions,
+    'escapeDeactivates' | 'clickOutsideDeactivates' | 'returnFocusOnDeactivate'
+  >
 
 type OLModalHeaderProps = ModalHeaderProps & {
   closeButton?: boolean
 }
 
-export function OLModal({ children, ...props }: OLModalProps) {
-  return <Modal {...props}>{children}</Modal>
+export function OLModal({
+  children,
+  show = false,
+  onHide,
+  returnFocusOnDeactivate = true, // Return focus to trigger element when modal closes
+  escapeDeactivates = false, // Let React-Bootstrap Modal handle Escape key to avoid double Escape key handling
+  clickOutsideDeactivates = true, // Allow focus trap to deactivate on outside click and let React-Bootstrap Modal handle it
+  ...props
+}: OLModalProps) {
+  return (
+    <Modal show={show} onHide={onHide} {...props}>
+      <FocusTrap
+        active={show}
+        focusTrapOptions={{
+          escapeDeactivates,
+          clickOutsideDeactivates,
+          returnFocusOnDeactivate,
+        }}
+      >
+        {children}
+      </FocusTrap>
+    </Modal>
+  )
 }
 
 export function OLModalHeader({
@@ -25,8 +53,13 @@ export function OLModalHeader({
   closeButton = true,
   ...props
 }: OLModalHeaderProps) {
+  const { t } = useTranslation()
   return (
-    <Modal.Header closeButton={closeButton} {...props}>
+    <Modal.Header
+      closeButton={closeButton}
+      closeLabel={t('close_dialog')}
+      {...props}
+    >
       {children}
     </Modal.Header>
   )

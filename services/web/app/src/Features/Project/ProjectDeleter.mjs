@@ -3,12 +3,12 @@ import {
   db,
   ObjectId,
   READ_PREFERENCE_SECONDARY,
-} from '../../infrastructure/mongodb.js'
-import Modules from '../../infrastructure/Modules.js'
+} from '../../infrastructure/mongodb.mjs'
+import Modules from '../../infrastructure/Modules.mjs'
 import { callbackify } from 'node:util'
-import { Project } from '../../models/Project.js'
-import { DeletedProject } from '../../models/DeletedProject.js'
-import { ProjectAuditLogEntry } from '../../models/ProjectAuditLogEntry.js'
+import { Project } from '../../models/Project.mjs'
+import { DeletedProject } from '../../models/DeletedProject.mjs'
+import { ProjectAuditLogEntry } from '../../models/ProjectAuditLogEntry.mjs'
 import Errors from '../Errors/Errors.js'
 import logger from '@overleaf/logger'
 import Settings from '@overleaf/settings'

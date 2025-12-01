@@ -2,7 +2,7 @@
 import Settings from '@overleaf/settings'
 
 import PlansLocator from './PlansLocator.mjs'
-import { isStandaloneAiAddOnPlanCode } from './AiHelper.js'
+import { isStandaloneAiAddOnPlanCode } from './AiHelper.mjs'
 import PaymentProviderEntities from './PaymentProviderEntities.mjs'
 import SubscriptionFormatters from './SubscriptionFormatters.mjs'
 import SubscriptionLocator from './SubscriptionLocator.mjs'
@@ -12,12 +12,12 @@ import PublishersGetter from '../Publishers/PublishersGetter.mjs'
 import sanitizeHtml from 'sanitize-html'
 import _ from 'lodash'
 import async from 'async'
-import SubscriptionHelper from './SubscriptionHelper.js'
+import SubscriptionHelper from './SubscriptionHelper.mjs'
 import { callbackify } from '@overleaf/promise-utils'
 import { V1ConnectionError } from '../Errors/Errors.js'
 import FeaturesHelper from './FeaturesHelper.mjs'
 import { formatCurrency } from '../../util/currency.js'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 
 const { MEMBERS_LIMIT_ADD_ON_CODE } = PaymentProviderEntities

@@ -4,12 +4,12 @@
 
 import { callbackifyAll } from '@overleaf/promise-utils'
 
-import { Subscription } from '../../models/Subscription.js'
-import SubscriptionHelper from './SubscriptionHelper.js'
-import { DeletedSubscription } from '../../models/DeletedSubscription.js'
+import { Subscription } from '../../models/Subscription.mjs'
+import SubscriptionHelper from './SubscriptionHelper.mjs'
+import { DeletedSubscription } from '../../models/DeletedSubscription.mjs'
 import logger from '@overleaf/logger'
-import { AI_ADD_ON_CODE, isStandaloneAiAddOnPlanCode } from './AiHelper.js'
-import './GroupPlansData.js' // make sure dynamic group plans are loaded
+import { AI_ADD_ON_CODE, isStandaloneAiAddOnPlanCode } from './AiHelper.mjs'
+import './GroupPlansData.mjs' // make sure dynamic group plans are loaded
 
 const SubscriptionLocator = {
   async getUsersSubscription(userOrId) {
@@ -102,6 +102,20 @@ const SubscriptionLocator = {
   async getUniqueManagedSubscriptionMemberOf(userId) {
     return await Subscription.findOne(
       { member_ids: userId, managedUsersEnabled: true },
+      { _id: 1 }
+    )
+  },
+
+  async getUniqueManagedSubscriptionUserAssociation(userId) {
+    return await Subscription.findOne(
+      {
+        managedUsersEnabled: true,
+        $or: [
+          { member_ids: userId },
+          { manager_ids: userId },
+          { admin_id: userId },
+        ],
+      },
       { _id: 1 }
     )
   },

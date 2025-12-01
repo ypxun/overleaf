@@ -1,13 +1,12 @@
 import { vi, expect } from 'vitest'
-import path from 'path'
+import path from 'node:path'
 import sinon from 'sinon'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
-import indirectlyImportModels from '../helpers/indirectlyImportModels.js'
+import { Project } from '../../../../app/src/models/Project.mjs'
 import mongodb from 'mongodb-legacy'
 import { setTimeout } from 'node:timers/promises'
 
 const { ObjectId } = mongodb
-const { Project } = indirectlyImportModels(['Project'])
 vi.mock('../../../../app/src/Features/Errors/Errors.js', () =>
   vi.importActual('../../../../app/src/Features/Errors/Errors.js')
 )

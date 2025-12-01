@@ -4,13 +4,13 @@ import OError from '@overleaf/o-error'
 import SubscriptionUpdater from './SubscriptionUpdater.mjs'
 import SubscriptionLocator from './SubscriptionLocator.mjs'
 import SubscriptionController from './SubscriptionController.mjs'
-import SubscriptionHelper from './SubscriptionHelper.js'
-import { Subscription } from '../../models/Subscription.js'
-import { User } from '../../models/User.js'
+import SubscriptionHelper from './SubscriptionHelper.mjs'
+import { Subscription } from '../../models/Subscription.mjs'
+import { User } from '../../models/User.mjs'
 import PlansLocator from './PlansLocator.mjs'
 import TeamInvitesHandler from './TeamInvitesHandler.mjs'
-import GroupPlansData from './GroupPlansData.js'
-import Modules from '../../infrastructure/Modules.js'
+import GroupPlansData from './GroupPlansData.mjs'
+import Modules from '../../infrastructure/Modules.mjs'
 import PaymentProviderEntities from './PaymentProviderEntities.mjs'
 import {
   ManuallyCollectedError,
@@ -18,8 +18,8 @@ import {
   InactiveError,
   HasPastDueInvoiceError,
   HasNoAdditionalLicenseWhenManuallyCollectedError,
-} from './Errors.js'
-import EmailHelper from '../Helpers/EmailHelper.js'
+} from './Errors.mjs'
+import EmailHelper from '../Helpers/EmailHelper.mjs'
 import { InvalidEmailError } from '../Errors/Errors.js'
 
 const MEMBERS_LIMIT_ADD_ON_CODE =

@@ -42,7 +42,8 @@ describe('Project creation and compilation', function () {
       .findByRole('button', { name: 'New file' })
       .click()
     cy.findByRole('dialog').within(() => {
-      cy.findByLabelText('File Name').clear().type(fileName)
+      cy.findByLabelText('File Name').as('filename').clear()
+      cy.get('@filename').type(fileName)
       cy.findByRole('button', { name: 'Create' }).click()
     })
     cy.findByRole('button', { name: fileName }).click()
@@ -122,7 +123,9 @@ describe('Project creation and compilation', function () {
       cy.findByRole('button', { name: 'Share' }).click()
     })
     cy.findByRole('dialog').within(() => {
-      cy.findByTestId('collaborator-email-input').type(COLLABORATOR + ',')
+      cy.findByRole('combobox', { name: 'Add email address' }).type(
+        COLLABORATOR + ','
+      )
       cy.findByRole('button', { name: 'Invite' }).click()
       cy.findByText('Invite not yet accepted.')
     })

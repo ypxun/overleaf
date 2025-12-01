@@ -1,17 +1,18 @@
 import logger from '@overleaf/logger'
-import { Project } from '../../models/Project.js'
+import { Project } from '../../models/Project.mjs'
 import ProjectGetter from '../Project/ProjectGetter.mjs'
 import UserGetter from '../User/UserGetter.mjs'
 import CollaboratorsHandler from './CollaboratorsHandler.mjs'
 import EmailHandler from '../Email/EmailHandler.mjs'
 import Errors from '../Errors/Errors.js'
-import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
+import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
 import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.mjs'
 import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 import OError from '@overleaf/o-error'
 import TagsHandler from '../Tags/TagsHandler.mjs'
 import { promiseMapWithLimit } from '@overleaf/promise-utils'
+import LimitationsManager from '../Subscription/LimitationsManager.mjs'
 
 export default {
   promises: {
@@ -124,16 +125,20 @@ async function transferOwnership(projectId, newOwnerId, options = {}) {
     { previousOwnerId, newOwnerId }
   )
 
-  // Determine which permissions to give old owner based on
-  // new owner's existing permissions
-  const newPermissions =
-    _getUserPermissions(newOwner, project) || PrivilegeLevels.READ_ONLY
+  // Transfer ownership
+  await _transferOwnership(projectId, previousOwnerId, newOwnerId)
 
-  await _transferOwnership(
+  // Determine which permissions to give old owner (after transfer, so we use new owner's limits)
+  const { privilegeLevel, pendingPrivilegeLevel } =
+    await _determinePrivilegeLevelForPreviousOwner(projectId)
+
+  // Add the previous owner back to the project with determined permissions
+  await CollaboratorsHandler.promises.addUserIdToProject(
     projectId,
-    previousOwnerId,
     newOwnerId,
-    newPermissions
+    previousOwnerId,
+    privilegeLevel,
+    pendingPrivilegeLevel
   )
 
   // Flush project to TPDS
@@ -189,26 +194,34 @@ function _userIsCollaborator(user, project) {
   return Boolean(_getUserPermissions(user, project))
 }
 
-async function _transferOwnership(
-  projectId,
-  previousOwnerId,
-  newOwnerId,
-  newPermissions
-) {
+async function _determinePrivilegeLevelForPreviousOwner(projectId) {
+  // Try to give READ_AND_WRITE if space available based on new owner's limits
+  const canAddEditor =
+    await LimitationsManager.promises.canAddXEditCollaborators(projectId, 1)
+
+  if (canAddEditor) {
+    return { privilegeLevel: PrivilegeLevels.READ_AND_WRITE }
+  }
+
+  // Collaborator limit is reached for editor and reviewer so fall back to read-only
+  // Add pending editor status so they are automatically upgraded when possible
+  return {
+    privilegeLevel: PrivilegeLevels.READ_ONLY,
+    pendingPrivilegeLevel: { pendingEditor: true },
+  }
+}
+
+async function _transferOwnership(projectId, previousOwnerId, newOwnerId) {
+  // Remove new owner from collaborators list
   await CollaboratorsHandler.promises.removeUserFromProject(
     projectId,
     newOwnerId
   )
+  // Update project ownership
   await Project.updateOne(
     { _id: projectId },
     { $set: { owner_ref: newOwnerId } }
   ).exec()
-  await CollaboratorsHandler.promises.addUserIdToProject(
-    projectId,
-    newOwnerId,
-    previousOwnerId,
-    newPermissions
-  )
 }
 
 async function _sendEmails(project, previousOwner, newOwner) {
