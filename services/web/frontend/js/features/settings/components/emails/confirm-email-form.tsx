@@ -7,7 +7,6 @@ import {
   ComponentProps,
   FormEvent,
   MouseEventHandler,
-  useEffect,
   useState,
 } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
@@ -21,6 +20,8 @@ import DSButton from '@/shared/components/ds/ds-button'
 import CIAMSixDigitsInput from '@/features/settings/components/emails/ciam-six-digits-input'
 import OLFormText from '@/shared/components/ol/ol-form-text'
 import DSFormText from '@/shared/components/ds/ds-form-text'
+import { CaretRight } from '@phosphor-icons/react'
+import DSNotification from '@/shared/components/ds/ds-notification'
 
 type Feedback = {
   type: 'input' | 'alert'
@@ -177,24 +178,43 @@ export function ConfirmEmailForm({
 
   if (successRedirectPath && successButtonText && successMessage) {
     return (
-      <ConfirmEmailSuccessfullForm
+      <ConfirmEmailSuccessfulForm
         successMessage={successMessage}
         successButtonText={successButtonText}
         redirectTo={successRedirectPath}
-        autoRedirect={isCiam ? 8000 : false}
+        isCiam={Boolean(isCiam)}
       />
     )
   }
 
-  const longLabel = isModal
-    ? t('enter_the_code', { email })
-    : t('enter_the_confirmation_code', { email })
+  const longLabel = isModal ? (
+    t('enter_the_code', { email })
+  ) : (
+    <Trans
+      i18nKey="enter_the_confirmation_code"
+      components={[isCiam ? <strong /> : <span />]}
+      values={{ email }}
+      shouldUnescape
+      tOptions={{ interpolation: { escapeValue: true } }}
+    />
+  )
 
   const Button = isCiam ? DSButton : OLButton
   const buttonSize = isCiam ? 'lg' : undefined
 
   const SixDigits = isCiam ? CIAMSixDigitsInput : OLSixDigitsInput
   const FormText = isCiam ? DSFormText : OLFormText
+
+  const NotificationComponent = isCiam ? DSNotification : Notification
+
+  const outerErrorEl = (feedback?.type === 'alert' || outerErrorDisplay) && (
+    <NotificationComponent
+      ariaLive="polite"
+      className="confirm-email-alert"
+      type={outerErrorDisplay ? 'error' : feedback!.style}
+      content={outerErrorDisplay || <ErrorMessage error={feedback!.message!} />}
+    />
+  )
 
   return (
     <form
@@ -204,16 +224,7 @@ export function ConfirmEmailForm({
       data-testid="confirm-email-form"
     >
       <div className="confirm-email-form-inner">
-        {(feedback?.type === 'alert' || outerErrorDisplay) && (
-          <Notification
-            ariaLive="polite"
-            className="confirm-email-alert"
-            type={outerErrorDisplay ? 'error' : feedback!.style}
-            content={
-              outerErrorDisplay || <ErrorMessage error={feedback!.message!} />
-            }
-          />
-        )}
+        {!isCiam && outerErrorEl}
 
         <Title
           isModal={isModal}
@@ -221,6 +232,8 @@ export function ConfirmEmailForm({
           isCiam={isCiam}
           outerErrorDisplay={outerErrorDisplay}
         />
+
+        {isCiam && outerErrorEl}
 
         {isCiam && <p>{longLabel}</p>}
 
@@ -328,41 +341,43 @@ function Title({
   return <h5 className="h5">{t('confirm_your_email')}</h5>
 }
 
-function ConfirmEmailSuccessfullForm({
+function ConfirmEmailSuccessfulForm({
   successMessage,
   successButtonText,
   redirectTo,
-  autoRedirect = false,
+  isCiam,
 }: {
   successMessage: React.ReactNode
   successButtonText: string
   redirectTo: string
-  autoRedirect?: number | false
+  isCiam: boolean
 }) {
   const location = useLocation()
   const submitHandler = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     location.assign(redirectTo)
   }
-
-  useEffect(() => {
-    if (autoRedirect) {
-      const timer = setTimeout(() => location.assign(redirectTo), autoRedirect)
-      return () => clearTimeout(timer)
-    }
-  }, [autoRedirect, location, redirectTo])
+  const button = isCiam ? (
+    <DSButton
+      type="submit"
+      variant="primary"
+      size="lg"
+      className="w-100"
+      trailingIcon={<CaretRight size={24} />}
+    >
+      {successButtonText}
+    </DSButton>
+  ) : (
+    <OLButton type="submit" variant="primary">
+      {successButtonText}
+    </OLButton>
+  )
 
   return (
     <form onSubmit={submitHandler} className="confirm-email-success-form">
       <div aria-live="polite">{successMessage}</div>
 
-      {!autoRedirect && (
-        <div className="form-actions">
-          <OLButton type="submit" variant="primary">
-            {successButtonText}
-          </OLButton>
-        </div>
-      )}
+      <div className="form-actions">{button}</div>
     </form>
   )
 }

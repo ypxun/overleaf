@@ -6,7 +6,7 @@ import usePreviousValue from '@/shared/hooks/use-previous-value'
 import { HistorySidebar } from '@/features/ide-react/components/history-sidebar'
 import { Tab } from 'react-bootstrap'
 import { RailElement } from '../../utils/rail-types'
-import { shouldIncludeRailTab } from '../../utils/rail-utils'
+import { shouldIncludeElement } from '../../utils/rail-utils'
 
 export default function RailPanel({
   isReviewPanelOpen,
@@ -37,7 +37,7 @@ export default function RailPanel({
       id={`ide-redesign-sidebar-panel-${isHistoryView ? 'file-tree' : selectedTab}`}
       className={classNames({ hidden: isReviewPanelOpen })}
       order={1}
-      defaultSize={15}
+      defaultSize={selectedTab === 'workbench' ? 20 : 15}
       minSize={5}
       maxSize={80}
       ref={panelRef}
@@ -53,7 +53,7 @@ export default function RailPanel({
       >
         <Tab.Content className="ide-rail-tab-content">
           {railTabs
-            .filter(shouldIncludeRailTab)
+            .filter(shouldIncludeElement)
             .map(({ key, component, mountOnFirstLoad }) => (
               <Tab.Pane
                 eventKey={key}

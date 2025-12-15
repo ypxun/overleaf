@@ -4,6 +4,7 @@ import { canSkipCaptcha, validateCaptchaV2 } from './captcha'
 import inputValidator from './input-validator'
 import { disableElement, enableElement } from '../utils/disableElement'
 import { materialIcon as createMaterialIcon } from '@/features/utils/material-icon'
+import { ciamIcon } from '@/features/utils/ciam-icon'
 
 // Form helper(s) to handle:
 // - Attaching to the relevant form elements
@@ -303,6 +304,8 @@ function showMessagesNewStyle(
       el.hidden = true
     })
 
+  const isDsBranded = formEl.dataset.ciamForm !== undefined
+
   // Render messages
   messageBag.forEach(message => {
     const customErrorElements = message.key
@@ -321,6 +324,7 @@ function showMessagesNewStyle(
       messageElContainer.className = classNames('notification', {
         'notification-type-error': message.type === 'error',
         'notification-type-success': message.type !== 'error',
+        'notification-ds': isDsBranded,
       })
       const messageEl = document.createElement('div')
 
@@ -343,12 +347,19 @@ function showMessagesNewStyle(
       }
 
       // create the left icon
-      const icon = createMaterialIcon(
-        message.type === 'error' ? 'error' : 'check_circle'
-      )
       const messageIcon = document.createElement('div')
       messageIcon.className = 'notification-icon'
-      messageIcon.appendChild(icon)
+      if (
+        isDsBranded &&
+        (message.type === 'error' || message.type === 'info')
+      ) {
+        messageIcon.append(ciamIcon(message.type))
+      } else {
+        const icon = createMaterialIcon(
+          message.type === 'error' ? 'error' : 'check_circle'
+        )
+        messageIcon.appendChild(icon)
+      }
 
       // append icon first so it's on the left
       messageElContainer.appendChild(messageIcon)
@@ -379,23 +390,43 @@ function showMessagesNewStyle(
   })
 }
 
+function querySelectorAllWithSelf(el: HTMLElement, selector: string) {
+  const nodeList = el.querySelectorAll<HTMLElement>(selector)
+  return el.matches(selector) ? [el, ...nodeList] : Array.from(nodeList)
+}
+
 export function inflightHelper(el: HTMLElement) {
-  const disabledInflight = el.querySelectorAll('[data-ol-disabled-inflight]')
+  const disabledInflight = querySelectorAllWithSelf(
+    el,
+    '[data-ol-disabled-inflight]'
+  )
   const showWhenNotInflight = el.querySelectorAll<HTMLElement>(
     '[data-ol-inflight="idle"]'
   )
   const showWhenInflight = el.querySelectorAll<HTMLElement>(
     '[data-ol-inflight="pending"]'
   )
+  const spinnerInflight = querySelectorAllWithSelf(
+    el,
+    '[data-ol-spinner-inflight]'
+  )
 
   el.addEventListener('pending', () => {
     disabledInflight.forEach(disableElement)
     toggleDisplay(showWhenNotInflight, showWhenInflight)
+    spinnerInflight.forEach(loadingEl => {
+      loadingEl.setAttribute('data-ol-loading', 'true')
+      loadingEl.classList.add('button-loading')
+    })
   })
 
   el.addEventListener('idle', () => {
     disabledInflight.forEach(enableElement)
     toggleDisplay(showWhenInflight, showWhenNotInflight)
+    spinnerInflight.forEach(loadingEl => {
+      loadingEl.removeAttribute('data-ol-loading')
+      loadingEl.classList.remove('button-loading')
+    })
   })
 }
 

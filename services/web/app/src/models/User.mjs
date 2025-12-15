@@ -89,6 +89,10 @@ export const UserSchema = new Schema(
       mode: { type: String, default: 'none' },
       theme: { type: String, default: 'textmate' },
       overallTheme: { type: String, default: '' },
+      // When overallTheme is `system`, we switch between `lightTheme` and `darkTheme` based on system settings
+      // When overallTheme is `light-` or empty, we use the `theme` option.
+      lightTheme: { type: String, default: 'textmate' },
+      darkTheme: { type: String, default: 'overleaf_dark' },
       fontSize: { type: Number, default: '12' },
       autoComplete: { type: Boolean, default: true },
       autoPairDelimiters: { type: Boolean, default: true },
@@ -100,7 +104,11 @@ export const UserSchema = new Schema(
       mathPreview: { type: Boolean, default: true },
       breadcrumbs: { type: Boolean, default: true },
       referencesSearchMode: { type: String, default: 'advanced' }, // 'advanced' or 'simple'
+      // enableNewEditor is being phased out in favor of enableNewEditorStageFour
+      // when moving the new editor to opt out (stage 4). However, we need to keep the
+      // old field for determining whether to show promotional material to users.
       enableNewEditor: { type: Boolean },
+      enableNewEditorStageFour: { type: Boolean },
       darkModePdf: { type: Boolean, default: false },
     },
     features: {

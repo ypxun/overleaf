@@ -8,6 +8,7 @@ const VALID_KEYS = [
   'writefull-oauth-promotion',
   'bib-file-tpr-prompt',
   'ai-error-assistant-consent',
+  'workbench-consent',
   'history-restore-promo',
   'us-gov-banner',
   'us-gov-banner-fedramp',
@@ -26,6 +27,9 @@ const VALID_KEYS = [
   'groups-enterprise-banner-repeat',
   'new-editor-opt-in',
   'new-editor-intro',
+  'new-editor-intro-2',
+  'old-editor-warning-tooltip',
+  'workbench-rail-popover',
 ]
 
 async function completeTutorial(req, res, next) {

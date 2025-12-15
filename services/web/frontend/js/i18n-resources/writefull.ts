@@ -223,6 +223,9 @@ const en = {
     'toolbar.next-suggestion': 'Next suggestion',
     'toolbar.quota-exceeded': 'Quota is exceeded',
     'toolbar.translate': 'Translate',
+    'toolbar.citations-checker': 'Citations Checker',
+    'toolbar.citations-checker.selection':
+      'Select at least 10 words to use this widget',
     'create-modal.title': 'Generate __name__',
     'create-modal.unavailable.title': 'Writefull is unavailable',
     'create-modal.unavailable.content':
@@ -319,6 +322,19 @@ const en = {
     'sign-in.extension-user-blocked.p5':
       'If you need help or guidance then more information is available ',
     'sign-in.extension-user-blocked.l2': 'here.',
+    'translation-notification.title_1': 'New, nieuw, nuevo!',
+    'translation-notification.title_2': 'Translate your text instantly',
+    'translation-notification.body_1':
+      'Translate your project without leaving Overleaf!',
+    'translation-notification.body_2_floating-button-enabled':
+      'Simply highlight your text, click',
+    'translation-notification.body_3_floating-button-enabled':
+      'and select "Translate" to pick from 30 languages.',
+    'translation-notification.body_2_toolbar-visible':
+      'Simply highlight your text and select the "Translate"',
+    'translation-notification.body_3_toolbar-visible':
+      'icon in your toolbar to pick from 30 languages.',
+    'translation-notification.ok': 'OK',
     'welcome.continue': 'Continue',
     'welcome.not-for-you': 'Not for you? Click',
     'welcome.here': 'here',
@@ -373,6 +389,78 @@ const en = {
     'welcome.reset-password': 'Reset password',
     'welcome.enable-writefull':
       'Enable Writefull for language and LaTeX support',
+    'citations-checker.title': 'Citations Checker',
+    'citations-checker.searching-cites':
+      'Checking your document for potential passages to include citations',
+    'citations-checker.no-results': 'No potential citations found',
+    'citations-checker.search-publications': 'View sources',
+    'citations-checker.publications.search-placeholder':
+      'Search in publications list',
+    'citations-checker.dismiss': 'Dismiss',
+    'citations-checker.searching-publications':
+      'Identifying potential sources to use',
+    'citations-checker.back': 'Back',
+    'citations-checker.publications.title':
+      "We've identified the following sources for you to review.",
+    'citations-checker.publications.no-results': 'No sources found',
+    'citations-checker.publications.no-title': 'No title',
+    'citations-checker.publications.no-authors': 'No authors',
+    'citations-checker.publications.external-search': 'Search for a DOI',
+    'citations-checker.publications.view': 'View',
+    'citations-checker.publications.insert': 'Insert',
+    'citations-checker.publications.copy': 'Copy citation',
+    'citations-checker.publications.copied': 'Copied to clipboard',
+    'citations-reviewer.chat.title': 'Citation reviewer',
+    'citations-reviewer.chat.description':
+      '<b>Identified __count__ passages</b><br/>Here are statements in your article that may benefit from a citation.',
+    'citations-reviewer.chat.document-updated':
+      'Your document has been updated. Refresh citations to get new suggestions.',
+    'citations-reviewer.chat.fetching-citations':
+      'Reviewing your document to see if any passage of text might need a citation',
+    'citations-reviewer.chat.fetching-publications': 'Fetching publications...',
+    'citations-reviewer.chat.no-citations.title': 'Well done!',
+    'citations-reviewer.chat.no-citations.description':
+      "We didn't identify any passages that need additional citation.",
+    'citations-reviewer.chat.no-citations.run-again': 'Run again',
+    'citations-reviewer.chat.no-citations.done': 'Done',
+    'citations-reviewer.chat.publications.title': 'Suggested papers',
+    'citations-reviewer.chat.publications.description':
+      'The following papers may support the claim you’ve made. Always check papers yourself to ensure relevance.',
+    'citations-reviewer.chat.publications.subtitle': 'Select papers to cite:',
+    'citations-reviewer.chat.publications.alternatively': 'Alternatively,',
+    'citations-reviewer.chat.publications.custom-search':
+      'search for papers yourself.',
+    'citations-reviewer.chat.publications.change-search':
+      'change the search criteria.',
+    'citations-reviewer.chat.publications.search-criteria':
+      'Search by "__type__": "__value__"',
+    'citations-reviewer.chat.publications.passage': 'Passage to review',
+    'citations-reviewer.chat.actions.refresh': 'Refresh citations',
+    'citations-reviewer.chat.actions.back': 'Back',
+    'citations-reviewer.chat.actions.more-authors': '> More authors',
+    'citations-reviewer.chat.actions.read-abstract': '> Read abstract',
+    'citations-reviewer.chat.actions.view-suggestions': 'View suggestions →',
+    'citations-reviewer.chat.actions.ignore': 'Ignore',
+    'citations-reviewer.chat.actions.view-paper': 'View paper',
+    'citations-reviewer.chat.actions.insert-citation': 'Insert citation',
+    'citations-reviewer.chat.actions.insert-citations':
+      'Insert __count__ citations',
+    'citations-reviewer.chat.confirmation.title': 'Insert citation?',
+    'citations-reviewer.chat.confirmation.body':
+      'Always ensure you’ve read the paper and confirmed any suggestions made by AI before inserting a citation.',
+    'citations-reviewer.chat.confirmation.insert': 'Insert citation',
+    'citations-reviewer.chat.confirmation.cancel': 'Cancel',
+    'citations-reviewer.chat.custom-search.title': 'Custom search',
+    'citations-reviewer.chat.custom-search.form.title': 'Title',
+    'citations-reviewer.chat.custom-search.form.title-placeholder':
+      'Enter paper title',
+    'citations-reviewer.chat.custom-search.form.authors': 'Author name(s)',
+    'citations-reviewer.chat.custom-search.form.authors-placeholder':
+      'Enter author name(s)',
+    'citations-reviewer.chat.custom-search.form.keywords': 'Keywords',
+    'citations-reviewer.chat.custom-search.form.keywords-placeholder':
+      'Enter keywords',
+    'citations-reviewer.chat.custom-search.form.search': 'Search',
   },
 } as const
 
@@ -615,6 +703,9 @@ const es = {
     'toolbar.next-suggestion': 'Siguiente sugerencia',
     'toolbar.quota-exceeded': 'Cuota agotada',
     'toolbar.translate': 'Traducir',
+    'toolbar.citations-checker': 'Citations Checker',
+    'toolbar.citations-checker.selection':
+      'Selecciona al menos 10 palabras para usar este widget',
     'create-modal.title': 'Generador de __name__',
     'create-modal.unavailable.title': 'Writefull no está disponible',
     'create-modal.unavailable.content':
@@ -713,6 +804,19 @@ const es = {
     'sign-in.extension-user-blocked.p5':
       'Si necesitas ayuda o orientación, más información está disponible ',
     'sign-in.extension-user-blocked.l2': 'aquí.',
+    'translation-notification.title_1': 'New, nieuw, nuevo!',
+    'translation-notification.title_2': 'Traduce tu texto instantáneamente',
+    'translation-notification.body_1':
+      'Traduce tu proyecto sin salir de Overleaf!',
+    'translation-notification.body_2_floating-button-enabled':
+      'Simplemente resalta tu texto, haz clic',
+    'translation-notification.body_3_floating-button-enabled':
+      'y selecciona "Traducir" para elegir entre 30 idiomas.',
+    'translation-notification.body_2_toolbar-visible':
+      'Simplemente resalta tu texto y selecciona el icono "Traducir"',
+    'translation-notification.body_3_toolbar-visible':
+      'en tu barra de herramientas para elegir entre 30 idiomas.',
+    'translation-notification.ok': 'OK',
     'welcome.continue': 'Continuar',
     'welcome.not-for-you': '¿No es para ti? Haz clic',
     'welcome.here': 'aquí',
@@ -767,6 +871,80 @@ const es = {
     'welcome.reset-password': 'Restablecer contraseña',
     'welcome.enable-writefull':
       'Habilitar Writefull para soporte de lenguaje y LaTeX',
+    'citations-checker.title': 'Verificador de citas',
+    'citations-checker.searching-cites':
+      'Comprobando tu documento para encontrar pasajes que puedan requerir citas',
+    'citations-checker.no-results': 'No se encontraron citas potenciales',
+    'citations-checker.search-publications': 'Ver fuentes',
+    'citations-checker.publications.search-placeholder':
+      'Buscar en la lista de fuentes',
+    'citations-checker.dismiss': 'Descartar',
+    'citations-checker.searching-publications':
+      'Identificando posibles fuentes para usar',
+    'citations-checker.back': 'Volver',
+    'citations-checker.publications.title':
+      'Hemos identificado las siguientes fuentes para que las revises.',
+    'citations-checker.publications.no-results': 'No se encontraron fuentes',
+    'citations-checker.publications.no-title': 'Sin título',
+    'citations-checker.publications.no-authors': 'Sin autores',
+    'citations-checker.publications.external-search': 'Buscar por DOI',
+    'citations-checker.publications.view': 'Ver',
+    'citations-checker.publications.insert': 'Insertar',
+    'citations-checker.publications.copy': 'Copiar cita',
+    'citations-checker.publications.copied': 'Copiado al portapapeles',
+    'citations-reviewer.chat.title': 'Revisor de citas',
+    'citations-reviewer.chat.description':
+      '<b>__count__ afirmaciones identificadas</b><br/>Aquí tienes pasajes en tu artículo que pueden beneficiarse de una cita.',
+    'citations-reviewer.chat.document-updated':
+      'Documento actualizado. Haz clic en "Actualizar citas" para revisar las citas nuevamente.',
+    'citations-reviewer.chat.fetching-citations':
+      'Revisando tu documento para ver si algún pasaje podría necesitar una cita',
+    'citations-reviewer.chat.fetching-publications':
+      'Obteniendo publicaciones...',
+    'citations-reviewer.chat.no-citations.title': 'Bien hecho!',
+    'citations-reviewer.chat.no-citations.description':
+      'No se identificaron pasajes que necesiten citas adicionales.',
+    'citations-reviewer.chat.no-citations.run-again': 'Volver a ejecutar',
+    'citations-reviewer.chat.no-citations.done': 'Hecho',
+    'citations-reviewer.chat.publications.title': 'Artículos sugeridos',
+    'citations-reviewer.chat.publications.description':
+      'Los siguientes artículos pueden respaldar la afirmación que has hecho. Revisa siempre los artículos por tu cuenta para asegurar su relevancia.',
+    'citations-reviewer.chat.publications.subtitle':
+      'Selecciona artículos para citar:',
+    'citations-reviewer.chat.publications.alternatively': 'Alternativamente,',
+    'citations-reviewer.chat.publications.custom-search':
+      'busca artículos por tu cuenta.',
+    'citations-reviewer.chat.publications.change-search':
+      'cambia los criterios de búsqueda.',
+    'citations-reviewer.chat.publications.search-criteria':
+      'Búsqueda por "__type__": "__value__"',
+    'citations-reviewer.chat.publications.passage': 'Pasaje a revisar',
+    'citations-reviewer.chat.actions.refresh': 'Actualizar citas',
+    'citations-reviewer.chat.actions.back': 'Volver',
+    'citations-reviewer.chat.actions.more-authors': '> Más autores',
+    'citations-reviewer.chat.actions.read-abstract': '> Leer resumen',
+    'citations-reviewer.chat.actions.view-suggestions': 'Ver sugerencias →',
+    'citations-reviewer.chat.actions.ignore': 'Ignorar',
+    'citations-reviewer.chat.actions.view-paper': 'Ver artículo',
+    'citations-reviewer.chat.actions.insert-citation': 'Insertar cita',
+    'citations-reviewer.chat.actions.insert-citations':
+      'Insertar __count__ citas',
+    'citations-reviewer.chat.confirmation.title': '¿Insertar cita?',
+    'citations-reviewer.chat.confirmation.body':
+      'Asegúrate siempre de haber leído el artículo y confirmado cualquier sugerencia realizada por la IA antes de insertar una cita.',
+    'citations-reviewer.chat.confirmation.insert': 'Insertar cita',
+    'citations-reviewer.chat.confirmation.cancel': 'Cancelar',
+    'citations-reviewer.chat.custom-search.title': 'Búsqueda personalizada',
+    'citations-reviewer.chat.custom-search.form.title': 'Título',
+    'citations-reviewer.chat.custom-search.form.title-placeholder':
+      'Introduce el título del artículo',
+    'citations-reviewer.chat.custom-search.form.authors': 'Nombre(s) del autor',
+    'citations-reviewer.chat.custom-search.form.authors-placeholder':
+      'Introduce el nombre del autor o autores',
+    'citations-reviewer.chat.custom-search.form.keywords': 'Palabras clave',
+    'citations-reviewer.chat.custom-search.form.keywords-placeholder':
+      'Introduce palabras clave',
+    'citations-reviewer.chat.custom-search.form.search': 'Buscar',
   },
 }
 

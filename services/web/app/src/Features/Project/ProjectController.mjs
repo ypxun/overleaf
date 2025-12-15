@@ -32,6 +32,7 @@ import Features from '../../infrastructure/Features.mjs'
 import BrandVariationsHandler from '../BrandVariations/BrandVariationsHandler.mjs'
 import UserController from '../User/UserController.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
+import LocalsHelper from '../SplitTests/LocalsHelper.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.mjs'
 import FeaturesUpdater from '../Subscription/FeaturesUpdater.mjs'
@@ -435,8 +436,6 @@ const _ProjectController = {
       'visual-preview',
       'external-socket-heartbeat',
       'null-test-share-modal',
-      'pdf-caching-cached-url-lookup',
-      'pdf-caching-mode',
       'pdf-caching-prefetch-large',
       'pdf-caching-prefetching',
       'revert-file',
@@ -456,8 +455,13 @@ const _ProjectController = {
       'compile-timeout-target-plans',
       'writefull-keywords-generator',
       'writefull-figure-generator',
+      'wf-citations-checker',
+      'wf-citations-checker-dimensions',
+      'wf-citations-checker-on-selection',
       'writefull-asymetric-queue-size-per-model',
       'pdf-dark-mode',
+      'editor-redesign-opt-out',
+      'email-notifications',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -576,6 +580,18 @@ const _ProjectController = {
           splitTestAssignments[splitTest] =
             await getSplitTestAssignment(splitTest)
         })
+      )
+
+      // PDF caching, these tests are archived but we are keeping the frontend code unchanged for now
+      LocalsHelper.setSplitTestVariant(
+        res.locals,
+        'pdf-caching-cached-url-lookup',
+        Settings.cachedUrlLookupEnabled ? 'enabled' : 'disabled'
+      )
+      LocalsHelper.setSplitTestVariant(
+        res.locals,
+        'pdf-caching-mode',
+        Settings.pdfCachingMode ? 'enabled' : 'disabled'
       )
 
       const brandVariation = project?.brandVariationId

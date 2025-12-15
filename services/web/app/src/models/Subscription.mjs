@@ -4,6 +4,30 @@ import { TeamInviteSchema } from './TeamInvite.mjs'
 const { Schema } = mongoose
 const { ObjectId } = Schema
 
+const PaymentProvider = {
+  service: {
+    type: String,
+  },
+  subscriptionId: {
+    type: String,
+  },
+  state: {
+    type: String,
+  },
+  pausePeriodStart: {
+    type: Date,
+  },
+  pausePeriodEnd: {
+    type: Date,
+  },
+  trialStartedAt: {
+    type: Date,
+  },
+  trialEndsAt: {
+    type: Date,
+  },
+}
+
 export const SubscriptionSchema = new Schema(
   {
     admin_id: {
@@ -39,6 +63,7 @@ export const SubscriptionSchema = new Schema(
     domainCaptureEnabled: { type: Boolean, default: false },
     managedUsersEnabled: { type: Boolean, default: false },
     membersLimit: { type: Number, default: 0 },
+    membersLimitNotificationSent: { type: Boolean, default: false },
     customAccount: Boolean,
     features: {
       managedUsers: { type: Boolean, default: true },
@@ -67,29 +92,8 @@ export const SubscriptionSchema = new Schema(
         type: Date,
       },
     },
-    paymentProvider: {
-      service: {
-        type: String,
-      },
-      subscriptionId: {
-        type: String,
-      },
-      state: {
-        type: String,
-      },
-      pausePeriodStart: {
-        type: Date,
-      },
-      pausePeriodEnd: {
-        type: Date,
-      },
-      trialStartedAt: {
-        type: Date,
-      },
-      trialEndsAt: {
-        type: Date,
-      },
-    },
+    paymentProvider: PaymentProvider,
+    previousPaymentProvider: PaymentProvider,
     collectionMethod: {
       type: String,
       enum: ['automatic', 'manual'],

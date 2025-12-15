@@ -22,6 +22,7 @@ import { expressify } from '@overleaf/promise-utils'
 import { acceptsJson } from '../../infrastructure/RequestContentTypeDetection.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import OneTimeTokenHandler from '../Security/OneTimeTokenHandler.mjs'
+import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 
 async function _sendSecurityAlertClearedSessions(user) {
   const emailOptions = {
@@ -367,6 +368,12 @@ async function updateUserSettings(req, res, next) {
   if (body.editorTheme != null) {
     user.ace.theme = body.editorTheme
   }
+  if (body.editorLightTheme != null) {
+    user.ace.lightTheme = body.editorLightTheme
+  }
+  if (body.editorDarkTheme != null) {
+    user.ace.darkTheme = body.editorDarkTheme
+  }
   if (body.overallTheme != null) {
     user.ace.overallTheme = body.overallTheme
   }
@@ -405,7 +412,18 @@ async function updateUserSettings(req, res, next) {
     user.ace.referencesSearchMode = mode
   }
   if (body.enableNewEditor != null) {
-    user.ace.enableNewEditor = Boolean(body.enableNewEditor)
+    const assignment = await SplitTestHandler.promises.getAssignment(
+      req,
+      res,
+      'editor-redesign-opt-out'
+    )
+    const isOptOutStageEnabled = assignment.variant === 'enabled'
+
+    if (isOptOutStageEnabled) {
+      user.ace.enableNewEditorStageFour = Boolean(body.enableNewEditor)
+    } else {
+      user.ace.enableNewEditor = Boolean(body.enableNewEditor)
+    }
   }
   if (body.darkModePdf != null) {
     user.ace.darkModePdf = Boolean(body.darkModePdf)

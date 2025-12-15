@@ -999,6 +999,7 @@ module.exports = {
     sourceEditorToolbarEndButtons: [],
     rootContextProviders: [],
     mainEditorLayoutModals: [],
+    mainEditorLayoutPanels: [],
     langFeedbackLinkingWidgets: [],
     labsExperiments: [],
     integrationLinkingWidgets: [],
@@ -1043,6 +1044,7 @@ module.exports = {
     errorLogsComponents: [],
     referenceIndices: [],
     railEntries: [],
+    railPopovers: [],
   },
 
   moduleImportSequence: [

@@ -9,6 +9,8 @@ export type UserSettings = {
   autoPairDelimiters: boolean
   syntaxValidation: boolean
   editorTheme: string
+  editorLightTheme: string
+  editorDarkTheme: string
   overallTheme: OverallTheme
   mode: Keybindings
   fontSize: number
@@ -17,6 +19,7 @@ export type UserSettings = {
   mathPreview: boolean
   referencesSearchMode: 'advanced' | 'simple'
   enableNewEditor: boolean
+  enableNewEditorLegacy: boolean
   breadcrumbs: boolean
   darkModePdf: boolean
 }
