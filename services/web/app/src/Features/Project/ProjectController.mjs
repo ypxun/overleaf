@@ -444,7 +444,6 @@ const _ProjectController = {
       'track-pdf-download',
       !anonymous && 'writefull-oauth-promotion',
       'hotjar',
-      'editor-redesign',
       'overleaf-assist-bundle',
       'word-count-client',
       'editor-popup-ux-survey',
@@ -458,8 +457,8 @@ const _ProjectController = {
       'wf-citations-checker',
       'wf-citations-checker-on-selection',
       'writefull-asymetric-queue-size-per-model',
-      'pdf-dark-mode',
       'email-notifications',
+      'editor-redesign-no-opt-out',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
