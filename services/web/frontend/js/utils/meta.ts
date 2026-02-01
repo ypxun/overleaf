@@ -76,6 +76,7 @@ export interface Meta {
   >
   'ol-adminCapabilities': AdminCapability[]
   'ol-adminSubscription': AdminSubscription
+  'ol-adminUserExists': boolean
   'ol-aiAssistViaWritefullSource': string
   'ol-algolia': AlgoliaConfig | undefined
   'ol-allInReconfirmNotificationPeriods': UserEmailData[]
@@ -122,6 +123,7 @@ export interface Meta {
   'ol-email': string
   'ol-emailAddressLimit': number
   'ol-error': { name: string } | undefined
+  'ol-errorType': string | undefined
   'ol-expired': boolean
   'ol-features': Features
   'ol-footer': FooterMetadata

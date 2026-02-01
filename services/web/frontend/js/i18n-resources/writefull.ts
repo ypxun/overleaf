@@ -27,7 +27,7 @@ const en = {
     'copy-code-copied': 'Copied!',
     'toggle-writefull-toolbar': 'Toggle Writefull toolbar',
     'toggle-writefull': 'Toggle Writefull',
-    'ask-texgpt': 'Ask TeXGPT',
+    'writing-tools': 'Writing tools',
     'synonyms-in-context': 'Synonyms in Context',
     translate: 'Translate',
     'translate.zh-CN': 'Chinese (Simplified)',
@@ -76,6 +76,14 @@ const en = {
       'Thank you for your language request',
     'translate.request-new-language.thanks.body':
       'We’ll review your request and consider adding it in the future',
+    'translate.non-latin-warning.title':
+      'Using __language__ characters in Overleaf',
+    'translate.non-latin-warning.body':
+      'To avoid compile issues with your translation, your project might need extra LaTeX packages to handle the proper characters.',
+    'translate.non-latin-warning.link': 'Learn how to use non-Latin characters',
+    'translate.non-latin-warning.dont-show-again':
+      "Don't show this warning again for non-Latin languages",
+    'translate.non-latin-warning.understood': 'I understand, continue',
     'blocked-suggestion-signpost.question':
       'Do you want to permanently stop this suggestion from appearing again?',
     'blocked-suggestion-signpost.tooltip': 'You can block a suggestion here.',
@@ -151,6 +159,7 @@ const en = {
     'ai-context-menu.change-style': 'Change style',
     'ai-context-menu.summarize': 'Summarize',
     'ai-context-menu.explain': 'Explain',
+    'ai-context-menu.rewrite': 'Rewrite',
     'ai-context-menu.back': 'back',
     'ai-context-menu.pin': 'Pin',
     'ai-context-menu.track-changes': 'Track Changes',
@@ -165,6 +174,8 @@ const en = {
     'ai-context-menu.advanced-options.paraphrase.level': 'Level',
     'ai-context-menu.advanced-options.paraphrase.style': 'Style',
     'ai-context-menu.advanced-options.paraphrase.length': 'Length',
+    'ai-context-menu.advanced-options.prompt': 'Prompt',
+    'ai-context-menu.advanced-options.advanced': 'Advanced',
     'ai-context-menu.translate': 'Translate',
     'blocked-language-suggestions-modal.title': 'Blocked Language Suggestions',
     'blocked-language-suggestions-modal.description':
@@ -404,11 +415,19 @@ const en = {
     'citations-reviewer.chat.fetching-citations':
       'Reviewing your document to see if any passage of text might need a citation',
     'citations-reviewer.chat.fetching-publications': 'Fetching publications...',
+    'citations-reviewer.chat.initial-state.title': 'Citation reviewer',
+    'citations-reviewer.chat.initial-state.description':
+      'The citation reviewer scans your document for statements that may need citations. Click "Find citations" to start the review.',
+    'citations-reviewer.chat.initial-state.done': 'Done',
+    'citations-reviewer.chat.initial-state.run': 'Find citations',
     'citations-reviewer.chat.no-citations.title': 'Well done!',
     'citations-reviewer.chat.no-citations.description':
       "We didn't identify any passages that need additional citation.",
     'citations-reviewer.chat.no-citations.run-again': 'Run again',
     'citations-reviewer.chat.no-citations.done': 'Done',
+    'citations-reviewer.chat.no-citations.rerun':
+      'Do you want us to run the check again with a lower threshold for showing passages that require additional citation?',
+    'citations-reviewer.chat.no-citations.rerun-yes': 'Yes, run again',
     'citations-reviewer.chat.publications.title': 'Suggested papers',
     'citations-reviewer.chat.publications.description':
       'The following papers may support the claim you’ve made. Always check papers yourself to ensure relevance.',
@@ -425,6 +444,7 @@ const en = {
       'Clear search criteria',
     'citations-reviewer.chat.publications.passage': 'Passage to review',
     'citations-reviewer.chat.publications.no-authors': 'No authors',
+    'citations-reviewer.chat.publications.show-more': 'View more papers',
     'citations-reviewer.chat.actions.refresh': 'Refresh citations',
     'citations-reviewer.chat.actions.back': 'Back',
     'citations-reviewer.chat.actions.more-authors': '> More authors',
@@ -484,7 +504,7 @@ const es = {
     'copy-code-copied': '¡Copiado!',
     'toggle-writefull-toolbar': 'Mostrar/Ocultar barra de Writefull',
     'toggle-writefull': 'Mostrar/Ocultar Writefull',
-    'ask-texgpt': 'Preguntar a TeXGPT',
+    'writing-tools': 'Herramientas de escritura',
     'synonyms-in-context': 'Sinónimos en Contexto',
     translate: 'Traducir',
     'translate.zh-CN': 'Chino (Simplificado)',
@@ -533,6 +553,15 @@ const es = {
       'Gracias por tu solicitud de idioma',
     'translate.request-new-language.thanks.body':
       'Revisaremos tu solicitud y consideraremos agregarlo en el futuro',
+    'translate.non-latin-warning.title':
+      'Uso de caracteres __language__ en Overleaf',
+    'translate.non-latin-warning.body':
+      'Para evitar problemas de compilación con tu traducción, tu proyecto podría necesitar paquetes LaTeX adicionales para manejar los caracteres correspondientes.',
+    'translate.non-latin-warning.link':
+      'Aprende cómo usar caracteres no latinos',
+    'translate.non-latin-warning.dont-show-again':
+      'No mostrar esta advertencia nuevamente',
+    'translate.non-latin-warning.understood': 'Lo entiendo, continua',
     'blocked-suggestion-signpost.question':
       '¿Quieres dejar de ver esta sugerencia permanentemente? Puedes bloquear esta sugerencia aquí.',
     'blocked-suggestion-signpost.tooltip':
@@ -619,6 +648,7 @@ const es = {
     'ai-context-menu.change-style': 'Cambiar estilo',
     'ai-context-menu.summarize': 'Resumir',
     'ai-context-menu.explain': 'Explicar',
+    'ai-context-menu.rewrite': 'Reescribir',
     'ai-context-menu.back': 'Atrás',
     'ai-context-menu.pin': 'Anclar',
     'ai-context-menu.track-changes': 'Control de Cambios',
@@ -634,6 +664,8 @@ const es = {
     'ai-context-menu.advanced-options.paraphrase.level': 'Nivel',
     'ai-context-menu.advanced-options.paraphrase.style': 'Estilo',
     'ai-context-menu.advanced-options.paraphrase.length': 'Longitud',
+    'ai-context-menu.advanced-options.prompt': 'Prompt',
+    'ai-context-menu.advanced-options.advanced': 'Avanzado',
     'ai-context-menu.translate': 'Traducir',
     'blocked-language-suggestions-modal.title':
       'Sugerencias de Lenguaje Bloqueadas',
@@ -878,11 +910,19 @@ const es = {
       'Revisando tu documento para ver si algún pasaje podría necesitar una cita',
     'citations-reviewer.chat.fetching-publications':
       'Obteniendo publicaciones...',
+    'citations-reviewer.chat.initial-state.title': 'Citation reviewer',
+    'citations-reviewer.chat.initial-state.description':
+      'El revisor de citas escanea tu documento en busca de afirmaciones que puedan necesitar citas. Haz clic en "Buscar citas" para iniciar la revisión.',
+    'citations-reviewer.chat.initial-state.done': 'Hecho',
+    'citations-reviewer.chat.initial-state.run': 'Buscar citas',
     'citations-reviewer.chat.no-citations.title': 'Bien hecho!',
     'citations-reviewer.chat.no-citations.description':
       'No se identificaron pasajes que necesiten citas adicionales.',
     'citations-reviewer.chat.no-citations.run-again': 'Volver a ejecutar',
     'citations-reviewer.chat.no-citations.done': 'Hecho',
+    'citations-reviewer.chat.no-citations.rerun':
+      '¿Quieres que volvamos a ejecutar la revisión con un umbral más bajo para mostrar pasajes que requieran citas adicionales?',
+    'citations-reviewer.chat.no-citations.rerun-yes': 'Sí, volver a ejecutar',
     'citations-reviewer.chat.publications.title': 'Artículos sugeridos',
     'citations-reviewer.chat.publications.description':
       'Los siguientes artículos pueden respaldar la afirmación que has hecho. Revisa siempre los artículos por tu cuenta para asegurar su relevancia.',
@@ -901,6 +941,7 @@ const es = {
       'Borrar criterios de búsqueda',
     'citations-reviewer.chat.publications.passage': 'Pasaje a revisar',
     'citations-reviewer.chat.publications.no-authors': 'Sin autores',
+    'citations-reviewer.chat.publications.show-more': 'Ver más artículos',
     'citations-reviewer.chat.actions.refresh': 'Actualizar citas',
     'citations-reviewer.chat.actions.back': 'Volver',
     'citations-reviewer.chat.actions.more-authors': '> Más autores',

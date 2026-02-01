@@ -9,7 +9,7 @@ import { expressify } from '@overleaf/promise-utils'
 import Modules from '../../infrastructure/Modules.mjs'
 import UserGetter from '../User/UserGetter.mjs'
 import { Subscription } from '../../models/Subscription.mjs'
-import { z, validateReq } from '../../infrastructure/Validation.mjs'
+import { z, parseReq } from '../../infrastructure/Validation.mjs'
 import { isProfessionalGroupPlan } from './PlansHelper.mjs'
 import {
   MissingBillingInfoError,
@@ -181,7 +181,7 @@ async function addSeatsToGroupSubscription(req, res) {
 
     if (error instanceof HasNoAdditionalLicenseWhenManuallyCollectedError) {
       return res.redirect(
-        '/user/subscription/group/manually-collected-subscription'
+        '/user/subscription/group/manually-collected-subscription?error_type=no-additional-license'
       )
     }
 
@@ -215,7 +215,7 @@ const previewAddSeatsSubscriptionChangeSchema = z.object({
  * @returns {Promise<void>}
  */
 async function previewAddSeatsSubscriptionChange(req, res) {
-  const { body } = validateReq(req, previewAddSeatsSubscriptionChangeSchema)
+  const { body } = parseReq(req, previewAddSeatsSubscriptionChangeSchema)
   try {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const preview =
@@ -311,7 +311,7 @@ const submitFormSchema = z.object({
 })
 
 async function submitForm(req, res) {
-  const { body } = validateReq(req, submitFormSchema)
+  const { body } = parseReq(req, submitFormSchema)
   const { adding, poNumber } = body
 
   const userId = SessionManager.getLoggedInUserId(req.session)
@@ -375,7 +375,7 @@ async function subscriptionUpgradePage(req, res) {
 
     if (error instanceof ManuallyCollectedError) {
       return res.redirect(
-        '/user/subscription/group/manually-collected-subscription'
+        '/user/subscription/group/manually-collected-subscription?error_type=plan-upgrade'
       )
     }
 
@@ -437,6 +437,7 @@ async function manuallyCollectedSubscription(req, res) {
 
     res.render('subscriptions/manually-collected-subscription', {
       groupName: subscription.teamName,
+      errorType: req.query.error_type,
     })
   } catch (error) {
     logger.err(

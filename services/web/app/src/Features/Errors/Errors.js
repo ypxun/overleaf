@@ -83,6 +83,8 @@ class SAMLCommonsUnavailable extends OError {
 
 class SAMLDomainCaptureError extends OError {}
 
+class SAMLDomainCaptureMissingSessionDataError extends SAMLDomainCaptureError {}
+
 class SAMLDomainCaptureJoiningError extends SAMLDomainCaptureError {}
 
 class SAMLDomainCaptureEmailExistsError extends SAMLDomainCaptureJoiningError {
@@ -131,6 +133,12 @@ class SAMLAuthenticationRequiredError extends SAMLAuthenticationError {
 class SAMLGroupSSOLoginIdentityMismatchError extends SAMLAuthenticationError {
   get i18nKey() {
     return 'saml_login_identity_mismatch_error'
+  }
+}
+
+class SAMLGroupSSOLoginRequestedEmailNotConfirmed extends SAMLAuthenticationError {
+  get i18nKey() {
+    return 'saml_login_requested_email_not_confirmed_error'
   }
 }
 
@@ -202,6 +210,11 @@ class SAMLRequestDeniedError extends SAMLAuthenticationError {
   get i18nKey() {
     return 'saml_request_denied_error'
   }
+}
+
+class SAMLDomainCaptureManagedUserOptInRequiredError extends OError {
+  // use OError instead of SAMLDomainCaptureError since SAMLMiddleware will check for
+  // SAMLDomainCaptureError and update SAML audit log but these errors do not need to be logged
 }
 
 class SAMLDomainCaptureManagedUserMissingEmailError extends OError {}
@@ -374,6 +387,7 @@ module.exports = {
   SAMLDomainCaptureEmailExistsError,
   SAMLDomainCaptureError,
   SAMLDomainCaptureJoiningError,
+  SAMLDomainCaptureMissingSessionDataError,
   SAMLIdentityExistsError,
   SAMLAlreadyLinkedError,
   SAMLEmailNotAffiliatedError,
@@ -383,6 +397,7 @@ module.exports = {
   SAMLGroupSSOLoginIdentityMismatchError,
   SAMLGroupSSOLoginIdentityNotFoundError,
   SAMLGroupSSODisabledError,
+  SAMLGroupSSOLoginRequestedEmailNotConfirmed,
   SAMLInvalidUserAttributeError,
   SAMLInvalidUserIdentifierError,
   SAMLInvalidSignatureError,
@@ -398,6 +413,7 @@ module.exports = {
   SAMLDomainCaptureRegisterError,
   SAMLDomainCaptureManagedUserMissingEmailError,
   SAMLGroupMemberLimitReachedError,
+  SAMLDomainCaptureManagedUserOptInRequiredError,
   SAMLDomainCaptureManagedOptInUserMissingEmailError,
   SLInV2Error,
   ThirdPartyIdentityExistsError,

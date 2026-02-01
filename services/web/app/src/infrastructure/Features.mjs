@@ -72,8 +72,6 @@ const Features = {
       case 'affiliations':
       case 'analytics':
         return Boolean(_.get(Settings, ['apis', 'v1', 'url']))
-      case 'references':
-        return Boolean(_.get(Settings, ['apis', 'references', 'url']))
       case 'saml':
         return Boolean(Settings.enableSaml)
       case 'linked-project-file':
@@ -85,7 +83,7 @@ const Features = {
       case 'link-url':
         return Boolean(
           _.get(Settings, ['apis', 'linkedUrlProxy', 'url']) &&
-            Settings.enabledLinkedFileTypes.includes('url')
+          Settings.enabledLinkedFileTypes.includes('url')
         )
       case 'support':
         return supportModuleAvailable

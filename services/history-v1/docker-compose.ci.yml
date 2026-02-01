@@ -23,6 +23,7 @@ services:
       QUEUES_REDIS_HOST: redis_test
       HISTORY_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
     depends_on:
       mongo:
         condition: service_started
@@ -35,11 +36,11 @@ services:
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
       CI:
-      ELASTIC_SEARCH_DSN: es:9200
       REDIS_HOST: redis_test
       QUEUES_REDIS_HOST: redis_test
       HISTORY_REDIS_HOST: redis_test
       ANALYTICS_QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
       MONGO_HOST: mongo
       POSTGRES_HOST: postgres
       AWS_S3_ENDPOINT: https://minio:9000
@@ -123,7 +124,7 @@ services:
   certs:
     build:
       dockerfile_inline: |
-        FROM node:22.18.0
+        FROM node:24.13.0
         RUN wget -O /certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-"`dpkg --print-architecture`
         RUN chmod +x /certgen
     volumes:
