@@ -61,6 +61,15 @@
  * Options:
  *   --input, -i <file>     Path to input CSV file
  *   --output, -o <file>    Path to success output CSV file
+ *   --limit, -l <n>        Limit number of records processed (default: no limit)
+ *   --concurrency, -c <n>  Number of customers to process concurrently (default: 10)
+ *   --recurly-rate-limit <n>     Requests per second for Recurly (default: 10)
+ *   --recurly-api-retries <n>    Number of retries on Recurly 429s (default: 5)
+ *   --recurly-retry-delay-ms <n> Delay between Recurly retries in ms (default: 1000)
+ *   --stripe-rate-limit <n>      Requests per second for Stripe (default: 50)
+ *   --stripe-api-retries <n>     Number of retries on Stripe 429s (default: 5)
+ *   --stripe-retry-delay-ms <n>  Delay between Stripe retries in ms (default: 1000)
+ *   --force-invalid-tax     Allow VAT numbers that cannot be mapped to a tax ID type (default: false)
  *   --commit               Actually update customers in Stripe (default: dry-run mode)
  *   --verbose, -v          Enable debug logging
  *   --restart              Ignore existing output files and start fresh
@@ -69,9 +78,9 @@
  * Note, prior to running this script, environment variables must have been loaded from config/local.env
  *
  * ```
- * set +a
- * source ../../config/local.env
  * set -a
+ * source ../../config/local.env
+ * set +a
  * ```
  */
 
@@ -79,9 +88,9 @@ import Settings from '@overleaf/settings'
 import Stripe from 'stripe'
 import recurly from 'recurly'
 import minimist from 'minimist'
+import PQueue from 'p-queue'
 import fs from 'node:fs'
 import * as csv from 'csv'
-import { setTimeout } from 'node:timers/promises'
 import { scriptRunner } from '../lib/ScriptRunner.mjs'
 
 import {
@@ -91,6 +100,15 @@ import {
   coalesceOrThrowVATNumber,
   getTaxIdType,
 } from '../helpers/migrate_recurly_customers_to_stripe.helpers.mjs'
+import {
+  createRateLimitedApiWrappers,
+  DEFAULT_RECURLY_RATE_LIMIT,
+  DEFAULT_STRIPE_RATE_LIMIT,
+  DEFAULT_RECURLY_API_RETRIES,
+  DEFAULT_RECURLY_RETRY_DELAY_MS,
+  DEFAULT_STRIPE_API_RETRIES,
+  DEFAULT_STRIPE_RETRY_DELAY_MS,
+} from '../stripe/RateLimiter.mjs'
 
 // =============================================================================
 // STRIPE CLIENT SETUP
@@ -138,12 +156,16 @@ function getRegionClient(region) {
     )
   }
 
-  stripeClients[regionLower] = new Stripe(secretKey, {
+  const client = new Stripe(secretKey, {
     httpClient: Stripe.createFetchHttpClient(),
     telemetry: false,
   })
 
-  return stripeClients[regionLower]
+  // Add serviceName for rate limiter identification (stripe-us or stripe-uk)
+  client.serviceName = `stripe-${regionLower}`
+
+  stripeClients[regionLower] = client
+  return client
 }
 
 // =============================================================================
@@ -158,6 +180,66 @@ if (!recurlyApiKey) {
   )
 }
 const recurlyClient = new recurly.Client(recurlyApiKey)
+
+// =============================================================================
+// CUSTOM FIELDS
+// =============================================================================
+
+const RECURLY_CUSTOM_FIELD_NAMES = [
+  'channel',
+  'Industry',
+  'ol_sales_person',
+  'MigratedfromFreeAgent',
+]
+
+function getRecurlyCustomFields(account) {
+  const customFields = account?.customFields
+  if (customFields == null) {
+    throw new Error(
+      'Recurly account is missing customFields (empty array is acceptable)'
+    )
+  }
+  if (!Array.isArray(customFields)) {
+    throw new Error('Recurly account customFields is not an array')
+  }
+  return customFields
+}
+
+function extractRecurlyCustomFieldMetadata(account) {
+  const customFields = getRecurlyCustomFields(account)
+
+  /** @type {Record<string, string>} */
+  const metadata = {}
+
+  const counts = {
+    channel: 0,
+    Industry: 0,
+    ol_sales_person: 0,
+    MigratedfromFreeAgent: 0,
+    noCustomFields: 0,
+  }
+
+  if (customFields.length === 0) {
+    counts.noCustomFields = 1
+    return { metadata, counts }
+  }
+
+  for (const field of customFields) {
+    const name = field?.name?.trim()
+    if (!RECURLY_CUSTOM_FIELD_NAMES.includes(name)) continue
+
+    const rawValue = field?.value
+    if (rawValue == null) continue
+
+    const value = String(rawValue).trim()
+    if (!value) continue
+
+    metadata[name] = value
+    counts[name] = 1
+  }
+
+  return { metadata, counts }
+}
 
 // =============================================================================
 // LOGGING UTILITIES
@@ -241,7 +323,15 @@ async function loadSuccessfullyProcessed(successOutputPath) {
 
   return new Promise((resolve, reject) => {
     fs.createReadStream(successOutputPath)
-      .pipe(csv.parse({ columns: true, trim: true }))
+      .pipe(
+        csv.parse({
+          columns: true,
+          trim: true,
+          skip_empty_lines: true,
+          relax_column_count: true,
+          relax_column_count_less: true,
+        })
+      )
       .on('data', row => {
         if (row.recurly_account_code) {
           processed.add(row.recurly_account_code)
@@ -449,121 +539,8 @@ function createJsonArrayWriter(jsonPath) {
 // RATE LIMITING
 // =============================================================================
 
-/**
- * Rate limiter using sliding window algorithm.
- *
- * Rate limits (conservative targets, leaving headroom):
- * - Recurly: 2000 requests per 5 minutes → target 1500/5min = 300/min = 5/sec
- *   https://support.recurly.com/hc/en-us/articles/360034160731-What-Are-Recurly-s-API-Rate-Limits
- * - Stripe: 100 requests per second → target 50/sec (plenty of headroom)
- *   https://docs.stripe.com/rate-limits
- *
- * Recurly is the bottleneck. With 2 Recurly calls per customer (getAccount, getBillingInfo),
- * we can process ~2.5 customers/second = ~150 customers/minute = ~9000 customers/hour.
- * For 150K customers, expect ~17 hours at full throughput.
- */
-
-class RateLimiter {
-  /**
-   * @param {string} name - Name for logging
-   * @param {number} maxRequests - Maximum requests allowed in the window
-   * @param {number} windowMs - Window size in milliseconds
-   */
-  constructor(name, maxRequests, windowMs) {
-    this.name = name
-    this.maxRequests = maxRequests
-    this.windowMs = windowMs
-    this.requests = [] // timestamps of recent requests
-    this.totalRequests = 0
-  }
-
-  /**
-   * Wait if necessary to stay within rate limits, then record the request.
-   */
-  async throttle() {
-    const now = Date.now()
-
-    // Remove requests outside the window
-    const windowStart = now - this.windowMs
-    this.requests = this.requests.filter(ts => ts > windowStart)
-
-    // If at limit, wait until the oldest request exits the window
-    if (this.requests.length >= this.maxRequests) {
-      const oldestRequest = this.requests[0]
-      const waitTime = oldestRequest - windowStart + 1
-      if (waitTime > 0) {
-        logDebug(
-          `Rate limit throttle for ${this.name}`,
-          {
-            waitMs: waitTime,
-            currentRequests: this.requests.length,
-            maxRequests: this.maxRequests,
-          },
-          { verboseOnly: true }
-        )
-        await setTimeout(waitTime)
-      }
-      // Clean up again after waiting
-      const newNow = Date.now()
-      this.requests = this.requests.filter(ts => ts > newNow - this.windowMs)
-    }
-
-    // Record this request
-    this.requests.push(Date.now())
-    this.totalRequests++
-  }
-
-  /**
-   * Get current rate (requests per second over the last window)
-   */
-  getCurrentRate() {
-    const now = Date.now()
-    const windowStart = now - this.windowMs
-    const recentRequests = this.requests.filter(ts => ts > windowStart).length
-    return (recentRequests / this.windowMs) * 1000 // requests per second
-  }
-
-  getStats() {
-    return {
-      name: this.name,
-      totalRequests: this.totalRequests,
-      currentWindowRequests: this.requests.length,
-      maxRequests: this.maxRequests,
-      currentRate: this.getCurrentRate().toFixed(2) + '/sec',
-    }
-  }
-}
-
-// Recurly: 2000 requests per 5 minutes, target 1500 (75% of limit) for safety margin
-const recurlyRateLimiter = new RateLimiter('Recurly', 1500, 5 * 60 * 1000)
-
-// Stripe: 100 requests per second, target 50 (50% of limit) - much more headroom
-// Using 10-second window with 500 requests = 50/sec average
-const stripeRateLimiter = new RateLimiter('Stripe', 500, 10 * 1000)
-
-/**
- * Throttle before making a Recurly API call
- */
-async function throttleRecurly() {
-  await recurlyRateLimiter.throttle()
-}
-
-/**
- * Throttle before making a Stripe API call
- */
-async function throttleStripe() {
-  await stripeRateLimiter.throttle()
-}
-
-/**
- * Get rate limiter statistics for logging
- */
-function getRateLimiterStats() {
-  return {
-    recurly: recurlyRateLimiter.getStats(),
-    stripe: stripeRateLimiter.getStats(),
-  }
-}
+// rate limiters - initialized in main()
+let rateLimiters
 
 // =============================================================================
 // DATA TRANSFORMATION
@@ -575,14 +552,20 @@ function getRateLimiterStats() {
  * @param {string} accountCode - The Recurly account code (Overleaf user ID)
  * @returns {Promise<{account: object, billingInfo: object|null}>}
  */
-async function fetchRecurlyData(accountCode) {
-  await throttleRecurly()
-  const account = await recurlyClient.getAccount(`code-${accountCode}`)
+async function fetchRecurlyData(accountCode, context) {
+  const account = await rateLimiters.requestWithRetries(
+    'recurly',
+    () => recurlyClient.getAccount(`code-${accountCode}`),
+    context
+  )
 
   let billingInfo = null
   try {
-    await throttleRecurly()
-    billingInfo = await recurlyClient.getBillingInfo(`code-${accountCode}`)
+    billingInfo = await rateLimiters.requestWithRetries(
+      'recurly',
+      () => recurlyClient.getBillingInfo(`code-${accountCode}`),
+      context
+    )
   } catch (error) {
     // Billing info may not exist for manually billed customers
     if (error instanceof recurly.errors.NotFoundError) {
@@ -603,9 +586,16 @@ async function fetchRecurlyData(accountCode) {
  * @returns {Promise<Stripe.Customer>}
  * @throws {Error} If customer is not found or is deleted
  */
-async function fetchTargetStripeCustomer(stripeClient, stripeCustomerId) {
-  await throttleStripe()
-  const customer = await stripeClient.customers.retrieve(stripeCustomerId)
+async function fetchTargetStripeCustomer(
+  stripeClient,
+  stripeCustomerId,
+  context
+) {
+  const customer = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () => stripeClient.customers.retrieve(stripeCustomerId),
+    { ...context, stripeApi: 'customers.retrieve' }
+  )
 
   if (customer.deleted) {
     throw new Error(`Stripe customer ${stripeCustomerId} has been deleted`)
@@ -623,11 +613,14 @@ async function fetchTargetStripeCustomer(stripeClient, stripeCustomerId) {
  */
 async function fetchTargetStripeCustomerPaymentMethods(
   stripeClient,
-  stripeCustomerId
+  stripeCustomerId,
+  context
 ) {
-  await throttleStripe()
-  const paymentMethods =
-    await stripeClient.customers.listPaymentMethods(stripeCustomerId)
+  const paymentMethods = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () => stripeClient.customers.listPaymentMethods(stripeCustomerId),
+    { ...context, stripeApi: 'customers.listPaymentMethods' }
+  )
   return paymentMethods.data
 }
 
@@ -649,11 +642,15 @@ async function replaceCustomerTaxIds(
 
   let startingAfter
   while (true) {
-    await throttleStripe()
-    const page = await stripeClient.customers.listTaxIds(stripeCustomerId, {
-      limit: 100,
-      ...(startingAfter ? { starting_after: startingAfter } : {}),
-    })
+    const page = await rateLimiters.requestWithRetries(
+      stripeClient.serviceName,
+      () =>
+        stripeClient.customers.listTaxIds(stripeCustomerId, {
+          limit: 100,
+          ...(startingAfter ? { starting_after: startingAfter } : {}),
+        }),
+      { ...context, stripeApi: 'customers.listTaxIds' }
+    )
 
     existingTaxIds.push(...page.data)
 
@@ -672,16 +669,23 @@ async function replaceCustomerTaxIds(
     )
 
     for (const taxId of existingTaxIds) {
-      await throttleStripe()
-      await stripeClient.customers.deleteTaxId(stripeCustomerId, taxId.id)
+      await rateLimiters.requestWithRetries(
+        stripeClient.serviceName,
+        () => stripeClient.customers.deleteTaxId(stripeCustomerId, taxId.id),
+        { ...context, stripeApi: 'customers.deleteTaxId' }
+      )
     }
   }
 
-  await throttleStripe()
-  return await stripeClient.customers.createTaxId(stripeCustomerId, {
-    type: taxIdType,
-    value: vatNumber,
-  })
+  return await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () =>
+      stripeClient.customers.createTaxId(stripeCustomerId, {
+        type: taxIdType,
+        value: vatNumber,
+      }),
+    { ...context, stripeApi: 'customers.createTaxId' }
+  )
 }
 
 /**
@@ -767,7 +771,7 @@ async function processCustomer(
   row,
   rowNumber,
   commit,
-  { writeStripeExistingFields } = {}
+  { writeStripeExistingFields, forceInvalidTax = false } = {}
 ) {
   const {
     recurly_account_code: recurlyAccountCode,
@@ -782,6 +786,12 @@ async function processCustomer(
     stripeCustomerId,
   }
 
+  const stripeContext = {
+    rowNumber,
+    stripeCustomerId,
+    stripeAccount: targetStripeAccount,
+  }
+
   const result = {
     recurly_account_code: recurlyAccountCode,
     target_stripe_account: targetStripeAccount,
@@ -789,6 +799,7 @@ async function processCustomer(
     outcome: '', // 'updated', 'dry_run', 'skipped_no_stripe_id', or 'error'
     error: '',
     customerParams: null, // Stripe customer params (for dry-run output)
+    taxInfoPending: null, // Recurly VAT number if tax ID type couldn't be determined
   }
 
   try {
@@ -835,7 +846,10 @@ async function processCustomer(
       { ...context, step: 'fetch_recurly' },
       { verboseOnly: true }
     )
-    const { account, billingInfo } = await fetchRecurlyData(recurlyAccountCode)
+    const { account, billingInfo } = await fetchRecurlyData(
+      recurlyAccountCode,
+      context
+    )
 
     logDebug(
       'Fetched Recurly account',
@@ -895,7 +909,8 @@ async function processCustomer(
     )
     const existingCustomer = await fetchTargetStripeCustomer(
       stripeClient,
-      stripeCustomerId
+      stripeCustomerId,
+      stripeContext
     )
 
     logDebug(
@@ -913,38 +928,57 @@ async function processCustomer(
     let taxIdType = null
     let country = null
     let createdTaxId = null
+    let taxInfoPendingValue = null
 
-    // Validate VAT number can be created if present
+    // Determine VAT number tax ID type (if possible)
     if (vatNumber) {
       // We need to extract address first to get the country
       const tempAddress = coalesceOrEqualOrThrowAddress(account, billingInfo)
       country = tempAddress?.country
       if (!country) {
-        throw new Error(
-          `Customer has VAT number (${vatNumber}) but no country in address - cannot determine tax ID type`
-        )
-      }
-      taxIdType = getTaxIdType(country, vatNumber, tempAddress?.postal_code)
-      if (!taxIdType) {
-        throw new Error(
-          `Unable to determine tax id type for (${vatNumber}), country ${country}, postal_code ${tempAddress?.postal_code}`
-        )
-      }
-      logDebug(
-        'Will create tax ID',
-        {
+        if (!forceInvalidTax) {
+          throw new Error(`Unprocessable VAT number ${vatNumber} (no country)`)
+        }
+        logWarn('VAT number present but no country in address', {
           ...context,
           vatNumber,
-          country,
-          taxIdType,
-        },
-        { verboseOnly: true }
-      )
+        })
+        taxInfoPendingValue = vatNumber
+      } else {
+        taxIdType = getTaxIdType(country, vatNumber, tempAddress?.postal_code)
+        if (!taxIdType) {
+          if (!forceInvalidTax) {
+            throw new Error(
+              `Unprocessable VAT number ${vatNumber} (failed getTaxIdType)`
+            )
+          }
+          logWarn('Unable to determine tax id type for VAT number', {
+            ...context,
+            vatNumber,
+            country,
+            postalCode: tempAddress?.postal_code,
+          })
+          taxInfoPendingValue = vatNumber
+        } else {
+          logDebug(
+            'Will create tax ID',
+            {
+              ...context,
+              vatNumber,
+              country,
+              taxIdType,
+            },
+            { verboseOnly: true }
+          )
+        }
+      }
     }
+
+    const shouldCreateTaxId = !!(vatNumber && taxIdType && !taxInfoPendingValue)
 
     if (commit) {
       // Create tax ID first (validate it works before updating customer)
-      if (vatNumber && taxIdType) {
+      if (shouldCreateTaxId) {
         logDebug(
           'Creating tax ID',
           {
@@ -1010,7 +1044,9 @@ async function processCustomer(
 
     const paymentMethods = await fetchTargetStripeCustomerPaymentMethods(
       stripeClient,
-      stripeCustomerId
+      stripeCustomerId,
+      region,
+      stripeContext
     )
     const paymentMethod = coalesceOrThrowPaymentMethod(
       paymentMethods,
@@ -1022,6 +1058,9 @@ async function processCustomer(
     const metadata = {}
     if (account.createdAt) {
       metadata.recurlyCreatedAt = account.createdAt.toISOString()
+    }
+    if (taxInfoPendingValue) {
+      metadata.taxInfoPending = taxInfoPendingValue
     }
     if (
       existingCustomer.metadata != null &&
@@ -1036,6 +1075,15 @@ async function processCustomer(
         existingCustomerMetadata: existingCustomer.metadata,
       })
     }
+
+    const { metadata: customFieldMetadata, counts: customFieldCounts } =
+      extractRecurlyCustomFieldMetadata(account)
+
+    if (Object.keys(customFieldMetadata).length > 0) {
+      Object.assign(metadata, customFieldMetadata)
+    }
+
+    result.customFieldCounts = customFieldCounts
 
     /** @type {Stripe.CustomerUpdateParams} */
     const customerParams = {
@@ -1135,8 +1183,11 @@ async function processCustomer(
         },
         { verboseOnly: true }
       )
-      await throttleStripe()
-      await stripeClient.customers.update(stripeCustomerId, customerParams)
+      await rateLimiters.requestWithRetries(
+        stripeClient.serviceName,
+        () => stripeClient.customers.update(stripeCustomerId, customerParams),
+        { ...stripeContext, stripeApi: 'customers.update' }
+      )
 
       result.outcome = 'updated'
       logDebug(
@@ -1151,7 +1202,7 @@ async function processCustomer(
       result.customerParams = {
         ...customerParams,
         // Include tax ID info in dry-run output for review
-        _taxId: vatNumber
+        _taxId: shouldCreateTaxId
           ? {
               type: taxIdType,
               value: vatNumber,
@@ -1169,6 +1220,10 @@ async function processCustomer(
         },
         { verboseOnly: true }
       )
+    }
+
+    if (taxInfoPendingValue) {
+      result.taxInfoPending = taxInfoPendingValue
     }
   } catch (error) {
     result.outcome = 'error'
@@ -1203,6 +1258,33 @@ function usage() {
   console.error('  --input, -i <file>   Path to input CSV file (required)')
   console.error(
     '  --output, -o <file>  Path to SUCCESS output CSV file (required)'
+  )
+  console.error(
+    '  --limit, -l <n>      Limit number of records processed (default: no limit)'
+  )
+  console.error(
+    '  --concurrency, -c <n> Number of customers to process concurrently (default: 10)'
+  )
+  console.error(
+    '  --recurly-rate-limit <n> Requests per second for Recurly (default: 10)'
+  )
+  console.error(
+    '  --recurly-api-retries <n> Number of retries on Recurly 429s (default: 5)'
+  )
+  console.error(
+    '  --recurly-retry-delay-ms <n> Delay between Recurly retries in ms (default: 1000)'
+  )
+  console.error(
+    '  --stripe-rate-limit <n>  Requests per second for Stripe (default: 50)'
+  )
+  console.error(
+    '  --stripe-api-retries <n> Number of retries on Stripe 429s (default: 5)'
+  )
+  console.error(
+    '  --stripe-retry-delay-ms <n> Delay between Stripe retries in ms (default: 1000)'
+  )
+  console.error(
+    '  --force-invalid-tax   Allow VAT numbers that cannot be mapped to a tax ID type (default: false)'
   )
   console.error(
     '  --commit             Actually update customers in Stripe (default: dry-run)'
@@ -1261,16 +1343,91 @@ function usage() {
   )
 }
 
+function parseConcurrency(value, { defaultValue = 10 } = {}) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(
+      `Invalid --concurrency value: ${value}. Expected a positive integer.`
+    )
+  }
+
+  return parsed
+}
+
+function parseRateLimit(value, { defaultValue, name }) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(
+      `Invalid --${name} value: ${value}. Expected a positive number.`
+    )
+  }
+
+  return parsed
+}
+
+function parseNonNegativeInt(value, { defaultValue, name }) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue
+  }
+
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(
+      `Invalid --${name} value: ${value}. Expected a non-negative integer.`
+    )
+  }
+
+  return parsed
+}
+
 function parseArgs() {
   return minimist(process.argv.slice(2), {
-    alias: { i: 'input', o: 'output', h: 'help', v: 'verbose' },
-    string: ['input', 'output'],
-    boolean: ['commit', 'verbose', 'help', 'restart'],
-    default: { commit: false, verbose: false, restart: false },
+    alias: {
+      i: 'input',
+      o: 'output',
+      h: 'help',
+      v: 'verbose',
+      c: 'concurrency',
+      l: 'limit',
+    },
+    string: [
+      'input',
+      'output',
+      'limit',
+      'recurly-rate-limit',
+      'recurly-api-retries',
+      'recurly-retry-delay-ms',
+      'stripe-rate-limit',
+      'stripe-api-retries',
+      'stripe-retry-delay-ms',
+    ],
+    boolean: ['commit', 'verbose', 'help', 'restart', 'force-invalid-tax'],
+    default: {
+      commit: false,
+      verbose: false,
+      restart: false,
+      'force-invalid-tax': false,
+      concurrency: 10,
+      'recurly-rate-limit': DEFAULT_RECURLY_RATE_LIMIT,
+      'recurly-api-retries': DEFAULT_RECURLY_API_RETRIES,
+      'recurly-retry-delay-ms': DEFAULT_RECURLY_RETRY_DELAY_MS,
+      'stripe-rate-limit': DEFAULT_STRIPE_RATE_LIMIT,
+      'stripe-api-retries': DEFAULT_STRIPE_API_RETRIES,
+      'stripe-retry-delay-ms': DEFAULT_STRIPE_RETRY_DELAY_MS,
+    },
   })
 }
 
 async function main(trackProgress) {
+  const startTime = new Date()
   const args = parseArgs()
   const {
     input: inputPath,
@@ -1279,7 +1436,72 @@ async function main(trackProgress) {
     verbose,
     help,
     restart,
+    'force-invalid-tax': forceInvalidTax,
+    concurrency: concurrencyRaw,
+    limit: limitRaw,
+    'recurly-rate-limit': recurlyRateLimitRaw,
+    'recurly-api-retries': recurlyApiRetriesRaw,
+    'recurly-retry-delay-ms': recurlyRetryDelayMsRaw,
+    'stripe-rate-limit': stripeRateLimitRaw,
+    'stripe-api-retries': stripeApiRetriesRaw,
+    'stripe-retry-delay-ms': stripeRetryDelayMsRaw,
   } = args
+
+  let concurrency
+  let recurlyRateLimit
+  let recurlyApiRetriesValue
+  let recurlyRetryDelayMsValue
+  let stripeRateLimitPerSecond
+  let stripeApiRetriesValue
+  let stripeRetryDelayMsValue
+  let limit
+  try {
+    concurrency = parseConcurrency(concurrencyRaw, { defaultValue: 10 })
+    limit = parseNonNegativeInt(limitRaw, {
+      defaultValue: null,
+      name: 'limit',
+    })
+    recurlyRateLimit = parseRateLimit(recurlyRateLimitRaw, {
+      defaultValue: DEFAULT_RECURLY_RATE_LIMIT,
+      name: 'recurly-rate-limit',
+    })
+    recurlyApiRetriesValue = parseNonNegativeInt(recurlyApiRetriesRaw, {
+      defaultValue: DEFAULT_RECURLY_API_RETRIES,
+      name: 'recurly-api-retries',
+    })
+    recurlyRetryDelayMsValue = parseNonNegativeInt(recurlyRetryDelayMsRaw, {
+      defaultValue: DEFAULT_RECURLY_RETRY_DELAY_MS,
+      name: 'recurly-retry-delay-ms',
+    })
+    stripeRateLimitPerSecond = parseRateLimit(stripeRateLimitRaw, {
+      defaultValue: DEFAULT_STRIPE_RATE_LIMIT,
+      name: 'stripe-rate-limit',
+    })
+    stripeApiRetriesValue = parseNonNegativeInt(stripeApiRetriesRaw, {
+      defaultValue: DEFAULT_STRIPE_API_RETRIES,
+      name: 'stripe-api-retries',
+    })
+    stripeRetryDelayMsValue = parseNonNegativeInt(stripeRetryDelayMsRaw, {
+      defaultValue: DEFAULT_STRIPE_RETRY_DELAY_MS,
+      name: 'stripe-retry-delay-ms',
+    })
+  } catch (error) {
+    logError(error.message)
+    usage()
+    process.exit(1)
+  }
+
+  // initialize rate limiters
+  rateLimiters = createRateLimitedApiWrappers({
+    recurlyRateLimit,
+    recurlyApiRetries: recurlyApiRetriesValue,
+    recurlyRetryDelayMs: recurlyRetryDelayMsValue,
+    stripeRateLimit: stripeRateLimitPerSecond,
+    stripeApiRetries: stripeApiRetriesValue,
+    stripeRetryDelayMs: stripeRetryDelayMsValue,
+    logDebug,
+    logWarn,
+  })
 
   // Set DEBUG_MODE only from CLI arg (--verbose/-v)
   DEBUG_MODE = !!verbose
@@ -1303,6 +1525,15 @@ async function main(trackProgress) {
     skippedOutputPath,
     ...(commit ? {} : { stripeJsonPath }),
     stripeExistingFieldsJsonPath,
+    concurrency,
+    recurlyRateLimit,
+    recurlyApiRetries: recurlyApiRetriesValue,
+    recurlyRetryDelayMs: recurlyRetryDelayMsValue,
+    stripeRateLimit: stripeRateLimitPerSecond,
+    stripeApiRetries: stripeApiRetriesValue,
+    stripeRetryDelayMs: stripeRetryDelayMsValue,
+    forceInvalidTax,
+    ...(limit != null ? { limit } : {}),
   })
   await trackProgress(`Starting migration in ${mode}`)
 
@@ -1367,11 +1598,21 @@ async function main(trackProgress) {
     // Statistics
     let totalInInput = 0
     let processedThisRun = 0
+    let queuedThisRun = 0
     let skippedPreviouslyProcessed = 0
     let updatedCount = 0
     let skippedNoStripeIdCount = 0
     let errorCount = 0
     let dryRunCount = 0
+    let taxInfoPendingCount = 0
+
+    const customFieldStats = {
+      channel: 0,
+      Industry: 0,
+      ol_sales_person: 0,
+      MigratedfromFreeAgent: 0,
+      noCustomFields: 0,
+    }
 
     // Track errors for final summary (just the account codes, not full results - memory efficient)
     const errorAccountCodes = []
@@ -1380,84 +1621,153 @@ async function main(trackProgress) {
 
     // Process input CSV - true streaming (no collecting results in memory)
     const inputStream = fs.createReadStream(inputPath)
-    const parser = csv.parse({ columns: true, trim: true })
+    const parser = csv.parse({
+      columns: true,
+      trim: true,
+      bom: true,
+      skip_empty_lines: true,
+      relax_column_count: true,
+      relax_column_count_less: true,
+    })
 
     inputStream.pipe(parser)
 
+    const queue = new PQueue({ concurrency })
+    const maxQueueSize = concurrency
+    let lastCompletedRowNumber = 0
+    let limitReached = false
+
     let rowNumber = 0
-    for await (const row of parser) {
-      rowNumber++
-      totalInInput++
+    try {
+      for await (const row of parser) {
+        rowNumber++
+        totalInInput++
 
-      const accountCode = row.recurly_account_code
+        const thisRowNumber = rowNumber
+        const accountCode = row.recurly_account_code
 
-      // Check if already successfully processed in a previous run
-      if (previouslyProcessed.has(accountCode)) {
-        skippedPreviouslyProcessed++
-        logDebug(
-          'Skipping previously successful record',
-          {
-            rowNumber,
-            accountCode,
-          },
-          { verboseOnly: true }
-        )
-        continue
-      }
+        // Check if already successfully processed in a previous run
+        if (previouslyProcessed.has(accountCode)) {
+          skippedPreviouslyProcessed++
+          logDebug(
+            'Skipping previously successful record',
+            {
+              rowNumber: thisRowNumber,
+              accountCode,
+            },
+            { verboseOnly: true }
+          )
+          continue
+        }
 
-      // Process this customer
-      const result = await processCustomer(row, rowNumber, commit, {
-        writeStripeExistingFields: stripeExistingFieldsWriter.write,
-      })
+        if (limit != null && queuedThisRun >= limit) {
+          limitReached = true
+          logDebug('Record limit reached, stopping input processing', {
+            limit,
+            queuedThisRun,
+            rowNumber: thisRowNumber,
+          })
+          break
+        }
 
-      processedThisRun++
+        if (queue.size >= maxQueueSize) {
+          await queue.onSizeLessThan(maxQueueSize)
+        }
 
-      // Write to appropriate output file based on outcome
-      if (result.outcome === 'error') {
-        writeError(result)
-        errorCount++
-        errorAccountCodes.push(accountCode)
-      } else if (result.outcome === 'skipped_no_stripe_id') {
-        writeSkipped(result)
-        skippedNoStripeIdCount++
-      } else {
-        writeSuccess(result)
-        // Update statistics and collect dry-run data
-        if (result.outcome === 'updated') {
-          updatedCount++
-        } else if (result.outcome === 'dry_run') {
-          dryRunCount++
-          // Collect customer params for stripe.json output
-          if (result.customerParams) {
-            stripeCustomerParams.push({
-              recurly_account_code: result.recurly_account_code,
-              target_stripe_account: result.target_stripe_account,
-              customerParams: result.customerParams,
+        queuedThisRun++
+        queue.add(async () => {
+          let result
+          try {
+            result = await processCustomer(row, thisRowNumber, commit, {
+              writeStripeExistingFields: stripeExistingFieldsWriter.write,
+              forceInvalidTax,
+            })
+          } catch (error) {
+            result = {
+              ...row,
+              outcome: 'error',
+              error: error?.message || String(error),
+            }
+            logError('Unhandled error while processing customer', error, {
+              rowNumber: thisRowNumber,
+              accountCode,
             })
           }
-        }
-      }
 
-      // Progress update every 1000 customers (or 100 in debug mode)
-      const progressInterval = DEBUG_MODE ? 100 : 1000
-      if (processedThisRun % progressInterval === 0) {
-        const rateLimiterStats = getRateLimiterStats()
-        const progress = {
-          rowNumber,
-          processedThisRun,
-          updated: updatedCount,
-          dryRun: dryRunCount,
-          skippedNoStripeId: skippedNoStripeIdCount,
-          errors: errorCount,
-          skippedPrevious: skippedPreviouslyProcessed,
-          recurlyRate: rateLimiterStats.recurly.currentRate,
-          stripeRate: rateLimiterStats.stripe.currentRate,
-        }
-        logDebug('Progress update', progress)
-        await trackProgress(
-          `Progress: row ${rowNumber}, ${processedThisRun} processed this run, ${errorCount} errors`
-        )
+          processedThisRun++
+          lastCompletedRowNumber = thisRowNumber
+
+          if (result.customFieldCounts) {
+            for (const [field, count] of Object.entries(
+              result.customFieldCounts
+            )) {
+              if (customFieldStats[field] != null) {
+                customFieldStats[field] += count
+              }
+            }
+          }
+
+          if (result.taxInfoPending != null) {
+            taxInfoPendingCount++
+          }
+
+          // Write to appropriate output file based on outcome
+          if (result.outcome === 'error') {
+            writeError(result)
+            errorCount++
+            errorAccountCodes.push(accountCode)
+          } else if (result.outcome === 'skipped_no_stripe_id') {
+            writeSkipped(result)
+            skippedNoStripeIdCount++
+          } else {
+            writeSuccess(result)
+            // Update statistics and collect dry-run data
+            if (result.outcome === 'updated') {
+              updatedCount++
+            } else if (result.outcome === 'dry_run') {
+              dryRunCount++
+              // Collect customer params for stripe.json output
+              if (result.customerParams) {
+                stripeCustomerParams.push({
+                  recurly_account_code: result.recurly_account_code,
+                  target_stripe_account: result.target_stripe_account,
+                  customerParams: result.customerParams,
+                })
+              }
+            }
+          }
+
+          // Progress update every 1000 customers (or 100 in debug mode)
+          const progressInterval = DEBUG_MODE ? 100 : 1000
+          if (processedThisRun % progressInterval === 0) {
+            const rateLimiterStats = rateLimiters.getRateLimiterStats()
+            const progress = {
+              rowNumber: lastCompletedRowNumber,
+              processedThisRun,
+              updated: updatedCount,
+              dryRun: dryRunCount,
+              skippedNoStripeId: skippedNoStripeIdCount,
+              taxInfoPending: taxInfoPendingCount,
+              errors: errorCount,
+              skippedPrevious: skippedPreviouslyProcessed,
+              recurlyRate: rateLimiterStats.recurly.currentRate,
+              stripeRate: rateLimiterStats.stripe.currentRate,
+            }
+            logDebug('Progress update', progress)
+            await trackProgress(
+              `Progress: row ${lastCompletedRowNumber}, ${processedThisRun} processed this run, ${errorCount} errors`
+            )
+          }
+        })
       }
+    } finally {
+      await queue.onIdle()
+    }
+
+    if (limitReached) {
+      await trackProgress(
+        `Limit reached (${limit}). Stopped reading input; waiting for in-flight records to finish.`
+      )
     }
 
     // Write stripe.json file in dry-run mode
@@ -1472,30 +1782,45 @@ async function main(trackProgress) {
     }
 
     // Final summary
+    const endTime = new Date()
+    const durationMs = endTime.getTime() - startTime.getTime()
+    const durationTotalSeconds = Math.floor(durationMs / 1000)
+    const durationHours = Math.floor(durationTotalSeconds / 3600)
+    const durationMinutes = Math.floor((durationTotalSeconds % 3600) / 60)
+    const durationSeconds = durationTotalSeconds % 60
+    const durationHms =
+      String(durationHours).padStart(2, '0') +
+      ':' +
+      String(durationMinutes).padStart(2, '0') +
+      ':' +
+      String(durationSeconds).padStart(2, '0')
+
     const totalSuccessful = commit
       ? previouslyProcessed.size + updatedCount
       : previouslyProcessed.size
-    const finalRateLimiterStats = getRateLimiterStats()
-
-    logDebug('=== FINAL SUMMARY ===')
-    logDebug(`Input file total rows: ${totalInInput}`)
-    logDebug(`Previously successful (skipped): ${skippedPreviouslyProcessed}`)
-    logDebug(`Processed this run: ${processedThisRun}`)
-    logDebug(
-      `  - ${commit ? 'Updated' : 'Would update'}: ${commit ? updatedCount : dryRunCount}`
-    )
-    logDebug(`  - Skipped (no stripe_customer_id): ${skippedNoStripeIdCount}`)
-    logDebug(`  - Errors: ${errorCount}`)
-    if (commit) {
-      logDebug(`Total in success file: ${totalSuccessful}`)
-    }
-    logDebug(`Total in skipped file: ${skippedNoStripeIdCount}`)
-    logDebug(`Total in errors file: ${errorCount}`)
-    logDebug(
-      `API calls - Recurly: ${finalRateLimiterStats.recurly.totalRequests}, Stripe: ${finalRateLimiterStats.stripe.totalRequests}`
-    )
+    const finalRateLimiterStats = rateLimiters.getRateLimiterStats()
 
     await trackProgress('=== FINAL SUMMARY ===')
+    await trackProgress(`Start time: ${startTime.toISOString()}`)
+    await trackProgress(`End time: ${endTime.toISOString()}`)
+    await trackProgress(`Total runtime: ${durationHms}`)
+    await trackProgress('CLI parameters:')
+    await trackProgress(`  - input: ${inputPath}`)
+    await trackProgress(`  - output: ${successOutputPath}`)
+    await trackProgress(`  - commit: ${commit}`)
+    await trackProgress(`  - verbose: ${verbose}`)
+    await trackProgress(`  - restart: ${restart}`)
+    await trackProgress(`  - limit: ${limit != null ? limit : 'none'}`)
+    await trackProgress(`  - concurrency: ${concurrency}`)
+    await trackProgress(`  - recurly-rate-limit: ${recurlyRateLimit}`)
+    await trackProgress(`  - recurly-api-retries: ${recurlyApiRetriesValue}`)
+    await trackProgress(
+      `  - recurly-retry-delay-ms: ${recurlyRetryDelayMsValue}`
+    )
+    await trackProgress(`  - stripe-rate-limit: ${stripeRateLimitPerSecond}`)
+    await trackProgress(`  - stripe-api-retries: ${stripeApiRetriesValue}`)
+    await trackProgress(`  - stripe-retry-delay-ms: ${stripeRetryDelayMsValue}`)
+    await trackProgress(`  - force-invalid-tax: ${forceInvalidTax}`)
     await trackProgress(`Input file total rows: ${totalInInput}`)
     await trackProgress(
       `Previously successful (skipped): ${skippedPreviouslyProcessed}`
@@ -1507,7 +1832,18 @@ async function main(trackProgress) {
     await trackProgress(
       `  - Skipped (no stripe_customer_id): ${skippedNoStripeIdCount}`
     )
+    await trackProgress(`  - Tax info pending: ${taxInfoPendingCount}`)
     await trackProgress(`  - Errors: ${errorCount}`)
+    await trackProgress('')
+    await trackProgress('Custom fields summary (Recurly -> Stripe metadata):')
+    for (const fieldName of RECURLY_CUSTOM_FIELD_NAMES) {
+      await trackProgress(
+        `  - ${fieldName}: ${customFieldStats[fieldName] || 0}`
+      )
+    }
+    await trackProgress(
+      `  - No custom fields: ${customFieldStats.noCustomFields}`
+    )
     await trackProgress('')
     if (commit) {
       await trackProgress(
@@ -1523,6 +1859,9 @@ async function main(trackProgress) {
     )
     await trackProgress(
       `Errors file: ${errorsOutputPath} (${errorCount} records)`
+    )
+    await trackProgress(
+      `API calls - Recurly: ${finalRateLimiterStats.recurly.totalRequests}, Stripe: ${finalRateLimiterStats.stripe.totalRequests}`
     )
 
     if (!commit && dryRunCount > 0) {

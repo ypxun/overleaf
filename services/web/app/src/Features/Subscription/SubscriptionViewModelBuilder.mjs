@@ -305,6 +305,8 @@ async function buildUsersSubscriptionViewModel(user, locale = 'en') {
       remainingPauseCycles: paymentRecord.subscription.remainingPauseCycles,
       isEligibleForPause,
       isEligibleForGroupPlan: !isInTrial,
+      isMigratedFromRecurly:
+        paymentRecord.subscription.isMigratedFromRecurly ?? false,
     }
 
     const isMonthlyCollaboratorPlan =
@@ -335,6 +337,7 @@ async function buildUsersSubscriptionViewModel(user, locale = 'en') {
             pendingAdditionalLicenses += addOn.quantity
           }
         })
+        pendingPlan.addOns = pendingAddOns
       }
 
       const totalPrice = paymentRecord.subscription.planPrice + addOnPrice + tax

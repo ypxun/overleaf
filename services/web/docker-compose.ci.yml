@@ -2,7 +2,6 @@ volumes:
   data:
 
 services:
-
   test_unit:
     build:
       context: ../..
@@ -13,6 +12,7 @@ services:
     user: node
     volumes:
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ./data/coverage:/overleaf/services/web/data/coverage
       - ./data/reports:/overleaf/services/web/data/reports
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: npm run test:unit:app
@@ -28,6 +28,8 @@ services:
       NODE_OPTIONS: "--unhandled-rejections=strict"
       REDIS_HOST: redis_test
       VITEST_NO_CACHE: true
+      COVERAGE_UNIT_TESTS:
+      MONOREPO:
     depends_on:
       - redis_test
       - mongo
@@ -48,21 +50,23 @@ services:
       BASE_CONFIG:
       OVERLEAF_CONFIG:
       REDIS_HOST: redis_test
+      COVERAGE_ACCEPTANCE_TESTS:
+      MONOREPO:
     extra_hosts:
-      - 'www.overleaf.test:127.0.0.1'
+      - "www.overleaf.test:127.0.0.1"
     volumes:
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ./data/coverage:/overleaf/services/web/data/coverage
       - ./data/reports:/overleaf/services/web/data/reports
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: npm run test:acceptance:app
-    user: root
     depends_on:
       - redis_test
       - mongo
       - saml
       - ldap
     tmpfs:
-      - /overleaf/services/web/data
+      - /overleaf/services/web/data:uid=1000,gid=1000
 
   test_frontend:
     build:
@@ -151,15 +155,15 @@ services:
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63877553
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63871343
     command:
-      - 'bash'
-      - '-c'
-      - 'ulimit -n 1024 && exec bash /run.sh'
+      - "bash"
+      - "-c"
+      - "ulimit -n 1024 && exec bash /run.sh"
 
   saml:
-      image: us-east1-docker.pkg.dev/overleaf-ops/ol-docker/saml-test
-      logging:
-        driver: none
-      environment:
-          SAML_BASE_URL_PATH: 'http://saml/simplesaml/'
-          SAML_TEST_SP_ENTITY_ID: 'overleaf-test-saml'
-          SAML_TEST_SP_LOCATION: 'http://www.overleaf.test:23000/saml/callback'
+    image: us-east1-docker.pkg.dev/overleaf-ops/ol-docker/saml-test
+    logging:
+      driver: none
+    environment:
+      SAML_BASE_URL_PATH: "http://saml/simplesaml/"
+      SAML_TEST_SP_ENTITY_ID: "overleaf-test-saml"
+      SAML_TEST_SP_LOCATION: "http://www.overleaf.test:23000/saml/callback"

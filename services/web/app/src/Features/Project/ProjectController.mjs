@@ -259,8 +259,8 @@ const _ProjectController = {
     res.setTimeout(5 * 60 * 1000) // allow extra time for the copy to complete
     metrics.inc('cloned-project')
     const projectId = req.params.Project_id
-    const { projectName, tags } = req.body
-    logger.debug({ projectId, projectName }, 'cloning project')
+    const { projectName, isDebugCopy, tags } = req.body
+    logger.debug({ projectId, projectName, isDebugCopy }, 'cloning project')
     if (!SessionManager.isUserLoggedIn(req.session)) {
       return res.json({ redir: '/register' })
     }
@@ -271,7 +271,8 @@ const _ProjectController = {
         currentUser,
         projectId,
         projectName,
-        tags
+        tags,
+        isDebugCopy
       )
       ProjectAuditLogHandler.addEntryIfManagedInBackground(
         projectId,
@@ -451,7 +452,7 @@ const _ProjectController = {
       'editor-redesign-new-users',
       'writefull-frontend-migration',
       'chat-edit-delete',
-      'ai-workbench',
+      'ai-workbench-release',
       'compile-timeout-target-plans',
       'writefull-keywords-generator',
       'writefull-figure-generator',
@@ -471,7 +472,7 @@ const _ProjectController = {
           user: (async () => {
             const user = await User.findById(
               userId,
-              'email first_name last_name referal_id signUpDate featureSwitches features featuresEpoch refProviders alphaProgram betaProgram isAdmin ace labsProgram labsExperiments completedTutorials writefull aiErrorAssistant'
+              'email first_name last_name referal_id signUpDate featureSwitches features featuresEpoch refProviders alphaProgram betaProgram isAdmin ace labsProgram labsExperiments completedTutorials writefull aiFeatures aiErrorAssistant'
             ).exec()
             // Handle case of deleted user
             if (!user) {
@@ -843,13 +844,10 @@ const _ProjectController = {
       }
 
       const hasPaidSubscription = isPaidSubscription(subscription)
-      const hasManuallyCollectedSubscription =
-        subscription?.collectionMethod === 'manual'
-      const assistantDisabled = user.aiErrorAssistant?.enabled === false // the assistant has been manually disabled by the user
-      const canUseErrorAssistant =
-        (!hasManuallyCollectedSubscription ||
-          fullFeatureSet?.aiErrorAssistant) &&
-        !assistantDisabled
+      // todo: assist clean-up: remove other case once migration finishes
+      const aiFeaturesDisabled =
+        user.aiFeatures?.enabled === false ||
+        user.aiErrorAssistant?.enabled === false // the assistant has been manually disabled by the user
 
       const addonPrices =
         isOverleafAssistBundleEnabled &&
@@ -957,7 +955,7 @@ const _ProjectController = {
         showSymbolPalette,
         symbolPaletteAvailable: Features.hasFeature('symbol-palette'),
         userRestrictions: Array.from(req.userRestrictions || []),
-        showAiErrorAssistant: aiFeaturesAllowed && canUseErrorAssistant,
+        showAiFeatures: aiFeaturesAllowed && !aiFeaturesDisabled,
         detachRole,
         metadata: { viewport: false },
         showUpgradePrompt,

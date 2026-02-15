@@ -7,9 +7,11 @@ import ContactManager from '../Contacts/ContactManager.mjs'
 import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
 import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.mjs'
 import CollaboratorsGetter from './CollaboratorsGetter.mjs'
+import CollaboratorsInviteHelper from './CollaboratorsInviteHelper.mjs'
 import Errors from '../Errors/Errors.js'
 import TpdsUpdateSender from '../ThirdPartyDataStore/TpdsUpdateSender.mjs'
 import EditorRealTimeController from '../Editor/EditorRealTimeController.mjs'
+import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
 
 export default {
   userIsTokenMember: callbackify(userIsTokenMember),
@@ -268,7 +270,8 @@ async function setCollaboratorPrivilegeLevel(
   projectId,
   userId,
   privilegeLevel,
-  { pendingEditor, pendingReviewer } = {}
+  { pendingEditor, pendingReviewer } = {},
+  auditInfo = {}
 ) {
   // Make sure we're only updating the project if the user is already a
   // collaborator
@@ -351,6 +354,17 @@ async function setCollaboratorPrivilegeLevel(
   if (mongoResponse.matchedCount === 0) {
     throw new Errors.NotFoundError('project or collaborator not found')
   }
+
+  ProjectAuditLogHandler.addEntryInBackground(
+    projectId,
+    'project-role-changed',
+    auditInfo.initiatorId,
+    auditInfo.ipAddress,
+    {
+      userId,
+      role: CollaboratorsInviteHelper.privilegeLevelToRole(privilegeLevel),
+    }
+  )
 
   if (update.$set?.track_changes) {
     EditorRealTimeController.emitToRoom(

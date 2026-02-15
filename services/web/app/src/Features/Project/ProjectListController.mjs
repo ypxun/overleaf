@@ -164,10 +164,13 @@ async function projectListPage(req, res, next) {
     logger.err({ err, userId }, 'projects listing in background failed')
     return undefined
   })
+
   const user = await User.findById(
     userId,
-    `email emails features alphaProgram betaProgram lastPrimaryEmailCheck lastActive signUpDate ace refProviders${
-      isSaas ? ' enrollment writefull completedTutorials aiErrorAssistant' : ''
+    `email isAdmin emails features alphaProgram betaProgram lastPrimaryEmailCheck lastActive signUpDate ace refProviders${
+      isSaas
+        ? ' enrollment writefull completedTutorials aiFeatures aiErrorAssistant'
+        : ''
     }`
   )
 
@@ -187,6 +190,8 @@ async function projectListPage(req, res, next) {
   let role
 
   if (isSaas) {
+    if (user.isAdmin) await _checkForOldDebugProjects(userId)
+
     await SplitTestSessionHandler.promises.sessionMaintenance(req, user)
 
     try {
@@ -597,6 +602,20 @@ async function getProjectsJson(req, res) {
 
 /**
  * @param {string} userId
+ * @private
+ */
+async function _checkForOldDebugProjects(userId) {
+  const exists = await ProjectGetter.promises.existUsersDebugProjectsOlderThan(
+    userId,
+    7
+  )
+  if (exists) {
+    await NotificationsBuilder.promises.oldDebugProjects(userId).create(userId)
+  }
+}
+
+/**
+ * @param {string} userId
  * @param {Filters} filters
  * @param {Sort} sort
  * @param {Page} page
@@ -887,7 +906,11 @@ async function _userHasAIAssist(user) {
 // It does NOT determine if the user has AI Assist enabled
 async function _canUseAIAssist(user) {
   // Check if the assistant has been manually disabled by the user
-  if (user.aiErrorAssistant?.enabled === false) {
+  // todo: assist clean-up: remove other case once migration finishes
+  if (
+    user.aiErrorAssistant?.enabled === false ||
+    user.aiFeatures?.enabled === false
+  ) {
     return false
   }
 

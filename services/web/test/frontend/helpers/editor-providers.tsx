@@ -49,8 +49,13 @@ import { UserId } from '../../../types/user'
 import { ProjectCompiler } from '../../../types/project-settings'
 import { ReferencesContext } from '@/features/ide-react/context/references-context'
 import { useEditorAnalytics } from '@/shared/hooks/use-editor-analytics'
+import { defaultSettings } from '@/shared/context/user-settings-context'
+import { UserSettings } from '@ol-types/user-settings'
 import { DetachCompileContext } from '@/shared/context/detach-compile-context'
 import { type CompileContext } from '@/shared/context/local-compile-context'
+import { EditorContext } from '@/shared/context/editor-context'
+import { Cobranding } from '@ol-types/cobranding'
+import { TutorialContext } from '@/shared/context/tutorial-context'
 
 // these constants can be imported in tests instead of
 // using magic strings
@@ -60,19 +65,11 @@ export const USER_ID = '123abd' as UserId
 export const USER_EMAIL = 'testuser@example.com'
 
 const defaultUserSettings = {
-  pdfViewer: 'pdfjs',
-  fontSize: 12,
-  fontFamily: 'monaco',
-  lineHeight: 'normal',
-  editorTheme: 'textmate',
-  overallTheme: '',
-  mode: 'default',
-  autoComplete: true,
-  autoPairDelimiters: true,
-  trackChanges: true,
-  syntaxValidation: false,
-  mathPreview: true,
-}
+  ...defaultSettings,
+  enableNewEditor: false,
+  enableNewEditorLegacy: false,
+  referencesSearchMode: 'simple',
+} satisfies UserSettings
 
 export type EditorProvidersProps = {
   user?: { id: string; email: string; signUpDate?: string }
@@ -252,7 +249,13 @@ export function EditorProviders({
     LayoutProvider: makeLayoutProvider(layoutContext),
     ProjectProvider: makeProjectProvider(project),
     ReferencesProvider: makeReferencesProvider(),
+    TutorialProvider: makeTutorialProvider(),
     ...providers,
+  }
+
+  // Only use the mock EditorProvider when explicitly required
+  if (providers.EditorProvider) {
+    customProviders.EditorProvider = providers.EditorProvider
   }
 
   // Only override DetachCompileProvider when we need the mock
@@ -265,6 +268,60 @@ export function EditorProviders({
   return (
     <ReactContextRoot providers={customProviders}>{children}</ReactContextRoot>
   )
+}
+
+export function makeEditorProvider({
+  isProjectOwner = true,
+  cobranding = undefined,
+  renameProject = () => {},
+  isRestrictedTokenMember,
+}: {
+  isProjectOwner?: boolean
+  cobranding?: Cobranding
+  renameProject?: () => void
+  isRestrictedTokenMember?: boolean
+} = {}) {
+  const EditorProvider: FC<PropsWithChildren> = ({ children }) => {
+    const value = {
+      isProjectOwner,
+      renameProject,
+      isPendingEditor: false,
+      hasPremiumSuggestion: false,
+      setHasPremiumSuggestion: () => {},
+      premiumSuggestionResetDate: new Date(),
+      setPremiumSuggestionResetDate: () => {},
+      writefullInstance: null,
+      setWritefullInstance: () => {},
+      showUpgradeModal: false,
+      setShowUpgradeModal: () => {},
+      cobranding,
+      isRestrictedTokenMember,
+    }
+
+    return (
+      <EditorContext.Provider value={value}>{children}</EditorContext.Provider>
+    )
+  }
+  return EditorProvider
+}
+
+export const makeTutorialProvider = (opts?: {
+  inactiveTutorials: string[]
+}) => {
+  const TutorialProvider: FC<PropsWithChildren> = ({ children }) => {
+    const value = {
+      deactivateTutorial: () => {},
+      inactiveTutorials: opts?.inactiveTutorials ?? [],
+      currentPopup: null,
+      setCurrentPopup: () => {},
+    }
+    return (
+      <TutorialContext.Provider value={value}>
+        {children}
+      </TutorialContext.Provider>
+    )
+  }
+  return TutorialProvider
 }
 
 const makeReferencesProvider = () => {

@@ -207,6 +207,7 @@ export interface Meta {
   'ol-memberOfSSOEnabledGroups': GroupSSOLinkingStatus[]
   'ol-members': MinimalUser[]
   'ol-navbar': DefaultNavbarMetadata
+  'ol-newsletter-subscribed': boolean
   'ol-no-single-dollar': boolean
   'ol-notifications': NotificationType[]
   'ol-notificationsInstitution': InstitutionType[]
@@ -259,7 +260,7 @@ export interface Meta {
   'ol-settingsPlans': Plan[]
   'ol-shouldAllowEditingDetails': boolean
   'ol-shouldLoadHotjar': boolean
-  'ol-showAiErrorAssistant': boolean
+  'ol-showAiFeatures': boolean
   'ol-showCouponField': boolean
   'ol-showGroupDiscount': boolean
   'ol-showGroupsAndEnterpriseBanner': boolean

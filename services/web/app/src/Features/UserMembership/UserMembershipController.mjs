@@ -58,10 +58,7 @@ async function manageGroupMembers(req, res, next) {
   }
 
   const canUseAddSeatsFeature = Boolean(
-    plan?.canUseFlexibleLicensing &&
-    isAdmin &&
-    recurlySubscription &&
-    !recurlySubscription.pendingChange
+    plan?.canUseFlexibleLicensing && isAdmin && recurlySubscription
   )
 
   res.render('user_membership/group-members-react', {
@@ -205,10 +202,15 @@ async function add(req, res) {
   }
   let user
   try {
+    const auditInfo = {
+      ipAddress: req.ip,
+      initiatorId: SessionManager.getLoggedInUserId(req.session),
+    }
     user = await UserMembershipHandler.promises.addUser(
       entity,
       entityConfig,
-      email
+      email,
+      auditInfo
     )
   } catch (err) {
     if (err instanceof UserMembershipErrors.UserAlreadyAddedError) {
@@ -248,10 +250,15 @@ async function remove(req, res) {
     })
   }
   try {
+    const auditInfo = {
+      ipAddress: req.ip,
+      initiatorId: loggedInUserId,
+    }
     await UserMembershipHandler.promises.removeUser(
       entity,
       entityConfig,
-      userId
+      userId,
+      auditInfo
     )
   } catch (err) {
     if (err instanceof UserMembershipErrors.UserIsManagerError) {

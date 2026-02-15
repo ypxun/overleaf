@@ -19,6 +19,7 @@ IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
 	$(MONOREPO)/libraries/logger/package.json \
 	$(MONOREPO)/libraries/metrics/package.json \
 	$(MONOREPO)/libraries/o-error/package.json \
+	$(MONOREPO)/libraries/promise-utils/package.json \
 	$(MONOREPO)/libraries/redis-wrapper/package.json \
 	$(MONOREPO)/libraries/settings/package.json \
 	$(MONOREPO)/libraries/validation-tools/package.json \
@@ -50,12 +51,11 @@ clean:
 
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
-RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) node:24.13.0 npm run --silent
+RUN_LINTING = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(HERE) --user node node:24.13.0 npm run --silent
+RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.13.0 npm run --silent
 
-RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/real-time/reports:/overleaf/services/real-time/reports $(IMAGE_CI) npm run --silent
-
-# Same but from the top of the monorepo
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) node:24.13.0 npm run --silent
+RUN_LINTING_CI = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/real-time/reports:/overleaf/services/real-time/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache $(IMAGE_CI) npm run --silent
+RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/real-time/reports:/overleaf/services/real-time/reports --volume $(MONOREPO)/node_modules/.cache:/overleaf/node_modules/.cache -w /overleaf $(IMAGE_CI) npm run --silent
 
 SHELLCHECK_OPTS = \
 	--shell=bash \
@@ -75,14 +75,32 @@ shellcheck_fix:
 		else echo "\033[2m$$file\033[0m"; fi \
 	done
 
+WITH_CACHE_FOLDER = \
+	lint \
+	lint_ci \
+	lint_fix \
+	format \
+	format_ci \
+	format_fix \
+	typecheck \
+	typecheck_ci \
+
+$(WITH_CACHE_FOLDER): ../../node_modules/.cache/prettier/
+../../node_modules/.cache/prettier/:
+	mkdir -p $@
+
+$(WITH_CACHE_FOLDER): ../../node_modules/.cache/eslint/
+../../node_modules/.cache/eslint/:
+	mkdir -p $@
+
 format:
-	$(RUN_LINTING) format
+	$(RUN_LINTING_MONOREPO) format -- services/real-time
 
 format_ci:
-	$(RUN_LINTING_CI) format
+	$(RUN_LINTING_CI_MONOREPO) format -- services/real-time
 
 format_fix:
-	$(RUN_LINTING) format:fix
+	$(RUN_LINTING_MONOREPO) format:fix -- services/real-time
 
 lint:
 	$(RUN_LINTING) lint

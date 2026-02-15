@@ -14,26 +14,32 @@
  *   node scripts/stripe/finalize-stripe-subscription-migration.mjs [OPTS] [INPUT-FILE]
  *
  * Options:
- *   --output PATH          Output file path (default: /tmp/migrate_output_<timestamp>.csv)
- *   --commit               Apply changes (without this, runs in dry-run mode)
- *   --throttle DURATION    Minimum time between requests in ms (default: 40)
- *   --help                 Show help message
+ *   --output PATH                 Output file path (default: /tmp/migrate_output_<timestamp>.csv)
+ *   --commit                      Apply changes (without this, runs in dry-run mode)
+ *   --concurrency, -c <n>         Number of customers to process concurrently (default: 10)
+ *   --recurly-rate-limit N        Requests per second for Recurly (default: 10)
+ *   --recurly-api-retries N       Number of retries on Recurly 429s (default: 5)
+ *   --recurly-retry-delay-ms N    Delay between Recurly retries in ms (default: 1000)
+ *   --stripe-rate-limit N         Requests per second for Stripe (default: 50)
+ *   --stripe-api-retries N        Number of retries on Stripe 429s (default: 5)
+ *   --stripe-retry-delay-ms N     Delay between Stripe retries in ms (default: 1000)
+ *   --help                        Show help message
  *
  * CSV Input Format:
  *   recurly_account_code,target_stripe_account,stripe_customer_id
  *   507f1f77bcf86cd799439011,stripe-uk,cus_1234567890abcdef
  *
  * CSV Output Format:
- *   recurly_account_code,target_stripe_account,stripe_customer_id,previous_recurly_status,previous_recurly_subscription_id,status,note
+ *   recurly_account_code,target_stripe_account,stripe_customer_id,previous_recurly_status,previous_recurly_subscription_id,email,analyticsId,status,note
  *
  * Note: recurly_account_code is the Overleaf user ID (admin_id)
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { setTimeout } from 'node:timers/promises'
 import * as csv from 'csv'
 import minimist from 'minimist'
+import PQueue from 'p-queue'
 import { z } from '../../app/src/infrastructure/Validation.mjs'
 import { scriptRunner } from '../lib/ScriptRunner.mjs'
 import {
@@ -42,22 +48,43 @@ import {
 } from '../../modules/subscriptions/app/src/StripeClient.mjs'
 import RecurlyWrapper from '../../app/src/Features/Subscription/RecurlyWrapper.mjs'
 import { Subscription } from '../../app/src/models/Subscription.mjs'
+import { User } from '../../app/src/models/User.mjs'
 import AnalyticsManager from '../../app/src/Features/Analytics/AnalyticsManager.mjs'
 import AccountMappingHelper from '../../app/src/Features/Analytics/AccountMappingHelper.mjs'
+import PlansLocator from '../../app/src/Features/Subscription/PlansLocator.mjs'
+import UserAnalyticsIdCache from '../../app/src/Features/Analytics/UserAnalyticsIdCache.mjs'
+import CustomerIoHandler from '../../modules/customer-io/app/src/CustomerIoHandler.mjs'
 import { ReportError } from './helpers.mjs'
-
-const DEFAULT_THROTTLE = 40
+import isEqual from 'lodash/isEqual.js'
+import {
+  createRateLimitedApiWrappers,
+  DEFAULT_RECURLY_RATE_LIMIT,
+  DEFAULT_STRIPE_RATE_LIMIT,
+  DEFAULT_RECURLY_API_RETRIES,
+  DEFAULT_RECURLY_RETRY_DELAY_MS,
+  DEFAULT_STRIPE_API_RETRIES,
+  DEFAULT_STRIPE_RETRY_DELAY_MS,
+} from './RateLimiter.mjs'
 
 const preloadedProductMetadata = new Map()
+
+// rate limiters - initialized in main()
+let rateLimiters
 
 function usage() {
   console.error(`Usage: node scripts/stripe/finalize-stripe-subscription-migration.mjs [OPTS] [INPUT-FILE]
 
 Options:
-    --output PATH          Output file path (default: /tmp/migrate_output_<timestamp>.csv)
-    --commit               Apply changes (without this, runs in dry-run mode)
-    --throttle DURATION    Minimum time between requests in ms (default: ${DEFAULT_THROTTLE})
-    --help                 Show this help message
+    --output PATH                 Output file path (default: /tmp/migrate_output_<timestamp>.csv)
+    --commit                      Apply changes (without this, runs in dry-run mode)
+    --concurrency N               Number of customers to process concurrently (default: 10)
+    --recurly-rate-limit N        Requests per second for Recurly (default: ${DEFAULT_RECURLY_RATE_LIMIT})
+    --recurly-api-retries N       Number of retries on Recurly 429s (default: ${DEFAULT_RECURLY_API_RETRIES})
+    --recurly-retry-delay-ms N    Delay between Recurly retries in ms (default: ${DEFAULT_RECURLY_RETRY_DELAY_MS})
+    --stripe-rate-limit N         Requests per second for Stripe (default: ${DEFAULT_STRIPE_RATE_LIMIT})
+    --stripe-api-retries N        Number of retries on Stripe 429s (default: ${DEFAULT_STRIPE_API_RETRIES})
+    --stripe-retry-delay-ms N     Delay between Stripe retries in ms (default: ${DEFAULT_STRIPE_RETRY_DELAY_MS})
+    --help                        Show this help message
 `)
 }
 
@@ -66,9 +93,22 @@ async function main(trackProgress) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const outputFile = opts.output ?? `/tmp/migrate_output_${timestamp}.csv`
 
+  // initialize rate limiters
+  rateLimiters = createRateLimitedApiWrappers({
+    recurlyRateLimit: opts.recurlyRateLimit,
+    recurlyApiRetries: opts.recurlyApiRetries,
+    recurlyRetryDelayMs: opts.recurlyRetryDelayMs,
+    stripeRateLimit: opts.stripeRateLimit,
+    stripeApiRetries: opts.stripeApiRetries,
+    stripeRetryDelayMs: opts.stripeRetryDelayMs,
+  })
+
   await trackProgress('Starting Recurly to Stripe migration cutover')
   await trackProgress(`Run mode: ${opts.commit ? 'COMMIT' : 'DRY RUN'}`)
-  await trackProgress(`Throttle: ${opts.throttle}ms between requests`)
+  await trackProgress(
+    `Rate limits: Recurly ${opts.recurlyRateLimit}/s, Stripe ${opts.stripeRateLimit}/s`
+  )
+  await trackProgress(`Concurrency: ${opts.concurrency}`)
 
   const inputStream = opts.inputFile
     ? fs.createReadStream(opts.inputFile)
@@ -76,10 +116,10 @@ async function main(trackProgress) {
   const csvReader = getCsvReader(inputStream)
   const csvWriter = getCsvWriter(outputFile)
 
-  await trackProgress('Populating product metadata cache...')
+  await trackProgress('Populating product metadata...')
   await preloadProductMetadata('uk')
   await preloadProductMetadata('us')
-  await trackProgress('Product metadata cache populated')
+  await trackProgress('Product metadata populated')
 
   await trackProgress(`Output: ${outputFile}`)
 
@@ -87,68 +127,82 @@ async function main(trackProgress) {
   let successCount = 0
   let errorCount = 0
 
-  let lastLoopTimestamp = 0
-  for await (const input of csvReader) {
-    const timeSinceLastLoop = Date.now() - lastLoopTimestamp
-    if (timeSinceLastLoop < opts.throttle) {
-      await setTimeout(opts.throttle - timeSinceLastLoop)
-    }
-    lastLoopTimestamp = Date.now()
+  const queue = new PQueue({ concurrency: opts.concurrency })
+  const maxQueueSize = opts.concurrency
 
-    processedCount++
+  try {
+    for await (const input of csvReader) {
+      // throttle input if queue is full
+      if (queue.size >= maxQueueSize) {
+        await queue.onSizeLessThan(maxQueueSize)
+      }
 
-    try {
-      const result = await processMigration(input, opts.commit)
+      queue.add(async () => {
+        processedCount++
 
-      csvWriter.write({
-        recurly_account_code: input.recurly_account_code,
-        target_stripe_account: input.target_stripe_account,
-        stripe_customer_id: input.stripe_customer_id,
-        previous_recurly_status: result.previousRecurlyStatus || '',
-        previous_recurly_subscription_id:
-          result.previousRecurlySubscriptionId || '',
-        email: result.email || '',
-        status: result.status,
-        note: result.note,
+        try {
+          const result = await processMigration(input, opts.commit)
+
+          csvWriter.write({
+            recurly_account_code: input.recurly_account_code,
+            target_stripe_account: input.target_stripe_account,
+            stripe_customer_id: input.stripe_customer_id,
+            previous_recurly_status: result.previousRecurlyStatus || '',
+            previous_recurly_subscription_id:
+              result.previousRecurlySubscriptionId || '',
+            email: result.email || '',
+            analyticsId: result.analyticsId || '',
+            status: result.status,
+            note: result.note,
+          })
+
+          if (
+            result.status.startsWith('migrated') ||
+            result.status === 'validated'
+          ) {
+            successCount++
+          } else {
+            errorCount++
+          }
+
+          if (processedCount % 25 === 0) {
+            await trackProgress(
+              `Progress: ${processedCount} processed, ${successCount} successful, ${errorCount} errors`
+            )
+          }
+        } catch (err) {
+          errorCount++
+          if (err instanceof ReportError) {
+            csvWriter.write({
+              recurly_account_code: input.recurly_account_code,
+              target_stripe_account: input.target_stripe_account,
+              stripe_customer_id: input.stripe_customer_id,
+              previous_recurly_status: '',
+              previous_recurly_subscription_id: '',
+              email: '',
+              analyticsId: '',
+              status: err.status,
+              note: err.message,
+            })
+          } else {
+            csvWriter.write({
+              recurly_account_code: input.recurly_account_code,
+              target_stripe_account: input.target_stripe_account,
+              stripe_customer_id: input.stripe_customer_id,
+              previous_recurly_status: '',
+              previous_recurly_subscription_id: '',
+              email: '',
+              analyticsId: '',
+              status: 'error',
+              note: err.message,
+            })
+          }
+        }
       })
-
-      if (result.status === 'migrated' || result.status === 'validated') {
-        successCount++
-      } else {
-        errorCount++
-      }
-
-      if (processedCount % 25 === 0) {
-        await trackProgress(
-          `Progress: ${processedCount} processed, ${successCount} successful, ${errorCount} errors`
-        )
-      }
-    } catch (err) {
-      errorCount++
-      if (err instanceof ReportError) {
-        csvWriter.write({
-          recurly_account_code: input.recurly_account_code,
-          target_stripe_account: input.target_stripe_account,
-          stripe_customer_id: input.stripe_customer_id,
-          previous_recurly_status: '',
-          previous_recurly_subscription_id: '',
-          email: '',
-          status: err.status,
-          note: err.message,
-        })
-      } else {
-        csvWriter.write({
-          recurly_account_code: input.recurly_account_code,
-          target_stripe_account: input.target_stripe_account,
-          stripe_customer_id: input.stripe_customer_id,
-          previous_recurly_status: '',
-          previous_recurly_subscription_id: '',
-          email: '',
-          status: 'error',
-          note: err.message,
-        })
-      }
     }
+  } finally {
+    // wait for all queued tasks to complete
+    await queue.onIdle()
   }
 
   await trackProgress(`✅ Total processed: ${processedCount}`)
@@ -162,6 +216,7 @@ async function main(trackProgress) {
   await trackProgress('🎉 Script completed!')
 
   csvWriter.end()
+  await CustomerIoHandler.closeCustomerIo()
 }
 
 function getCsvReader(inputStream) {
@@ -182,6 +237,7 @@ function getCsvWriter(outputFile) {
       'previous_recurly_status',
       'previous_recurly_subscription_id',
       'email',
+      'analyticsId',
       'status',
       'note',
     ],
@@ -201,22 +257,27 @@ async function preloadProductMetadata(region) {
   if (preloadedProductMetadata.has(region)) return
 
   const stripeClient = getRegionClient(region)
-  const products = await stripeClient.stripe.products.list({
-    active: true,
-    limit: 100,
-  })
+  const products = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () =>
+      stripeClient.stripe.products.list({
+        active: true,
+        limit: 100,
+      }),
+    { operation: 'products.list', region: stripeClient.serviceName }
+  )
 
-  const cache = new Map()
+  const results = new Map()
   for (const product of products.data) {
-    cache.set(product.id, product.metadata)
+    results.set(product.id, product.metadata)
   }
 
-  preloadedProductMetadata.set(region, cache)
+  preloadedProductMetadata.set(region, results)
 }
 
 async function processMigration(input, commit) {
   const {
-    recurly_account_code: accountCode,
+    recurly_account_code: overleafUserId,
     target_stripe_account: targetStripeAccount,
     stripe_customer_id: stripeCustomerId,
   } = input
@@ -227,7 +288,7 @@ async function processMigration(input, commit) {
 
   // 1. Fetch Mongo subscription
   const mongoSubscription = await Subscription.findOne({
-    admin_id: accountCode,
+    admin_id: overleafUserId,
   }).exec()
   if (!mongoSubscription) {
     throw new ReportError(
@@ -252,9 +313,17 @@ async function processMigration(input, commit) {
   let stripeCustomer
   let stripeSubscription
   try {
-    stripeCustomer = await stripeClient.getCustomerById(stripeCustomerId, [
-      'subscriptions',
-    ])
+    stripeCustomer = await rateLimiters.requestWithRetries(
+      stripeClient.serviceName,
+      () => stripeClient.getCustomerById(stripeCustomerId, ['subscriptions']),
+      {
+        operation: 'getCustomerById',
+        stripeCustomerId,
+        region: stripeClient.serviceName,
+      }
+    )
+
+    // handle no subscriptions found
     if (
       !stripeCustomer.subscriptions ||
       stripeCustomer.subscriptions.data.length === 0
@@ -264,13 +333,25 @@ async function processMigration(input, commit) {
         'No Stripe subscriptions found for customer'
       )
     }
-    // find the subscription with migration metadata
+
+    // handle multiple active subscriptions found
+    const activeSubscriptions = stripeCustomer.subscriptions.data.filter(sub =>
+      ['active', 'past_due', 'incomplete'].includes(sub.status)
+    )
+    if (activeSubscriptions.length > 1) {
+      throw new ReportError(
+        'multiple-active-stripe-subscriptions',
+        'Multiple active Stripe subscriptions found for customer'
+      )
+    }
+
+    // find the target subscription with migration metadata
     stripeSubscription = stripeCustomer.subscriptions.data.find(
       sub => sub.metadata?.recurly_to_stripe_migration_status === 'in_progress'
     )
     if (!stripeSubscription) {
       throw new ReportError(
-        'no-stripe-subscription',
+        'no-target-stripe-subscription',
         'No target Stripe subscription found for customer'
       )
     }
@@ -285,9 +366,17 @@ async function processMigration(input, commit) {
   // 5. Fetch Recurly subscription
   let recurlySubscription
   try {
-    recurlySubscription = await RecurlyWrapper.promises.getSubscription(
-      previousRecurlySubscriptionId,
-      {}
+    recurlySubscription = await rateLimiters.requestWithRetries(
+      'recurly',
+      () =>
+        RecurlyWrapper.promises.getSubscription(
+          previousRecurlySubscriptionId,
+          {}
+        ),
+      {
+        operation: 'getSubscription',
+        recurlySubscriptionId: previousRecurlySubscriptionId,
+      }
     )
   } catch (err) {
     throw new ReportError(
@@ -299,102 +388,136 @@ async function processMigration(input, commit) {
   // 6. Detect changes between Recurly and Stripe
   const changes = detectChanges(recurlySubscription, stripeSubscription, region)
   if (changes.length > 0) {
-    return {
-      status: 'changes-detected',
-      note: `Changes found: ${changes.join('; ')}`,
-      previousRecurlyStatus,
-      previousRecurlySubscriptionId,
-      email: stripeCustomer.email,
-    }
+    throw new ReportError(
+      'changes-detected',
+      `Changes detected between Recurly and Stripe: ${changes.join('; ')}`
+    )
   }
 
   // 7. If commit mode, perform migration
+  const analyticsId = await UserAnalyticsIdCache.get(overleafUserId)
+  const mongoUser = await User.findOne({
+    _id: overleafUserId,
+  }).exec()
+  const result = {
+    status: 'not-migrated',
+    note: 'Not yet migrated',
+    previousRecurlyStatus,
+    previousRecurlySubscriptionId,
+    email: mongoUser?.email || stripeCustomer.email,
+    analyticsId,
+  }
   if (commit) {
-    await performCutover(
-      mongoSubscription,
-      stripeSubscription,
-      recurlySubscription,
-      stripeClient,
-      stripeCustomer
-    )
-    return {
-      status: 'migrated',
-      note: 'Successfully migrated to Stripe',
-      previousRecurlyStatus,
-      previousRecurlySubscriptionId,
-      email: stripeCustomer.email,
+    try {
+      await performCutover(
+        mongoSubscription,
+        stripeSubscription,
+        recurlySubscription,
+        stripeClient,
+        stripeCustomer,
+        analyticsId,
+        mongoUser?.email
+      )
+    } catch (err) {
+      if (err instanceof ReportError && err.status?.startsWith('migrated-')) {
+        result.status = err.status
+        result.note = err.message
+        return result
+      }
+
+      throw err
     }
+
+    result.status = 'migrated'
+    result.note = 'Successfully migrated to Stripe'
+    return result
   } else {
-    return {
-      status: 'validated',
-      note: 'DRY RUN: Ready to migrate',
-      previousRecurlyStatus,
-      previousRecurlySubscriptionId,
-      email: stripeCustomer.email,
-    }
+    result.status = 'validated'
+    result.note = 'DRY RUN: Ready to migrate'
+    return result
   }
 }
 
-// TODO: add other plan codes as needed
-const RECURLY_PLAN_CODE_TO_STRIPE_PLAN_CODE = {
-  student_free_trial_7_days: 'student',
-  collaborator_free_trial_7_days: 'collaborator',
-  student: 'student',
-  collaborator: 'collaborator',
-  'collaborator-annual': 'collaborator-annual',
-  'collaborator-annual_free_trial_7_days': 'collaborator-annual',
-  professional_free_trial_7_days: 'professional',
-  professional: 'professional',
-  'professional-annual': 'professional-annual',
-  'student-annual': 'student-annual',
+/**
+ * Format subscription items for display in error messages
+ */
+function formatItems(items) {
+  return items
+    .map(item => `${item.code}(qty:${item.quantity},amt:${item.amount})`)
+    .join(', ')
 }
 
 function detectChanges(recurlySubscription, stripeSubscription, region) {
   const changes = []
 
-  // Extract item codes from Recurly subscription (excluding additional-license
-  // add-on, which is not a separate add-on in Stripe)
-  const planCode = recurlySubscription.plan.plan_code
-  const recurlyItemCodes = JSON.stringify(
-    [
-      RECURLY_PLAN_CODE_TO_STRIPE_PLAN_CODE[planCode] || planCode,
-      ...(recurlySubscription.subscription_add_ons || [])
-        .filter(addOn => addOn.add_on_code !== 'additional-license')
-        .map(addOn => addOn.add_on_code),
-    ].sort()
+  // Extract item details from Recurly subscription
+  const targetRecurlySubscription =
+    recurlySubscription.pending_subscription || recurlySubscription
+  const recurlyPlanItem =
+    PlansLocator.convertLegacyGroupPlanCodeToConsolidatedGroupPlanCodeIfNeeded(
+      targetRecurlySubscription.plan.plan_code
+    )
+  const simplifiedPlanCode = recurlyPlanItem.planCode.replace(
+    /_free_trial.*$/,
+    ''
   )
+  const additionalLicenseQuantity =
+    (targetRecurlySubscription.subscription_add_ons || []).find(
+      addOn => addOn.add_on_code === 'additional-license'
+    )?.quantity || 0
+  const recurlyItems = [
+    {
+      code: simplifiedPlanCode,
+      quantity: recurlyPlanItem.quantity + additionalLicenseQuantity,
+      amount:
+        targetRecurlySubscription.unit_amount_in_cents /
+        recurlyPlanItem.quantity,
+    },
+    ...(targetRecurlySubscription.subscription_add_ons || [])
+      .filter(addOn => addOn.add_on_code !== 'additional-license')
+      .map(addOn => ({
+        code: addOn.add_on_code,
+        quantity: addOn.quantity,
+        amount: addOn.unit_amount_in_cents,
+      })),
+  ].sort((a, b) => a.code.localeCompare(b.code))
 
-  // Extract item codes from Stripe subscription
-  const cache = preloadedProductMetadata.get(region)
-  const stripeItemCodes = JSON.stringify(
-    stripeSubscription.items.data
-      .map(item => {
-        const productMetadata = cache.get(item.price.product)
-        return productMetadata?.planCode || productMetadata?.addOnCode || null
-      })
-      .filter(code => code !== null)
-      .sort()
-  )
+  // Extract item details from Stripe subscription
+  const products = preloadedProductMetadata.get(region)
+  const hasAddOns = stripeSubscription.items.data.length > 1
+  const stripeItems = stripeSubscription.items.data
+    .map(item => {
+      const productMetadata = products.get(item.price.product)
+      if (!productMetadata) {
+        throw new ReportError(
+          'unknown-stripe-product',
+          `Unknown Stripe product: ${item.price.product}`
+        )
+      }
 
-  // Compare item codes
-  if (recurlyItemCodes !== stripeItemCodes) {
+      return {
+        code:
+          productMetadata?.planCode?.includes('assistant') && hasAddOns
+            ? productMetadata?.addOnCode
+            : productMetadata?.planCode,
+        quantity: item.quantity,
+        amount: item.price.unit_amount,
+      }
+    })
+    .sort((a, b) => a.code.localeCompare(b.code))
+
+  // Compare items
+  if (!isEqual(recurlyItems, stripeItems)) {
     changes.push(
-      `Items: Recurly=[${recurlyItemCodes}], Stripe=[${stripeItemCodes}]`
+      `Items: Recurly=[${formatItems(recurlyItems)}], Stripe=[${formatItems(stripeItems)}]`
     )
   }
-
-  // TODO: compare quantities for each item, taking additional-license add-ons into account
 
   // Compare states
   const recurlyState = recurlySubscription.state
   const stripeState = convertStripeStatusToSubscriptionState(stripeSubscription)
   if (recurlyState !== stripeState) {
     changes.push(`State: Recurly=${recurlyState}, Stripe=${stripeState}`)
-  }
-
-  // Verify no changes have been scheduled in Recurly
-  if (recurlySubscription.pending_subscription != null) {
-    changes.push('Pending change now exists in Recurly subscription')
   }
 
   return changes
@@ -405,7 +528,9 @@ async function performCutover(
   stripeSubscription,
   recurlySubscription,
   stripeClient,
-  stripeCustomer
+  stripeCustomer,
+  analyticsId,
+  mongoUserEmail
 ) {
   const adminUserId = mongoSubscription.admin_id.toString()
 
@@ -419,7 +544,14 @@ async function performCutover(
   mongoSubscription.recurlySubscription_id = undefined
   mongoSubscription.recurlyStatus = undefined
 
-  await mongoSubscription.save()
+  try {
+    await mongoSubscription.save()
+  } catch (err) {
+    throw new ReportError(
+      'not-migrated-mongo-update-failed',
+      `Failed to update Mongo subscription: ${err.message}`
+    )
+  }
 
   // Step 2: Emit migration analytics event
   AnalyticsManager.recordEventForUserInBackground(
@@ -440,21 +572,41 @@ async function performCutover(
     postponedDate.setFullYear(currentBillingDate.getFullYear() + 10)
 
     try {
-      await RecurlyWrapper.promises.apiRequest({
-        url: `subscriptions/${recurlySubscription.uuid}/postpone`,
-        qs: { bulk: true, next_bill_date: postponedDate },
-        method: 'PUT',
-      })
+      await rateLimiters.requestWithRetries(
+        'recurly',
+        () =>
+          RecurlyWrapper.promises.apiRequest({
+            url: `subscriptions/${recurlySubscription.uuid}/postpone`,
+            qs: { bulk: true, next_bill_date: postponedDate },
+            method: 'PUT',
+          }),
+        {
+          operation: 'postpone',
+          recurlySubscriptionId: recurlySubscription.uuid,
+        }
+      )
     } catch (err) {
-      throw new Error(`Failed to postpone Recurly billing: ${err.message}`)
+      throw new ReportError(
+        'migrated-recurly-postpone-failed',
+        `Failed to postpone Recurly billing: ${err.message}`
+      )
     }
   }
 
   // Step 4: Remove migration metadata from Stripe
   try {
-    await stripeClient.updateSubscriptionMetadata(stripeSubscription.id, {
-      recurly_to_stripe_migration_status: '',
-    })
+    await rateLimiters.requestWithRetries(
+      stripeClient.serviceName,
+      () =>
+        stripeClient.updateSubscriptionMetadata(stripeSubscription.id, {
+          recurly_to_stripe_migration_status: '',
+        }),
+      {
+        operation: 'updateSubscriptionMetadata',
+        stripeSubscriptionId: stripeSubscription.id,
+        region: stripeClient.serviceName,
+      }
+    )
   } catch (err) {
     throw new ReportError(
       'migrated-metadata-removal-failed',
@@ -473,26 +625,31 @@ async function performCutover(
     )
   } catch (err) {
     throw new ReportError(
-      'analytics-mapping-failed',
+      'migrated-analytics-mapping-failed',
       `Successfully migrated to Stripe but failed to register analytics mapping: ${err.message}`
     )
   }
 
-  // Step 6. Remap customer metadata (if needed) in Stripe
-  if (
-    stripeCustomer.metadata != null &&
-    stripeCustomer.metadata.recurlyAccountCode != null &&
-    stripeCustomer.metadata.userId == null
-  ) {
+  // Step 6. Send data to customer.io
+  if (analyticsId) {
     try {
-      await stripeClient.updateCustomerMetadata(stripeCustomer.id, {
-        recurlyAccountCode: '',
-        userId: adminUserId,
+      const migrationDate = new Date().toISOString().slice(0, 10)
+      const needsToUpdateTaxInfo =
+        (stripeCustomer.metadata?.taxInfoPending || '').length > 0
+
+      // TODO: request Recurly account and billingInfo to verify if tax info in Stripe is up to date
+
+      CustomerIoHandler.updateUserAttributes(analyticsId, {
+        email: mongoUserEmail || stripeCustomer.email,
+        stripe_migration: {
+          migration_date: migrationDate,
+          needs_to_update_tax_id: needsToUpdateTaxInfo,
+        },
       })
     } catch (err) {
       throw new ReportError(
-        'customer-metadata-removal-failed',
-        `Successfully migrated to Stripe and registered analytics mapping but failed to remove customer metadata: ${err.message}`
+        'migrated-customerio-upload-failed',
+        `Successfully migrated to Stripe but failed to upload user to customer.io: ${err.message}`
       )
     }
   }
@@ -500,10 +657,27 @@ async function performCutover(
 
 function parseArgs() {
   const args = minimist(process.argv.slice(2), {
-    string: ['output'],
-    number: ['throttle'],
+    string: [
+      'output',
+      'concurrency',
+      'recurly-rate-limit',
+      'recurly-api-retries',
+      'recurly-retry-delay-ms',
+      'stripe-rate-limit',
+      'stripe-api-retries',
+      'stripe-retry-delay-ms',
+    ],
     boolean: ['commit', 'help'],
-    default: { commit: false, throttle: DEFAULT_THROTTLE },
+    default: {
+      commit: false,
+      concurrency: 10,
+      'recurly-rate-limit': DEFAULT_RECURLY_RATE_LIMIT,
+      'recurly-api-retries': DEFAULT_RECURLY_API_RETRIES,
+      'recurly-retry-delay-ms': DEFAULT_RECURLY_RETRY_DELAY_MS,
+      'stripe-rate-limit': DEFAULT_STRIPE_RATE_LIMIT,
+      'stripe-api-retries': DEFAULT_STRIPE_API_RETRIES,
+      'stripe-retry-delay-ms': DEFAULT_STRIPE_RETRY_DELAY_MS,
+    },
   })
 
   if (args.help) {
@@ -515,7 +689,13 @@ function parseArgs() {
   const paramsSchema = z.object({
     output: z.string().optional(),
     commit: z.boolean(),
-    throttle: z.number().int().positive(),
+    concurrency: z.number().int().positive(),
+    recurlyRateLimit: z.number().positive(),
+    recurlyApiRetries: z.number().int().nonnegative(),
+    recurlyRetryDelayMs: z.number().int().nonnegative(),
+    stripeRateLimit: z.number().positive(),
+    stripeApiRetries: z.number().int().nonnegative(),
+    stripeRetryDelayMs: z.number().int().nonnegative(),
     inputFile: z.string().optional(),
   })
 
@@ -523,7 +703,13 @@ function parseArgs() {
     return paramsSchema.parse({
       output: args.output,
       commit: args.commit,
-      throttle: args.throttle,
+      concurrency: Number(args.concurrency),
+      recurlyRateLimit: Number(args['recurly-rate-limit']),
+      recurlyApiRetries: Number(args['recurly-api-retries']),
+      recurlyRetryDelayMs: Number(args['recurly-retry-delay-ms']),
+      stripeRateLimit: Number(args['stripe-rate-limit']),
+      stripeApiRetries: Number(args['stripe-api-retries']),
+      stripeRetryDelayMs: Number(args['stripe-retry-delay-ms']),
       inputFile,
     })
   } catch (err) {
