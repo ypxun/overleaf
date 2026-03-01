@@ -47,8 +47,6 @@ class DuplicateNameError extends OError {}
 
 class InvalidNameError extends BackwardCompatibleError {}
 
-class IndeterminateInvoiceError extends OError {}
-
 class UnsupportedFileTypeError extends BackwardCompatibleError {}
 
 class FileTooLargeError extends BackwardCompatibleError {}
@@ -223,6 +221,12 @@ class SAMLGroupMemberLimitReachedError extends OError {}
 
 class SAMLDomainCaptureManagedOptInUserMissingEmailError extends SAMLDomainCaptureError {}
 
+class SAMLSessionProviderDataMissing extends SAMLAuthenticationError {
+  get i18nKey() {
+    return 'try_again'
+  }
+}
+
 class SAMLSessionDataMissing extends BackwardCompatibleError {
   constructor(arg) {
     super(arg)
@@ -378,7 +382,6 @@ module.exports = {
   UnconfirmedEmailError,
   EmailExistsError,
   InvalidError,
-  IndeterminateInvoiceError,
   NotInV2Error,
   OutputFileFetchFailedError,
   SAMLAssertionAudienceMismatch,
@@ -393,6 +396,7 @@ module.exports = {
   SAMLEmailNotAffiliatedError,
   SAMLEmailAffiliatedWithAnotherInstitutionError,
   SAMLSessionDataMissing,
+  SAMLSessionProviderDataMissing,
   SAMLAuthenticationError,
   SAMLGroupSSOLoginIdentityMismatchError,
   SAMLGroupSSOLoginIdentityNotFoundError,

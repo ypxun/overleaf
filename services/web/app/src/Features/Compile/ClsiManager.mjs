@@ -557,7 +557,8 @@ function _getCompilerUrl(
   userId,
   action
 ) {
-  const u = new URL(`/project/${projectId}`, Settings.apis.clsi.url)
+  const u = new URL(Settings.apis.clsi.url)
+  u.pathname = `/project/${projectId}`
   if (userId != null) {
     u.pathname += `/user/${userId}`
   }
@@ -609,17 +610,14 @@ async function _postToClsi(
       } else if (err.response.status === 503) {
         return { response: { compile: { status: 'unavailable' } } }
       } else {
-        throw new OError(
-          `CLSI returned non-success code: ${err.response.status}`,
-          {
-            projectId,
-            userId,
-            compileOptions: req.compile.options,
-            rootResourcePath: req.compile.rootResourcePath,
-            clsiResponse: err.body,
-            statusCode: err.response.status,
-          }
-        )
+        throw new OError('CLSI returned non-success code', {
+          projectId,
+          userId,
+          compileOptions: req.compile.options,
+          rootResourcePath: req.compile.rootResourcePath,
+          clsiResponse: err.body,
+          statusCode: err.response.status,
+        })
       }
     } else {
       throw new OError(
@@ -732,9 +730,8 @@ async function getOutputFileStream(
   outputFilePath
 ) {
   const { compileBackendClass, compileGroup } = options
-  const url = new URL(
-    `${Settings.apis.clsi.url}/project/${projectId}/user/${userId}/build/${buildId}/output/${outputFilePath}`
-  )
+  const url = new URL(Settings.apis.clsi.downloadHost)
+  url.pathname = `/project/${projectId}/user/${userId}/build/${buildId}/output/${outputFilePath}`
   url.searchParams.set('compileBackendClass', compileBackendClass)
   url.searchParams.set('compileGroup', compileGroup)
   url.searchParams.set('clsiserverid', clsiServerId)

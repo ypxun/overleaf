@@ -193,16 +193,13 @@ export const UserSchema = new Schema(
       papers: Schema.Types.Mixed,
     },
     writefull: {
-      enabled: { type: Boolean, default: null },
+      // whether we have attached an autocreated account or autoloading for the user
+      initialized: { type: Boolean, default: false },
       autoCreatedAccount: { type: Boolean, default: false },
       isPremium: { type: Boolean, default: false },
       premiumSource: { type: String, default: null },
     },
     aiFeatures: {
-      enabled: { type: Boolean, default: true },
-    },
-    // todo: assist clean-up: remove this once migration is finished
-    aiErrorAssistant: {
       enabled: { type: Boolean, default: true },
     },
     alphaProgram: { type: Boolean, default: false }, // experimental features

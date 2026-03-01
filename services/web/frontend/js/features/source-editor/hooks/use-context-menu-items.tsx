@@ -34,7 +34,12 @@ export const useContextMenuItems = () => {
   const { wantTrackChanges } = useEditorPropertiesContext()
   const { syncToPdf, syncToPdfInFlight, canSyncToPdf } = useSynctex()
   const { pdfUrl, pdfViewer } = useDetachCompileContext()
-  const { detachRole } = useLayoutContext()
+  const {
+    detachRole,
+    changeLayout,
+    pdfLayout,
+    view: ideView,
+  } = useLayoutContext()
   const visualPreviewEnabled = useFeatureFlag('visual-preview')
   const { t } = useTranslation()
   const { shortcuts } = useCommandRegistry()
@@ -46,6 +51,7 @@ export const useContextMenuItems = () => {
 
   const closeMenu = useCallback(() => {
     view.dispatch({ effects: closeContextMenuEffect.of(null) })
+    view.focus()
   }, [view])
 
   // Handle closing the menu when it loses focus, e.g. click outside the editor
@@ -71,12 +77,14 @@ export const useContextMenuItems = () => {
 
   const hasSelection = !state.selection.main.empty
   const canEdit = permissions.write || permissions.trackedWrite
+
+  // Determine layout states for PDF sync functionality
+  const isPdfDetached = detachRole === 'detacher'
+  const isEditorOnly =
+    pdfLayout === 'flat' && ideView === 'editor' && !isPdfDetached
+
   const jumpToLocationInPdfEnabled =
-    pdfUrl &&
-    pdfViewer !== 'native' &&
-    !detachRole &&
-    !visualPreviewEnabled &&
-    canSyncToPdf
+    pdfUrl && pdfViewer !== 'native' && !visualPreviewEnabled && canSyncToPdf
 
   const wrapForContextMenu = useCallback(
     (command: () => Promise<boolean> | boolean) => async () => {
@@ -118,10 +126,14 @@ export const useContextMenuItems = () => {
 
   // Sync-to-PDF is special: it needs to wait for async completion before closing
   const handleSyncToPdf = useCallback(() => {
+    // Switch to split view only when in editor-only mode with non-detached PDF
+    if (isEditorOnly) {
+      changeLayout('sideBySide')
+    }
     requestedPdfSyncRef.current = true
     syncToPdf()
     view.focus()
-  }, [syncToPdf, view])
+  }, [syncToPdf, view, changeLayout, isEditorOnly])
 
   const getShortcut = useCallback(
     (id: string) => {

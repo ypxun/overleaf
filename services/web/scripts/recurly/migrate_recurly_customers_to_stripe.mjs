@@ -29,9 +29,6 @@
  *   --output (success file): Records that were successfully updated
  *     Format: recurly_account_code,target_stripe_account,stripe_customer_id
  *
- *   <output>_skipped_no_stripe_id.csv: Records skipped because stripe_customer_id was missing
- *     Format: recurly_account_code,target_stripe_account,stripe_customer_id
- *
  *   <output>_errors.csv: Records that failed (overwritten each run)
  *     Format: recurly_account_code,target_stripe_account,stripe_customer_id,error
  *
@@ -99,6 +96,8 @@ import {
   coalesceOrThrowPaymentMethod,
   coalesceOrThrowVATNumber,
   getTaxIdType,
+  sanitizeAccount,
+  sanitizeBillingInfo,
 } from '../helpers/migrate_recurly_customers_to_stripe.helpers.mjs'
 import {
   createRateLimitedApiWrappers,
@@ -370,22 +369,19 @@ function formatCsvRow(columns, row) {
 }
 
 /**
- * Create output writers for success, error, and skipped files.
+ * Create output writers for success and error files.
  *
  * Success file: Append-only, contains all successfully updated records
  * Errors file: Overwritten each run, contains only failures from this run
- * Skipped file: Overwritten each run, contains records skipped because they have no stripe_customer_id
  *
  * @param {string} successPath - Path to the success output CSV file
  * @param {string} errorsPath - Path to the errors output CSV file
- * @param {string} skippedPath - Path to the skipped_no_stripe_id output CSV file
  * @param {boolean} restart - If true, truncate existing files
- * @returns {{ writeSuccess: (row: object) => void, writeError: (row: object) => void, writeSkipped: (row: object) => void, close: () => Promise<void> }}
+ * @returns {{ writeSuccess: (row: object) => void, writeError: (row: object) => void, close: () => Promise<void> }}
  */
 function createOutputWriters(
   successPath,
   errorsPath,
-  skippedPath,
   restart = false,
   { enableSuccessFile = true } = {}
 ) {
@@ -402,13 +398,6 @@ function createOutputWriters(
     'target_stripe_account',
     'stripe_customer_id',
     'error',
-  ]
-
-  // Skipped file columns (same as success, stripe_customer_id is the existing one)
-  const skippedColumns = [
-    'recurly_account_code',
-    'target_stripe_account',
-    'stripe_customer_id',
   ]
 
   // Success file: append mode (unless restart)
@@ -432,10 +421,6 @@ function createOutputWriters(
   const errorsStream = fs.createWriteStream(errorsPath, { flags: 'w' })
   errorsStream.write(errorsColumns.join(',') + '\n')
 
-  // Skipped file: always overwrite (contains only this run's skipped)
-  const skippedStream = fs.createWriteStream(skippedPath, { flags: 'w' })
-  skippedStream.write(skippedColumns.join(',') + '\n')
-
   function writeSuccess(row) {
     if (!successStream) return
     successStream.write(formatCsvRow(successColumns, row))
@@ -445,23 +430,14 @@ function createOutputWriters(
     errorsStream.write(formatCsvRow(errorsColumns, row))
   }
 
-  function writeSkipped(row) {
-    skippedStream.write(formatCsvRow(skippedColumns, row))
-  }
-
   async function close() {
     if (successStream) successStream.end()
     errorsStream.end()
-    skippedStream.end()
 
     const closers = [
       new Promise((resolve, reject) => {
         errorsStream.on('finish', resolve)
         errorsStream.on('error', reject)
-      }),
-      new Promise((resolve, reject) => {
-        skippedStream.on('finish', resolve)
-        skippedStream.on('error', reject)
       }),
     ]
 
@@ -477,7 +453,7 @@ function createOutputWriters(
     await Promise.all(closers)
   }
 
-  return { writeSuccess, writeError, writeSkipped, close }
+  return { writeSuccess, writeError, close }
 }
 
 /**
@@ -485,13 +461,6 @@ function createOutputWriters(
  */
 function getErrorsPath(successPath) {
   return successPath.replace(/\.csv$/, '_errors.csv')
-}
-
-/**
- * Get the skipped_no_stripe_id file path from the success file path
- */
-function getSkippedPath(successPath) {
-  return successPath.replace(/\.csv$/, '_skipped_no_stripe_id.csv')
 }
 
 /**
@@ -593,7 +562,10 @@ async function fetchTargetStripeCustomer(
 ) {
   const customer = await rateLimiters.requestWithRetries(
     stripeClient.serviceName,
-    () => stripeClient.customers.retrieve(stripeCustomerId),
+    () =>
+      stripeClient.customers.retrieve(stripeCustomerId, {
+        expand: ['subscriptions'],
+      }),
     { ...context, stripeApi: 'customers.retrieve' }
   )
 
@@ -602,6 +574,37 @@ async function fetchTargetStripeCustomer(
   }
 
   return customer
+}
+
+/**
+ * Query for other matching customers from the target Stripe account by ID.
+ *
+ * @param {Stripe} stripeClient - The Stripe client for the target account
+ * @param {string} userId - The user id to query
+ * @param {string} stripeCustomerId - The Stripe customer ID to exclude from results (if any)
+ * @param {object} context - Context for logging and rate limiter identification
+ * @returns {Promise<Stripe.Customer | null>}
+ */
+async function fetchOtherStripeCustomerByUserId(
+  stripeClient,
+  userId,
+  stripeCustomerId,
+  context
+) {
+  const results = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () =>
+      stripeClient.customers.search({
+        query: `metadata['userId']:"${userId}"`,
+        limit: 100,
+        expand: ['data.subscriptions'],
+      }),
+    { ...context, stripeApi: 'customers.search' }
+  )
+
+  return (
+    results.data?.find(customer => customer.id !== stripeCustomerId) || null
+  )
 }
 
 /**
@@ -622,6 +625,148 @@ async function fetchTargetStripeCustomerPaymentMethods(
     { ...context, stripeApi: 'customers.listPaymentMethods' }
   )
   return paymentMethods.data
+}
+
+/**
+ * Creates a Stripe Setup Intent to import a PayPal billing agreement.
+ *
+ * @param {Stripe} stripeClient - The Stripe client for the target account
+ * @param {string} stripeCustomerId - The Stripe customer ID
+ * @param {string} billingAgreementId - The PayPal billing agreement ID
+ * @param {object} context - Logging context
+ * @returns {Promise<Stripe.PaymentMethod>}
+ * @throws {Error} If the setup intent fails or does not produce a payment method
+ */
+async function createPayPalPaymentMethod(
+  stripeClient,
+  stripeCustomerId,
+  billingAgreementId,
+  context
+) {
+  logDebug(
+    'Creating PayPal setup intent',
+    {
+      ...context,
+      step: 'create_paypal_setup_intent',
+    },
+    { verboseOnly: true }
+  )
+
+  const setupIntent = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () =>
+      stripeClient.setupIntents.create({
+        customer: stripeCustomerId,
+        payment_method_types: ['paypal'],
+        payment_method_data: {
+          type: 'paypal',
+        },
+        payment_method_options: {
+          paypal: {
+            billing_agreement_id: billingAgreementId,
+          },
+        },
+        confirm: true,
+        usage: 'off_session',
+        mandate_data: {
+          customer_acceptance: {
+            type: 'offline',
+          },
+        },
+        return_url: `${Settings.siteUrl}/user/subscription`, // required for PayPal setup intents, but not actually used since we're confirming immediately
+        expand: ['payment_method'],
+      }),
+    { ...context, stripeApi: 'setupIntents.create' }
+  )
+
+  if (setupIntent.status !== 'succeeded') {
+    throw new Error(
+      `PayPal setup intent ${setupIntent.id} has unexpected status: ${setupIntent.status}`
+    )
+  }
+
+  if (!setupIntent.payment_method) {
+    throw new Error(
+      `PayPal setup intent ${setupIntent.id} succeeded but has no payment_method`
+    )
+  }
+
+  logDebug(
+    'Successfully created PayPal setup intent',
+    {
+      ...context,
+      setupIntentId: setupIntent.id,
+      paymentMethodId: setupIntent.payment_method.id,
+    },
+    { verboseOnly: true }
+  )
+
+  // The setup intent returns the full payment method object, but we only need the ID
+  // to set it as the default on the customer.
+  return setupIntent.payment_method
+}
+
+/**
+ * Determines the payment method to set on the Stripe customer.
+ *
+ * This handles both migrating a PayPal billing agreement and matching an existing
+ * credit card payment method.
+ *
+ * @param {Stripe} stripeClient - The Stripe client for the target account
+ * @param {string} stripeCustomerId - The Stripe customer ID
+ * @param {object} billingInfo - Recurly billing info object
+ * @param {object} address - The customer's address (used for PayPal country check)
+ * @param {boolean} commit - Whether this is a dry-run or a commit
+ * @param {object} context - Logging context
+ * @returns {Promise<Stripe.PaymentMethod>}
+ * @throws {Error} If the payment method cannot be determined or created
+ */
+async function getPaymentMethod(
+  stripeClient,
+  stripeCustomerId,
+  billingInfo,
+  address,
+  commit,
+  context
+) {
+  if (billingInfo?.paymentMethod?.object === 'paypal_billing_agreement') {
+    const addressCountry = address?.country
+    if (
+      addressCountry === 'CA' ||
+      addressCountry === 'US' ||
+      stripeClient.serviceName === 'stripe-us'
+    ) {
+      throw new Error(
+        `PayPal billing agreement migration is not supported for ${addressCountry} customers`
+      )
+    }
+
+    if (commit) {
+      return await createPayPalPaymentMethod(
+        stripeClient,
+        stripeCustomerId,
+        billingInfo.paymentMethod.billingAgreementId,
+        context
+      )
+    } else {
+      logDebug('DRY RUN: Would create PayPal setup intent', context, {
+        verboseOnly: true,
+      })
+      // Return a placeholder for dry-run output
+      return { id: 'pm_placeholder_paypal_dry_run', type: 'paypal' }
+    }
+  }
+
+  const paymentMethods = await fetchTargetStripeCustomerPaymentMethods(
+    stripeClient,
+    stripeCustomerId,
+    context
+  )
+  return coalesceOrThrowPaymentMethod(
+    paymentMethods,
+    stripeCustomerId,
+    billingInfo
+  )
 }
 
 /**
@@ -756,6 +901,104 @@ function addressesEqual(a, b) {
 // =============================================================================
 
 /**
+ * Resolve the Stripe customer for a given Recurly account.
+ *
+ * Handles three cases:
+ * 1. Another customer with matching userId metadata exists when no stripeCustomerId is provided → reuse it
+ * 2. No stripeCustomerId provided → create a new customer (or placeholder in dry-run)
+ * 3. stripeCustomerId provided → fetch the existing customer
+ *
+ * @param {object} params
+ * @param {Stripe} params.stripeClient - Stripe SDK client for the target account
+ * @param {string|null} params.stripeCustomerId - Stripe customer ID from the input CSV (may be empty)
+ * @param {string} params.recurlyAccountCode - Recurly account code / Overleaf user ID
+ * @param {object} params.account - Recurly account object (used for email on create)
+ * @param {boolean} params.commit - Whether to actually create/fetch in Stripe
+ * @param {object} params.context - Logging context
+ * @param {object} params.stripeContext - Stripe-specific logging context
+ * @returns {Promise<Stripe.Customer|object>} - The resolved Stripe customer object (or placeholder in dry-run)
+ * @throws {Error} if there are multiple matching customers found
+ */
+async function resolveStripeCustomer({
+  stripeClient,
+  stripeCustomerId,
+  recurlyAccountCode,
+  account,
+  commit,
+  context,
+  stripeContext,
+}) {
+  const otherMatchingCustomer = await fetchOtherStripeCustomerByUserId(
+    stripeClient,
+    recurlyAccountCode,
+    stripeCustomerId,
+    stripeContext
+  )
+
+  if (otherMatchingCustomer) {
+    if (stripeCustomerId) {
+      throw new Error(
+        `Found another Stripe customer with matching userId metadata: ${otherMatchingCustomer.id}`
+      )
+    }
+
+    logDebug(
+      'Found Stripe customer with matching userId metadata, reusing',
+      { ...context, otherStripeCustomerId: otherMatchingCustomer.id },
+      { verboseOnly: true }
+    )
+    return otherMatchingCustomer
+  }
+
+  if (!stripeCustomerId) {
+    if (commit) {
+      const newCustomer = await rateLimiters.requestWithRetries(
+        stripeClient.serviceName,
+        () =>
+          stripeClient.customers.create({
+            email: account.email,
+            metadata: { userId: recurlyAccountCode },
+          }),
+        { ...stripeContext, stripeApi: 'customers.create' }
+      )
+      logDebug(
+        'Created new Stripe customer',
+        { ...context, newStripeCustomerId: newCustomer.id },
+        { verboseOnly: true }
+      )
+      return newCustomer
+    }
+
+    logDebug(
+      'DRY RUN: Would create new Stripe customer',
+      { ...context, step: 'create_stripe_customer' },
+      { verboseOnly: true }
+    )
+    return {
+      id: 'cus_dry_run_new_customer_placeholder',
+      metadata: { userId: recurlyAccountCode },
+    }
+  }
+
+  logDebug(
+    'Fetching existing Stripe customer',
+    { ...context, step: 'fetch_stripe_customer' },
+    { verboseOnly: true }
+  )
+  const customer = await fetchTargetStripeCustomer(
+    stripeClient,
+    stripeCustomerId,
+    stripeContext
+  )
+  logDebug(
+    'Resolved existing Stripe customer',
+    { ...context, stripeEmail: customer.email, stripeName: customer.name },
+    { verboseOnly: true }
+  )
+  return customer
+}
+
+/**
  * Process a single customer row from the input CSV.
  *
  * Customers are expected to already exist in the target Stripe account
@@ -776,8 +1019,8 @@ async function processCustomer(
   const {
     recurly_account_code: recurlyAccountCode,
     target_stripe_account: targetStripeAccount,
-    stripe_customer_id: stripeCustomerId,
   } = row
+  let stripeCustomerId = row.stripe_customer_id
 
   const context = {
     rowNumber,
@@ -796,7 +1039,7 @@ async function processCustomer(
     recurly_account_code: recurlyAccountCode,
     target_stripe_account: targetStripeAccount,
     stripe_customer_id: stripeCustomerId || '',
-    outcome: '', // 'updated', 'dry_run', 'skipped_no_stripe_id', or 'error'
+    outcome: '', // 'updated', 'dry_run', or 'error'
     error: '',
     customerParams: null, // Stripe customer params (for dry-run output)
     taxInfoPending: null, // Recurly VAT number if tax ID type couldn't be determined
@@ -809,22 +1052,6 @@ async function processCustomer(
     }
     if (!targetStripeAccount) {
       throw new Error('Missing required field: target_stripe_account')
-    }
-
-    // TODO: In a later phase, records without stripe_customer_id will be
-    // handled differently (e.g., PayPal customers who need re-authorization).
-    // For now, skip them since we're only processing card customers that
-    // were imported via PAN import and have a stripe_customer_id.
-    if (!stripeCustomerId) {
-      result.outcome = 'skipped_no_stripe_id'
-      logDebug(
-        'Skipping - no stripe_customer_id (not imported via PAN)',
-        {
-          ...context,
-        },
-        { verboseOnly: true }
-      )
-      return result
     }
 
     // Get Stripe client for target account
@@ -857,11 +1084,12 @@ async function processCustomer(
         ...context,
         email: account.email,
         hasBillingInfo: !!billingInfo,
-        paymentMethod: billingInfo?.paypalBillingAgreementId
-          ? 'paypal'
-          : billingInfo?.cardType || 'none',
-        account,
-        billingInfo,
+        paymentMethod:
+          billingInfo?.paymentMethod?.object === 'paypal_billing_agreement'
+            ? 'paypal'
+            : billingInfo?.cardType || 'none',
+        account: sanitizeAccount(account),
+        billingInfo: sanitizeBillingInfo(billingInfo),
       },
       { verboseOnly: true }
     )
@@ -898,30 +1126,25 @@ async function processCustomer(
       )
     }
 
-    // Fetch existing customer from target Stripe account
-    logDebug(
-      'Fetching existing Stripe customer',
-      {
-        ...context,
-        step: 'fetch_stripe_customer',
-      },
-      { verboseOnly: true }
-    )
-    const existingCustomer = await fetchTargetStripeCustomer(
+    const existingCustomer = await resolveStripeCustomer({
       stripeClient,
       stripeCustomerId,
-      stripeContext
-    )
+      recurlyAccountCode,
+      account,
+      commit,
+      context,
+      stripeContext,
+    })
+    stripeCustomerId = existingCustomer.id
+    result.stripe_customer_id = stripeCustomerId || ''
+    stripeContext.stripeCustomerId = stripeCustomerId
+    context.stripeCustomerId = stripeCustomerId
 
-    logDebug(
-      'Found existing Stripe customer',
-      {
-        ...context,
-        stripeEmail: existingCustomer.email,
-        stripeName: existingCustomer.name,
-      },
-      { verboseOnly: true }
-    )
+    if (existingCustomer.subscriptions?.data.length > 0) {
+      throw new Error(
+        `Stripe customer ${stripeCustomerId} already has ${existingCustomer.subscriptions?.data?.length} active subscription(s).`
+      )
+    }
 
     // Extract VAT number and country for tax ID creation
     const vatNumber = coalesceOrThrowVATNumber(account, billingInfo)
@@ -1023,6 +1246,15 @@ async function processCustomer(
     const address = coalesceOrEqualOrThrowAddress(account, billingInfo)
     const companyName = extractCompanyName(account, billingInfo)
 
+    const paymentMethod = await getPaymentMethod(
+      stripeClient,
+      stripeCustomerId,
+      billingInfo,
+      address,
+      commit,
+      stripeContext
+    )
+
     // TODO: Handle tax exempt status
     // Recurly has account.exemptionCertificate for tax exemption
     // Stripe has customer.tax_exempt: 'none' | 'exempt' | 'reverse'
@@ -1042,18 +1274,6 @@ async function processCustomer(
     //   customerParams.metadata.ccEmails = account.ccEmails
     // }
 
-    const paymentMethods = await fetchTargetStripeCustomerPaymentMethods(
-      stripeClient,
-      stripeCustomerId,
-      region,
-      stripeContext
-    )
-    const paymentMethod = coalesceOrThrowPaymentMethod(
-      paymentMethods,
-      stripeCustomerId,
-      billingInfo
-    )
-
     /** @type {Record<string, string>} */
     const metadata = {}
     if (account.createdAt) {
@@ -1062,19 +1282,25 @@ async function processCustomer(
     if (taxInfoPendingValue) {
       metadata.taxInfoPending = taxInfoPendingValue
     }
+
     if (
-      existingCustomer.metadata != null &&
-      existingCustomer.metadata.recurlyAccountCode === recurlyAccountCode &&
-      existingCustomer.metadata.userId == null
+      existingCustomer.metadata?.recurlyAccountCode &&
+      existingCustomer.metadata?.recurlyAccountCode !== recurlyAccountCode
     ) {
-      metadata.recurlyAccountCode = ''
-      metadata.userId = recurlyAccountCode
-    } else {
-      logWarn('Stripe customer metadata cannot be remapped', {
-        ...context,
-        existingCustomerMetadata: existingCustomer.metadata,
-      })
+      throw new Error(
+        `Existing Stripe customer has unexpected recurlyAccountCode: (expected) ${recurlyAccountCode} (actual) ${existingCustomer.metadata?.recurlyAccountCode}`
+      )
     }
+    if (
+      existingCustomer.metadata?.userId &&
+      existingCustomer.metadata?.userId !== recurlyAccountCode
+    ) {
+      throw new Error(
+        `Existing Stripe customer has unexpected userId: (expected) ${recurlyAccountCode} (actual) ${existingCustomer.metadata?.userId}`
+      )
+    }
+    metadata.recurlyAccountCode = ''
+    metadata.userId = recurlyAccountCode
 
     const { metadata: customFieldMetadata, counts: customFieldCounts } =
       extractRecurlyCustomFieldMetadata(account)
@@ -1210,6 +1436,8 @@ async function processCustomer(
               createdTaxId,
             }
           : null,
+        _isPaypal: paymentMethod?.type === 'paypal',
+        _targetStripeCustomerId: stripeCustomerId,
       }
       logDebug(
         'DRY RUN: Would update Stripe customer',
@@ -1301,13 +1529,6 @@ function usage() {
   console.error('')
   console.error('Output files:')
   console.error('  SUCCESS file (--output): Successfully updated customers')
-  console.error(
-    '    Format: recurly_account_code,target_stripe_account,stripe_customer_id'
-  )
-  console.error('')
-  console.error(
-    '  SKIPPED file (<output>_skipped_no_stripe_id.csv): Records without stripe_customer_id'
-  )
   console.error(
     '    Format: recurly_account_code,target_stripe_account,stripe_customer_id'
   )
@@ -1512,7 +1733,6 @@ async function main(trackProgress) {
   }
 
   const errorsOutputPath = getErrorsPath(successOutputPath)
-  const skippedOutputPath = getSkippedPath(successOutputPath)
   const stripeJsonPath = getStripeJsonPath(successOutputPath)
   const stripeExistingFieldsJsonPath =
     getStripeExistingFieldsJsonPath(successOutputPath)
@@ -1522,7 +1742,6 @@ async function main(trackProgress) {
     inputPath,
     successOutputPath,
     errorsOutputPath,
-    skippedOutputPath,
     ...(commit ? {} : { stripeJsonPath }),
     stripeExistingFieldsJsonPath,
     concurrency,
@@ -1568,23 +1787,14 @@ async function main(trackProgress) {
   const {
     writeSuccess,
     writeError,
-    writeSkipped,
     close: closeOutputs,
   } = commit
-    ? createOutputWriters(
-        successOutputPath,
-        errorsOutputPath,
-        skippedOutputPath,
-        restart,
-        { enableSuccessFile: true }
-      )
-    : createOutputWriters(
-        successOutputPath,
-        errorsOutputPath,
-        skippedOutputPath,
-        true,
-        { enableSuccessFile: false }
-      )
+    ? createOutputWriters(successOutputPath, errorsOutputPath, restart, {
+        enableSuccessFile: true,
+      })
+    : createOutputWriters(successOutputPath, errorsOutputPath, true, {
+        enableSuccessFile: false,
+      })
 
   // For dry-run mode, collect Stripe customer params to write to JSON
   const stripeCustomerParams = []
@@ -1601,7 +1811,6 @@ async function main(trackProgress) {
     let queuedThisRun = 0
     let skippedPreviouslyProcessed = 0
     let updatedCount = 0
-    let skippedNoStripeIdCount = 0
     let errorCount = 0
     let dryRunCount = 0
     let taxInfoPendingCount = 0
@@ -1716,9 +1925,6 @@ async function main(trackProgress) {
             writeError(result)
             errorCount++
             errorAccountCodes.push(accountCode)
-          } else if (result.outcome === 'skipped_no_stripe_id') {
-            writeSkipped(result)
-            skippedNoStripeIdCount++
           } else {
             writeSuccess(result)
             // Update statistics and collect dry-run data
@@ -1746,7 +1952,6 @@ async function main(trackProgress) {
               processedThisRun,
               updated: updatedCount,
               dryRun: dryRunCount,
-              skippedNoStripeId: skippedNoStripeIdCount,
               taxInfoPending: taxInfoPendingCount,
               errors: errorCount,
               skippedPrevious: skippedPreviouslyProcessed,
@@ -1829,9 +2034,6 @@ async function main(trackProgress) {
     await trackProgress(
       `  - ${commit ? 'Updated' : 'Would update'}: ${commit ? updatedCount : dryRunCount}`
     )
-    await trackProgress(
-      `  - Skipped (no stripe_customer_id): ${skippedNoStripeIdCount}`
-    )
     await trackProgress(`  - Tax info pending: ${taxInfoPendingCount}`)
     await trackProgress(`  - Errors: ${errorCount}`)
     await trackProgress('')
@@ -1854,9 +2056,6 @@ async function main(trackProgress) {
         `Success file: ${successOutputPath} (not modified in dry-run mode)`
       )
     }
-    await trackProgress(
-      `Skipped file: ${skippedOutputPath} (${skippedNoStripeIdCount} records)`
-    )
     await trackProgress(
       `Errors file: ${errorsOutputPath} (${errorCount} records)`
     )

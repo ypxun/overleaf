@@ -56,6 +56,7 @@ services:
       MONGO_SOCKET_TIMEOUT: 300000
       REDIS_HOST: redis_test
       MONOREPO:
+      RETRIES:
       # OVERLEAF_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING: 'true'
 
     extra_hosts:
@@ -68,7 +69,7 @@ services:
     entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
     command: npm run --silent test:acceptance:app
 
-  test_frontend:
+  test_frontend_jsdom:
     build:
       context: ../..
       dockerfile: services/web/Dockerfile

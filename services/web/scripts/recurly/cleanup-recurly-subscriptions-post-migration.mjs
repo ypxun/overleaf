@@ -3,13 +3,13 @@
 /**
  * This script CLEANS UP Recurly subscriptions after migration to Stripe is finalized.
  *
- * IMPORTANT: Only run this AFTER the cutover is complete, verified, and
- * we've confirmed that Stripe is working correctly.
- *
- * WARNING: After running this script, rollback is NO LONGER POSSIBLE.
- *
- * NOTE: This script will trigger lifecycle emails to be sent. Please turn off:
- * - "Subscription Expired Template" (https://sharelatex.recurly.com/emails/subscription_expired/template/edit)
+ * ⚠️ IMPORTANT NOTES:
+ * - Only run this AFTER the cutover from Recurly to Stripe is complete and verified
+ * - After running this script, rollback is NO LONGER POSSIBLE
+ * - NEVER extend this script to close Recurly accounts or remove billing info for Paypal
+ *   (could trigger PayPal billing agreement cancellation)
+ * - This script will trigger lifecycle emails to be sent. Please turn off:
+ *     "Subscription Expired Template" (https://sharelatex.recurly.com/emails/subscription_expired/template/edit)
  *
  * Usage:
  *   node scripts/recurly/cleanup-recurly-subscriptions-post-migration.mjs [OPTS] [INPUT-FILE]
@@ -108,8 +108,6 @@ async function main(trackProgress) {
       }
 
       queue.add(async () => {
-        processedCount++
-
         try {
           const result = await processTermination(input, opts.commit)
 
@@ -125,12 +123,6 @@ async function main(trackProgress) {
             successCount++
           } else {
             errorCount++
-          }
-
-          if (processedCount % 25 === 0) {
-            await trackProgress(
-              `Progress: ${processedCount} processed, ${successCount} successful, ${errorCount} errors`
-            )
           }
         } catch (err) {
           errorCount++
@@ -151,6 +143,13 @@ async function main(trackProgress) {
               note: err.message,
             })
           }
+        }
+
+        processedCount++
+        if (processedCount % 25 === 0) {
+          await trackProgress(
+            `Progress: ${processedCount} processed, ${successCount} successful, ${errorCount} errors`
+          )
         }
       })
     }
@@ -281,10 +280,10 @@ async function processTermination(input, commit) {
   } else {
     const note = isInExpectedEndState
       ? 'DRY RUN: Ready to terminate'
-      : `DRY RUN: Ready to terminate ${warning}`
+      : `DRY RUN: Can terminate, with this warning: ${warning}`
 
     return {
-      status: 'validated',
+      status: isInExpectedEndState ? 'validated' : 'validated-with-warnings',
       note,
     }
   }

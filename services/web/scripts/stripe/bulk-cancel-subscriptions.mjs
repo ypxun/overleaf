@@ -6,6 +6,12 @@
  * NOTE: this will email customers to inform them of the cancellation unless you turn off
  * the cancellation automation in Stripe beforehand: https://dashboard.stripe.com/<account>/revenue-recovery/automations
  *
+ * ⚠️ WARNING: For customers with PayPal billing agreements, do NOT extend this script to
+ * delete the Stripe customer (customers.del) or detach payment methods
+ * (paymentMethods.detach). Doing so will permanently destroy the PayPal billing
+ * agreement, which cannot be recovered without asking the customer to re-authorize.
+ * Cancelling a subscription is safe — it does not affect the payment method.
+ *
  * Usage:
  *   node scripts/stripe/bulk-cancel-subscriptions.mjs [OPTS] [INPUT-FILE]
  *
@@ -108,8 +114,6 @@ async function main(trackProgress) {
       }
 
       queue.add(async () => {
-        processedCount++
-
         try {
           const result = await processCancellation(input, opts.commit)
 
@@ -127,12 +131,6 @@ async function main(trackProgress) {
             successCount++
           } else {
             errorCount++
-          }
-
-          if (processedCount % 10 === 0) {
-            await trackProgress(
-              `Processed ${processedCount} customers (${successCount} ${opts.commit ? 'cancelled' : 'validated'}, ${errorCount} errors)`
-            )
           }
         } catch (err) {
           errorCount++
@@ -156,6 +154,13 @@ async function main(trackProgress) {
               `Error processing ${input.stripe_customer_id}: ${err.message}`
             )
           }
+        }
+
+        processedCount++
+        if (processedCount % 10 === 0) {
+          await trackProgress(
+            `Processed ${processedCount} customers (${successCount} ${opts.commit ? 'cancelled' : 'validated'}, ${errorCount} errors)`
+          )
         }
       })
     }
@@ -346,6 +351,19 @@ async function processCancellation(input, commit) {
       () => stripeClient.terminateSubscription(migrationSubscription.id),
       {
         operation: 'terminateSubscription',
+        subscriptionId: migrationSubscription.id,
+        region: stripeClient.serviceName,
+      }
+    )
+
+    await rateLimiters.requestWithRetries(
+      stripeClient.serviceName,
+      () =>
+        stripeClient.updateSubscriptionMetadata(migrationSubscription.id, {
+          recurly_to_stripe_migration_status: 'cancelled',
+        }),
+      {
+        operation: 'updateSubscriptionMetadata',
         subscriptionId: migrationSubscription.id,
         region: stripeClient.serviceName,
       }
