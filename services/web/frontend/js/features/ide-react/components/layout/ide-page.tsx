@@ -13,7 +13,7 @@ import { useStatusFavicon } from '@/features/ide-react/hooks/use-status-favicon'
 import useThemedPage from '@/shared/hooks/use-themed-page'
 
 import MainLayout from '@/features/ide-react/components/layout/main-layout'
-import SettingsModalNew from '@/features/ide-redesign/components/settings/settings-modal'
+import SettingsModalNew from '@/features/settings/components/settings-modal'
 
 export default function IdePage() {
   useLayoutEventTracking() // sent event when the layout changes
@@ -24,8 +24,7 @@ export default function IdePage() {
   useStatusFavicon() // update the favicon based on the compile status
   useThemedPage() // set the page theme based on user settings
 
-  const editorSurveyFlag = useFeatureFlag('editor-popup-ux-survey')
-  const showEditorSurvey = editorSurveyFlag
+  const showEditorSurvey = useFeatureFlag('editor-popup-ux-survey-03-2026')
 
   return (
     <GlobalAlertsProvider>

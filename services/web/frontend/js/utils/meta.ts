@@ -11,7 +11,7 @@ import {
 } from '../../../types/project-settings'
 import { CurrencyCode } from '../../../types/subscription/currency'
 import { PricingFormState } from '../../../types/subscription/payment-context-value'
-import { Plan } from '../../../types/subscription/plan'
+import { LocalIndividualPlans, Plan } from '../../../types/subscription/plan'
 import { Affiliation } from '../../../types/affiliation'
 import type { PortalTemplate } from '../../../types/portal-template'
 import { UserEmailData } from '../../../types/user-email'
@@ -28,6 +28,7 @@ import { Tag } from '../../../app/src/Features/Tags/types'
 import { Institution } from '../../../types/institution'
 import {
   GroupPolicy,
+  GroupSubscription,
   ManagedGroupSubscription,
   MemberGroupSubscription,
   StripePaymentProviderService,
@@ -118,6 +119,7 @@ export interface Meta {
   'ol-dictionariesRoot': 'string'
   'ol-domainCaptureEnabled': boolean | undefined
   'ol-domainCaptureTestURL': string | undefined
+  'ol-domainVerificationUIEnabled': boolean
   'ol-dropbox': { error: boolean; registered: boolean }
   'ol-editorThemes': { name: string; dark: boolean }[]
   'ol-email': string
@@ -133,6 +135,7 @@ export interface Meta {
   'ol-gitBridgePublicBaseUrl': string
   'ol-github': { enabled: boolean; error: boolean }
   'ol-groupAuditLogs': []
+  'ol-groupDomains': []
   'ol-groupId': string
   'ol-groupName': string
   'ol-groupPlans': GroupPlans
@@ -194,6 +197,7 @@ export interface Meta {
   'ol-legacyEditorThemes': { name: string; dark: boolean }[]
   'ol-licenseQuantity'?: number
   'ol-loadingText': string
+  'ol-localIndividualPlans': LocalIndividualPlans
   'ol-managedGroupSubscriptions': ManagedGroupSubscription[]
   'ol-managedInstitutions': ManagedInstitution[]
   'ol-managedPublishers': Publisher[]
@@ -206,6 +210,9 @@ export interface Meta {
   'ol-memberGroupSubscriptions': MemberGroupSubscription[]
   'ol-memberOfSSOEnabledGroups': GroupSSOLinkingStatus[]
   'ol-members': MinimalUser[]
+  'ol-multiple-group-subscriptions': Array<
+    Pick<GroupSubscription, 'teamName'> & { id: string; email: string }
+  >
   'ol-navbar': DefaultNavbarMetadata
   'ol-newsletter-subscribed': boolean
   'ol-no-single-dollar': boolean
@@ -213,6 +220,7 @@ export interface Meta {
   'ol-notificationsInstitution': InstitutionType[]
   'ol-oauthProviders': OAuthProviders
   'ol-odcData': OnboardingFormData
+  'ol-onAiFreeTrial': boolean
   'ol-otMigrationStage': number
   'ol-overallThemes': OverallThemeMeta[]
   'ol-ownerIsManaged': boolean

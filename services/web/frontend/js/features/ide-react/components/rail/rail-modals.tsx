@@ -3,9 +3,9 @@ import {
   RailModalKey,
   useRailContext,
 } from '@/features/ide-react/context/rail-context'
-import { RailHelpContactUsModal } from '@/features/ide-redesign/components/help/contact-us'
-import { RailHelpShowHotkeysModal } from '@/features/ide-redesign/components/help/keyboard-shortcuts'
-import DictionarySettingsModal from '@/features/ide-redesign/components/settings/editor-settings/dictionary-settings-modal'
+import { RailHelpContactUsModal } from './contact-us'
+import { RailHelpShowHotkeysModal } from './keyboard-shortcuts'
+import DictionarySettingsModal from '@/features/settings/components/editor-settings/dictionary-settings-modal'
 
 const RAIL_MODALS: {
   key: RailModalKey

@@ -1,8 +1,9 @@
-import { GroupPlans } from '../../../../../types/subscription/dashboard/group-plans'
-import { Plan } from '../../../../../types/subscription/plan'
+import { GroupPlans } from '@ol-types/subscription/dashboard/group-plans'
+import { Features, Plan } from '@ol-types/subscription/plan'
 
 const features = {
   student: {
+    aiUsageQuota: 'unlimited',
     collaborators: 6,
     dropbox: true,
     versioning: true,
@@ -19,6 +20,7 @@ const features = {
     symbolPalette: true,
   },
   personal: {
+    aiUsageQuota: 'basic',
     collaborators: 1,
     dropbox: true,
     versioning: true,
@@ -35,6 +37,7 @@ const features = {
     symbolPalette: true,
   },
   collaborator: {
+    aiUsageQuota: 'unlimited',
     collaborators: 10,
     dropbox: true,
     versioning: true,
@@ -51,6 +54,7 @@ const features = {
     symbolPalette: true,
   },
   professional: {
+    aiUsageQuota: 'unlimited',
     collaborators: -1,
     dropbox: true,
     versioning: true,
@@ -66,7 +70,7 @@ const features = {
     trackChanges: true,
     symbolPalette: true,
   },
-}
+} satisfies Record<string, Features>
 
 const studentAccounts: Array<Plan> = [
   {
@@ -120,7 +124,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator',
-    name: 'Standard (Collaborator)',
+    name: 'Standard',
     price_in_cents: 2300,
     features: features.collaborator,
     featureDescription: [],
@@ -134,7 +138,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator_free_trial',
-    name: 'Standard (Collaborator) (Hidden)',
+    name: 'Standard (Hidden)',
     price_in_cents: 1900,
     features: features.collaborator,
     hideFromUsers: true,
@@ -142,7 +146,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator_free_trial_14_days',
-    name: 'Standard (Collaborator) (Hidden)',
+    name: 'Standard (Hidden)',
     price_in_cents: 1900,
     features: features.collaborator,
     hideFromUsers: true,
@@ -150,7 +154,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator_free_trial_7_days',
-    name: 'Standard (Collaborator) (Hidden)',
+    name: 'Standard (Hidden)',
     price_in_cents: 2300,
     features: features.collaborator,
     hideFromUsers: true,
@@ -158,7 +162,7 @@ const individualMonthlyPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator-annual_free_trial',
-    name: 'Standard (Collaborator) Annual (Hidden)',
+    name: 'Standard Annual (Hidden)',
     price_in_cents: 18000,
     features: features.collaborator,
     hideFromUsers: true,
@@ -193,7 +197,7 @@ const individualAnnualPlans: Array<Plan> = [
   },
   {
     planCode: 'collaborator-annual',
-    name: 'Standard (Collaborator) Annual',
+    name: 'Standard Annual',
     price_in_cents: 21900,
     annual: true,
     features: features.collaborator,

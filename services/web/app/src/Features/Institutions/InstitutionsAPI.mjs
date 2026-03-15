@@ -163,18 +163,21 @@ function getUserAffiliations(userId, callback) {
       if (body?.length > 0) {
         const concurrencyLimit = 10
         await promiseMapWithLimit(concurrencyLimit, body, async affiliation => {
-          const group = (
-            await Modules.promises.hooks.fire(
-              'getGroupWithDomainCaptureByV1Id',
-              affiliation.institution.id
-            )
-          )?.[0]
+          if (affiliation.institution.confirmed) {
+            // only check groups if domain is confirmed
+            const group = (
+              await Modules.promises.hooks.fire(
+                'getGroupWithDomainCaptureByV1Id',
+                affiliation.institution.id
+              )
+            )?.[0]
 
-          if (group) {
-            affiliation.group = {
-              _id: group._id,
-              managedUsersEnabled: Boolean(group.managedUsersEnabled),
-              domainCaptureEnabled: Boolean(group.domainCaptureEnabled),
+            if (group) {
+              affiliation.group = {
+                _id: group._id,
+                managedUsersEnabled: Boolean(group.managedUsersEnabled),
+                domainCaptureEnabled: Boolean(group.domainCaptureEnabled),
+              }
             }
           }
 
@@ -313,6 +316,15 @@ function sendUsersWithReconfirmationsLapsedProcessed(users, callback) {
   )
 }
 
+async function verifyDomainMatchesDomainMatcher(domain, institutionId) {
+  return await _affiliationRequestFetchJson({
+    method: 'POST',
+    path: `/api/v2/institutions/domain_matches_matcher`,
+    body: { domain, id: institutionId },
+    defaultErrorMessage: "Couldn't verify if domain matches matcher",
+  })
+}
+
 const InstitutionsAPI = {
   getInstitutionAffiliations,
 
@@ -428,6 +440,7 @@ InstitutionsAPI.promises = {
   sendUsersWithReconfirmationsLapsedProcessed: promisify(
     InstitutionsAPI.sendUsersWithReconfirmationsLapsedProcessed
   ),
+  verifyDomainMatchesDomainMatcher,
 }
 
 export default InstitutionsAPI

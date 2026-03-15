@@ -49,6 +49,10 @@ const SUBSCRIPTION_PAUSED_REDIRECT_PATH =
   '/user/subscription?redirect-reason=subscription-paused'
 
 /**
+ * @typedef {import('../../../../types/subscription/currency').CurrencyCode} CurrencyCode
+ */
+
+/**
  * Check if a Stripe subscription is currently paused
  * @param {Object} subscription - The subscription object
  * @returns {Promise<boolean>}
@@ -175,7 +179,12 @@ function formatGroupPlansDataForDash() {
 async function userSubscriptionPage(req, res) {
   const user = SessionManager.getSessionUser(req.session)
   await SplitTestHandler.promises.getAssignment(req, res, 'pause-subscription')
-
+  await SplitTestHandler.promises.getAssignment(
+    req,
+    res,
+    'combined-user-management'
+  )
+  await SplitTestHandler.promises.getAssignment(req, res, 'plans-2026-phase-1')
   const groupPricingDiscount = await SplitTestHandler.promises.getAssignment(
     req,
     res,
@@ -577,12 +586,6 @@ async function previewAddonPurchase(req, res) {
     paymentMethod[0]
   )
 
-  await SplitTestHandler.promises.getAssignment(
-    req,
-    res,
-    'overleaf-assist-bundle'
-  )
-
   res.render('subscriptions/preview-change', {
     changePreview,
     purchaseReferrer,
@@ -967,6 +970,9 @@ async function refreshUserFeatures(req, res) {
   res.sendStatus(200)
 }
 
+/**
+ * @returns {Promise<{currency: CurrencyCode, recommendedCurrency: CurrencyCode, countryCode: string|undefined}>}
+ */
 async function getRecommendedCurrency(req, res) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   let ip = req.ip

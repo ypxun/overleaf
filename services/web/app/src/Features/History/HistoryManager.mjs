@@ -35,6 +35,10 @@ async function loadGlobalBlobs() {
 
 // END copy from services/history-v1/storage/lib/blob_store/index.js
 
+function isGlobalBlob(hash) {
+  return GLOBAL_BLOBS.has(hash)
+}
+
 function getFilestoreBlobURL(historyId, hash) {
   if (GLOBAL_BLOBS.has(hash)) {
     return `${settings.apis.filestore.url}/history/global/hash/${hash}`
@@ -269,6 +273,15 @@ async function getContentAtVersion(projectId, version) {
 async function getLatestHistory(projectId) {
   const historyId = await getHistoryId(projectId)
 
+  return await getLatestHistoryWithHistoryId(historyId)
+}
+
+/**
+ * Get the latest chunk from history using already resolved historyId
+ *
+ * @param {string} historyId
+ */
+async function getLatestHistoryWithHistoryId(historyId) {
   return await fetchJson(
     `${HISTORY_V1_URL}/projects/${historyId}/latest/history`,
     {
@@ -405,6 +418,7 @@ function _userView(user) {
 const loadGlobalBlobsPromise = loadGlobalBlobs()
 
 export default {
+  isGlobalBlob,
   getFilestoreBlobURL,
   loadGlobalBlobsPromise,
   initializeProject: callbackify(initializeProject),
@@ -437,5 +451,6 @@ export default {
     getChanges,
     getProjectBlobStats,
     getBlobStats,
+    getLatestHistoryWithHistoryId,
   },
 }

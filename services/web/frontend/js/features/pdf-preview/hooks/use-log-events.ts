@@ -2,7 +2,6 @@ import { useCallback } from 'react'
 import { useLayoutContext } from '@/shared/context/layout-context'
 import { useEditorContext } from '@/shared/context/editor-context'
 import useEventListener from '@/shared/hooks/use-event-listener'
-import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
 
 function scrollIntoView(element: Element) {
   setTimeout(() => {
@@ -18,38 +17,7 @@ function scrollIntoView(element: Element) {
  */
 export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
   const { pdfLayout, setView } = useLayoutContext()
-  const newEditor = useIsNewEditorEnabled()
-  const { hasPremiumSuggestion } = useEditorContext()
-
-  const selectLogOldLogs = useCallback((id: string, suggestFix: boolean) => {
-    window.setTimeout(() => {
-      const element = document.querySelector(
-        `.log-entry[data-log-entry-id="${id}"]`
-      )
-
-      if (element) {
-        scrollIntoView(element)
-
-        if (suggestFix) {
-          // if they are paywalled, click that instead
-          const paywall = document.querySelector<HTMLButtonElement>(
-            'button[data-action="assistant-paywall-show"]'
-          )
-
-          if (paywall) {
-            scrollIntoView(paywall)
-            paywall.click()
-          } else {
-            element
-              .querySelector<HTMLButtonElement>(
-                'button[data-action="suggest-fix"]'
-              )
-              ?.click()
-          }
-        }
-      }
-    })
-  }, [])
+  const { hasSuggestionsLeft } = useEditorContext()
 
   const selectLogNewLogs = useCallback(
     (
@@ -65,10 +33,9 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
         if (logEntry) {
           scrollIntoView(logEntry)
 
-          const expandCollapseButton =
-            logEntry.querySelector<HTMLButtonElement>(
-              'button[data-action="expand-collapse"]'
-            )
+          const expandCollapseButton = logEntry.querySelector<HTMLElement>(
+            '[data-action="expand-collapse"]'
+          )
 
           const collapsed = expandCollapseButton?.dataset.collapsed === 'true'
 
@@ -77,7 +44,7 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
           }
 
           if (suggestFix) {
-            if (hasPremiumSuggestion) {
+            if (hasSuggestionsLeft) {
               logEntry
                 .querySelector<HTMLButtonElement>(
                   'button[data-action="suggest-fix"]'
@@ -94,7 +61,7 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
         }
       })
     },
-    [hasPremiumSuggestion]
+    [hasSuggestionsLeft]
   )
 
   const openLogs = useCallback(() => {
@@ -117,17 +84,13 @@ export const useLogEvents = (setShowLogs: (show: boolean) => void) => {
 
       openLogs()
 
-      if (newEditor) {
-        selectLogNewLogs(
-          id,
-          Boolean(suggestFix),
-          Boolean(showPaywallIfOutOfSuggestions)
-        )
-      } else {
-        selectLogOldLogs(id, Boolean(suggestFix))
-      }
+      selectLogNewLogs(
+        id,
+        Boolean(suggestFix),
+        Boolean(showPaywallIfOutOfSuggestions)
+      )
     },
-    [openLogs, selectLogNewLogs, selectLogOldLogs, newEditor]
+    [openLogs, selectLogNewLogs]
   )
 
   useEventListener(

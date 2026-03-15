@@ -52,6 +52,8 @@ import { isStandaloneAiAddOnPlanCode } from '../Subscription/AiHelper.mjs'
 import SubscriptionController from '../Subscription/SubscriptionController.mjs'
 import { formatCurrency } from '../../util/currency.js'
 import UserSettingsHelper from './UserSettingsHelper.mjs'
+import AiFeatureUsageRateLimiter from '../../infrastructure/rate-limiters/AiFeatureUsageRateLimiter.mjs'
+import WorkbenchRateLimiter from '../../infrastructure/rate-limiters/WorkbenchRateLimiter.mjs'
 
 const { isPaidSubscription } = SubscriptionHelper
 const { hasAdminAccess } = AdminAuthorizationHelper
@@ -404,15 +406,19 @@ const _ProjectController = {
         )
 
       if (domainCaptureRedirect === 'enabled') {
-        const subscription = (
+        const groupsWithEmails = (
           await Modules.promises.hooks.fire(
-            'findDomainCaptureGroupUserCouldBePartOf',
+            'findDomainCaptureGroupsUserCouldBePartOf',
             userId
           )
         )?.[0]
 
-        if (subscription) {
-          if (subscription.managedUsersEnabled) {
+        if (groupsWithEmails && groupsWithEmails.length > 0) {
+          if (
+            groupsWithEmails.some(
+              ({ subscription }) => subscription.managedUsersEnabled
+            )
+          ) {
             return res.redirect('/domain-capture')
           } else {
             // TODO show notification or anything else
@@ -446,9 +452,8 @@ const _ProjectController = {
       'track-pdf-download',
       !anonymous && 'writefull-oauth-promotion',
       'hotjar',
-      'overleaf-assist-bundle',
       'word-count-client',
-      'editor-popup-ux-survey',
+      'editor-popup-ux-survey-03-2026',
       'editor-redesign-new-users',
       'writefull-frontend-migration',
       'chat-edit-delete',
@@ -465,6 +470,7 @@ const _ProjectController = {
       'wf-enable-freemium-super-complete',
       'wf-enable-super-complete-promotion',
       'plans-2026-phase-1',
+      'testing-ai-usage',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -791,14 +797,11 @@ const _ProjectController = {
 
       let featureUsage = {}
 
-      if (Features.hasFeature('saas')) {
-        const usagesLeft = await Modules.promises.hooks.fire(
-          'remainingFeatureAllocation',
-          userId
-        )
-        usagesLeft?.forEach(usage => {
-          featureUsage = { ...featureUsage, ...usage }
-        })
+      if (Features.hasFeature('saas') && !anonymous) {
+        featureUsage = {
+          ...(await AiFeatureUsageRateLimiter.getRemainingFeatureUses(userId)),
+          ...(await WorkbenchRateLimiter.getRemainingTokens(userId)),
+        }
       }
 
       await ProjectController._setWritefullTrialState(
@@ -836,9 +839,6 @@ const _ProjectController = {
         capabilities.push('link-sharing')
       }
 
-      const isOverleafAssistBundleEnabled =
-        splitTestAssignments['overleaf-assist-bundle']?.variant === 'enabled'
-
       let fullFeatureSet = user?.features
       if (!anonymous) {
         fullFeatureSet = await UserGetter.promises.getUserFeatures(userId)
@@ -847,9 +847,10 @@ const _ProjectController = {
       const hasPaidSubscription = isPaidSubscription(subscription)
       const aiFeaturesDisabled = user.aiFeatures?.enabled === false
 
+      const showAiFeatures = aiFeaturesAllowed && !aiFeaturesDisabled
+      // only add-on is ai based, so we only need its pricing info if ai features are usable
       const addonPrices =
-        isOverleafAssistBundleEnabled &&
-        (await ProjectController._getAddonPrices(req, res))
+        showAiFeatures && (await ProjectController._getAddonPrices(req, res))
 
       let standardPlanPricing
       let recommendedCurrency
@@ -881,6 +882,10 @@ const _ProjectController = {
         req,
         res,
         user
+      )
+
+      const initialLoadingScreenTheme = getInitialLoadingScreenTheme(
+        userSettings?.overallTheme
       )
 
       res.render(template, {
@@ -919,6 +924,7 @@ const _ProjectController = {
           isMemberOfGroupSubscription: userIsMemberOfGroupSubscription,
           hasInstitutionLicence: userHasInstitutionLicence,
         },
+        initialLoadingScreenTheme,
         userSettings,
         labsExperiments: user.labsExperiments ?? [],
         privilegeLevel,
@@ -951,7 +957,9 @@ const _ProjectController = {
         showSymbolPalette,
         symbolPaletteAvailable: Features.hasFeature('symbol-palette'),
         userRestrictions: Array.from(req.userRestrictions || []),
-        showAiFeatures: aiFeaturesAllowed && !aiFeaturesDisabled,
+        showAiFeatures,
+        onAiFreeTrial:
+          user.features?.aiUsageQuota === Settings.aiFeatures?.freeTrialQuota,
         detachRole,
         metadata: { viewport: false },
         showUpgradePrompt,
@@ -961,7 +969,6 @@ const _ProjectController = {
         projectTags,
         isSaas: Features.hasFeature('saas'),
         shouldLoadHotjar,
-        isOverleafAssistBundleEnabled,
         customerIoEnabled: true,
         addonPrices,
         compileSettings: {
@@ -1006,6 +1013,7 @@ const _ProjectController = {
     }
   },
 
+  // todo: quota clean-up: these can be removed potentially?
   async _getAddonPrices(req, res, addonPlans = ['assistant']) {
     const plansData = {}
 
@@ -1274,6 +1282,19 @@ const _ProjectController = {
       user.writefull.autoCreatedAccount = false
     }
   },
+}
+
+function getInitialLoadingScreenTheme(overallThemeSetting) {
+  switch (overallThemeSetting) {
+    case 'light-':
+      return 'light'
+    case '':
+      return 'dark'
+    case 'system':
+      return 'system'
+    default:
+      return 'dark'
+  }
 }
 
 const defaultSettingsForAnonymousUser = userId => ({

@@ -25,6 +25,7 @@ meta(name="ol-debugPdfDetach" data-type="boolean" content=debugPdfDetach)
 meta(name="ol-showSymbolPalette" data-type="boolean" content=showSymbolPalette)
 meta(name="ol-symbolPaletteAvailable" data-type="boolean" content=symbolPaletteAvailable)
 meta(name="ol-showAiFeatures" data-type="boolean" content=showAiFeatures)
+meta(name="ol-onAiFreeTrial" data-type="boolean" content=onAiFreeTrial)
 meta(name="ol-detachRole" data-type="string" content=detachRole)
 meta(name="ol-imageNames" data-type="json" content=imageNames)
 meta(name="ol-languages" data-type="json" content=languages)
@@ -42,9 +43,7 @@ meta(name="ol-isSaas" data-type="boolean" content=isSaas)
 meta(name="ol-shouldLoadHotjar" data-type="boolean" content=shouldLoadHotjar)
 meta(name='ol-customerIoEnabled' data-type="boolean" content=customerIoEnabled)
 meta(name='ol-compileSettings' data-type="json" content=compileSettings)
-if(isOverleafAssistBundleEnabled)
-	//- expose plans info to show prices in paywall-change-compile-timeout test 
-	meta(name="ol-addonPrices" data-type="json" content=addonPrices)
+meta(name="ol-addonPrices" data-type="json" content=addonPrices)
 if (standardPlanPricing)
 	meta(
 		name='ol-recommendedCurrency'

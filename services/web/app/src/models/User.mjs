@@ -77,7 +77,7 @@ export const UserSchema = new Schema(
     ace: {
       mode: { type: String, default: 'none' },
       theme: { type: String, default: 'textmate' },
-      overallTheme: { type: String, default: '' },
+      overallTheme: { type: String },
       // When overallTheme is `system`, we switch between `lightTheme` and `darkTheme` based on system settings
       // When overallTheme is `light-` or empty, we use the `theme` option.
       lightTheme: { type: String, default: 'textmate' },
@@ -143,6 +143,7 @@ export const UserSchema = new Schema(
         type: Boolean,
         default: false,
       },
+      aiUsageQuota: { type: String, default: 'basic' },
     },
     featuresOverrides: [
       {
@@ -155,7 +156,9 @@ export const UserSchema = new Schema(
         expiresAt: { type: Date },
         note: { type: String },
         features: {
+          // todo: quota clean-up: remove aiErrorAssistant
           aiErrorAssistant: { type: Boolean },
+          aiUsageQuota: { type: String },
           collaborators: { type: Number },
           versioning: { type: Boolean },
           dropbox: { type: Boolean },

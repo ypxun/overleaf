@@ -10,6 +10,7 @@ export type UserId = Brand<string, 'UserId'>
 
 export type Features = {
   aiErrorAssistant?: boolean
+  aiUsageQuota?: string
   collaborators?: number
   compileGroup?: 'standard' | 'priority'
   compileTimeout?: number
@@ -28,7 +29,11 @@ export type Features = {
 }
 
 export type FeatureUsage = {
-  [feature: string]: {
+  aiWorkbench: {
+    remainingTokens: number
+    resetDate: string // date string
+  }
+  aiFeatureUsage: {
     remainingUsage: number
     resetDate: string // date string
   }

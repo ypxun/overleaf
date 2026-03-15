@@ -13,8 +13,13 @@ import {
   TransactionSpec,
   EditorSelection,
   Prec,
+  Annotation,
 } from '@codemirror/state'
 import { closeAllContextMenusEffect } from '../utils/close-all-context-menus-effect'
+import { isContextMenuMouseEvent } from '../utils/context-menu-mouse-event'
+import { isMobileDevice } from '../utils/isMobileDevice'
+
+const isMobile = isMobileDevice()
 
 export const openContextMenuEffect = StateEffect.define<{
   pos: number
@@ -24,10 +29,7 @@ export const openContextMenuEffect = StateEffect.define<{
 
 export const closeContextMenuEffect = StateEffect.define()
 
-const isTouchOnlyInput =
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(pointer: coarse)').matches &&
-  window.matchMedia('(hover: none)').matches
+export const openContextMenuAnnotation = Annotation.define<boolean>()
 
 type ContextMenuState = {
   tooltip: Tooltip | null
@@ -206,6 +208,7 @@ function openContextMenuAtPosition(
         y: clientY,
       }),
     ],
+    annotations: [openContextMenuAnnotation.of(true)],
   })
 }
 
@@ -231,7 +234,7 @@ function isClickOnGutter(target: HTMLElement): boolean {
 // Gutter context menu plugin
 const gutterContextMenuPlugin = (): Extension =>
   EditorView.updateListener.of(update => {
-    if (isTouchOnlyInput || !update.view.dom.parentElement) {
+    if (!update.view.dom.parentElement) {
       return
     }
 
@@ -270,12 +273,8 @@ const gutterContextMenuPlugin = (): Extension =>
 
 // Handle right-click on ol-cm-filler (empty line widget)
 // domEventHandlers doesn't fire for contenteditable="false" elements, so we use a direct DOM listener
-const emptyLineFillerContextMenuPlugin = (): Extension => {
-  if (isTouchOnlyInput) {
-    return []
-  }
-
-  return ViewPlugin.define(view => {
+const emptyLineFillerContextMenuPlugin = (): Extension =>
+  ViewPlugin.define(view => {
     const contentDOM = view.contentDOM
 
     const handleContextMenu = (event: Event) => {
@@ -308,16 +307,11 @@ const emptyLineFillerContextMenuPlugin = (): Extension => {
       },
     }
   })
-}
 
 // Editor view context menu handlers
 const editorContextMenuHandlers = (): Extension =>
   EditorView.domEventHandlers({
     contextmenu(event: MouseEvent, view: EditorView) {
-      if (isTouchOnlyInput) {
-        return false
-      }
-
       const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
       if (pos === null) {
         return false
@@ -348,7 +342,7 @@ const editorContextMenuHandlers = (): Extension =>
     mousedown(event: MouseEvent, view: EditorView) {
       const target = event.target as HTMLElement
       const isGutter = isClickOnGutter(target)
-      const isRightClick = event.button === 2 || event.ctrlKey
+      const isRightClick = isContextMenuMouseEvent(event)
 
       // Close menu on any click except right-click on non-gutter
       if (!isRightClick || isGutter) {
@@ -356,8 +350,7 @@ const editorContextMenuHandlers = (): Extension =>
       }
 
       // Prevent default on right-click to preserve selection
-      // But not on touch devices - they need native selection behavior
-      if (isRightClick && !isTouchOnlyInput) {
+      if (isRightClick) {
         event.preventDefault()
         return true
       }
@@ -389,7 +382,7 @@ const contextMenuKeymap = (): Extension =>
   )
 
 export const contextMenu = (enabled: boolean): Extension =>
-  enabled
+  enabled && !isMobile
     ? [
         contextMenuContainerTheme,
         contextMenuStateField,

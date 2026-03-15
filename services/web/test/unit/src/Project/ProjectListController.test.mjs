@@ -40,6 +40,7 @@ describe('ProjectListController', function () {
         theme: 'textmate',
         mode: 'none',
       },
+      aiFeatures: { enabled: false },
     }
     ctx.users = {
       'user-1': {
@@ -138,6 +139,7 @@ describe('ProjectListController', function () {
     ctx.SplitTestHandler = {
       promises: {
         getAssignment: sinon.stub().resolves({ variant: 'default' }),
+        featureFlagEnabledForUser: sinon.stub().resolves(false),
         hasUserBeenAssignedToVariant: sinon.stub().resolves(false),
       },
     }
@@ -520,8 +522,14 @@ describe('ProjectListController', function () {
         .withArgs(ctx.req, ctx.res, 'domain-capture-redirect')
         .resolves({ variant: 'enabled' })
       ctx.Modules.promises.hooks.fire
-        .withArgs('findDomainCaptureGroupUserCouldBePartOf', ctx.user._id)
-        .resolves([{ _id: new ObjectId(), managedUsersEnabled: true }])
+        .withArgs('findDomainCaptureGroupsUserCouldBePartOf', ctx.user._id)
+        .resolves([
+          [
+            {
+              subscription: { managedUsersEnabled: true },
+            },
+          ],
+        ])
       ctx.res.redirect = url => {
         url.should.equal('/domain-capture')
       }

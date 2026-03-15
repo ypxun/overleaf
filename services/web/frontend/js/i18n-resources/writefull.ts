@@ -480,6 +480,8 @@ const en = {
       'You’ve hit your Writefull quota',
     'citations-reviewer.chat.backend-quota-error.freemium.body':
       'To ensure fair access for all users, free accounts have a usage limit. You can check for citations again in __remainingTime__. Upgrade to Premium to unlock the full power of Writefull.',
+    'citations-reviewer.chat.navigation.publications': 'Suggested papers',
+    'citations-reviewer.chat.navigation.custom-search': 'Search',
     'citations-reviewer.chat.non-english-error.title':
       'Citation Reviewer only works on documents written in English',
     'citations-reviewer.chat.non-english-error.body':
@@ -487,6 +489,11 @@ const en = {
     'citations-reviewer.chat.non-english-error.yes':
       'Yes, run citation reviewer',
     'citations-reviewer.chat.non-english-error.no': 'No, return to main menu',
+    'paywall.title': 'You’ve hit your Overleaf AI limit',
+    'paywall.body':
+      'Upgrade for unlimited access to all AI features or check back at __date__, __time__.',
+    'paywall.upgrade': 'Upgrade',
+    'paywall.hide': 'Hide for now',
   },
 } as const
 
@@ -992,6 +999,8 @@ const es = {
       'Has agotado tu cuota de Writefull',
     'citations-reviewer.chat.backend-quota-error.freemium.body':
       'Para garantizar un acceso justo para todos los usuarios, las cuentas gratuitas tienen un límite de uso. Puedes volver a buscar citas en __remainingTime__. Actualiza a Premium para desbloquear todo el potencial de Writefull.',
+    'citations-reviewer.chat.navigation.publications': 'Artículos sugeridos',
+    'citations-reviewer.chat.navigation.custom-search': 'Buscar',
     'citations-reviewer.chat.non-english-error.title':
       'El revisor de citas solo funciona en documentos escritos en inglés',
     'citations-reviewer.chat.non-english-error.body':
@@ -1000,6 +1009,11 @@ const es = {
       'Sí, ejecutar el revisor de citas',
     'citations-reviewer.chat.non-english-error.no':
       'No, volver al menú principal',
+    'paywall.title': 'Has alcanzado tu límite de Overleaf AI',
+    'paywall.body':
+      'Actualiza para acceso ilimitado a todas las funciones de AI o vuelve a intentar el __date__ a las __time__.',
+    'paywall.upgrade': 'Actualizar',
+    'paywall.hide': 'Ocultar por ahora',
   },
 }
 

@@ -230,6 +230,18 @@ describe('ProjectController', function () {
       promises: { hooks: { fire: sinon.stub().resolves() } },
     }
 
+    ctx.AiFeatureUsageRateLimiter = {
+      getRemainingFeatureUses: sinon.stub().resolves({
+        aiFeatureUsage: { remainingUsage: 0 },
+      }),
+    }
+
+    ctx.WorkbenchRateLimiter = {
+      getRemainingTokens: sinon.stub().resolves({
+        aiWorkbench: { remainingTokens: 0 },
+      }),
+    }
+
     vi.doMock('mongodb-legacy', () => ({
       default: { ObjectId },
     }))
@@ -484,6 +496,20 @@ describe('ProjectController', function () {
     vi.doMock('../../../../app/src/infrastructure/Modules', () => ({
       default: ctx.Modules,
     }))
+
+    vi.doMock(
+      '../../../../app/src/infrastructure/rate-limiters/AiFeatureUsageRateLimiter',
+      () => ({
+        default: ctx.AiFeatureUsageRateLimiter,
+      })
+    )
+
+    vi.doMock(
+      '../../../../app/src/infrastructure/rate-limiters/WorkbenchRateLimiter',
+      () => ({
+        default: ctx.WorkbenchRateLimiter,
+      })
+    )
 
     ctx.ProjectController = (await import(MODULE_PATH)).default
 
@@ -868,8 +894,14 @@ describe('ProjectController', function () {
         .withArgs(ctx.req, ctx.res, 'domain-capture-redirect')
         .resolves({ variant: 'enabled' })
       ctx.Modules.promises.hooks.fire
-        .withArgs('findDomainCaptureGroupUserCouldBePartOf', ctx.user._id)
-        .resolves([{ _id: new ObjectId(), managedUsersEnabled: true }])
+        .withArgs('findDomainCaptureGroupsUserCouldBePartOf', ctx.user._id)
+        .resolves([
+          [
+            {
+              subscription: { managedUsersEnabled: true },
+            },
+          ],
+        ])
       await new Promise(resolve => {
         ctx.res.redirect = url => {
           url.should.equal('/domain-capture')

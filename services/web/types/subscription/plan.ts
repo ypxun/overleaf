@@ -1,6 +1,7 @@
 import { StripeCurrencyCode } from './currency'
 
-type Features = {
+export type Features = {
+  aiUsageQuota: 'basic' | 'unlimited'
   collaborators: number
   compileGroup: string
   compileTimeout: number
@@ -113,3 +114,9 @@ export type StripeLookupKeyVersion = 'feb2026'
 
 export type StripeLookupKey =
   `${StripeBaseLookupKey}_${StripeLookupKeyVersion}_${StripeCurrencyCode}`
+
+export type IndividualPlanKey = 'collaborator' | 'professional' | 'student'
+export type LocalIndividualPlans = Record<
+  IndividualPlanKey | 'free',
+  { monthly: number; annual: number }
+>
