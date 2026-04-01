@@ -22,6 +22,9 @@ import UrlCache from './UrlCache.js'
 import OError from '@overleaf/o-error'
 import ClsiMetrics from './Metrics.js'
 import { promiseMapSettledWithLimit } from '@overleaf/promise-utils'
+import Metrics from '@overleaf/metrics'
+import TikzManager from './TikzManager.js'
+import DraftModeManager from './DraftModeManager.js'
 
 const gzip = promisify(zlib.gzip)
 const gunzip = promisify(zlib.gunzip)
@@ -74,9 +77,15 @@ function isENOENT(err) {
  * @param {string} projectId
  * @param {string} userId
  * @param {number} remoteBaseVersion
- * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], fullSync: boolean,localBaseVersion: number}>}
+ * @param {boolean} populateClsiCache
+ * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], fullSync: boolean,localBaseVersion: number, dirty: string[]}>}
  */
-async function loadSnapshot(projectId, userId, remoteBaseVersion) {
+async function loadSnapshot(
+  projectId,
+  userId,
+  remoteBaseVersion,
+  populateClsiCache
+) {
   const { path, resyncPath } = snapshotPath(projectId, userId)
   let maxLocalBaseVersion = -1
   for (const candidate of [path, resyncPath]) {
@@ -97,19 +106,25 @@ async function loadSnapshot(projectId, userId, remoteBaseVersion) {
       }
     }
   }
-  try {
-    return await loadSnapshotFromClsiCache(projectId, userId, remoteBaseVersion)
-  } catch (err) {
-    if (err instanceof Errors.MissingUpdatesError) {
-      maxLocalBaseVersion = Math.max(
-        maxLocalBaseVersion,
-        err.info.baseHistoryVersion
+  if (populateClsiCache) {
+    try {
+      return await loadSnapshotFromClsiCache(
+        projectId,
+        userId,
+        remoteBaseVersion
       )
-    } else if (!isENOENT(err)) {
-      logger.warn(
-        { err, projectId, userId },
-        'compile from cache: cannot download from clsi-cache'
-      )
+    } catch (err) {
+      if (err instanceof Errors.MissingUpdatesError) {
+        maxLocalBaseVersion = Math.max(
+          maxLocalBaseVersion,
+          err.info.baseHistoryVersion
+        )
+      } else if (!isENOENT(err)) {
+        logger.warn(
+          { err, projectId, userId },
+          'compile from cache: cannot download from clsi-cache'
+        )
+      }
     }
   }
   throw new Errors.MissingUpdatesError('needs more updates', {
@@ -121,7 +136,7 @@ async function loadSnapshot(projectId, userId, remoteBaseVersion) {
  * @param {string} projectId
  * @param {string} userId
  * @param {number} remoteBaseVersion
- * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], fullSync: boolean,localBaseVersion: number}>}
+ * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], fullSync: boolean,localBaseVersion: number, dirty: string[]}>}
  */
 async function loadSnapshotFromClsiCache(projectId, userId, remoteBaseVersion) {
   const { dir, resyncPath } = snapshotPath(projectId, userId)
@@ -147,20 +162,23 @@ async function loadSnapshotFromClsiCache(projectId, userId, remoteBaseVersion) {
  * @param {string} path
  * @param {number} remoteBaseVersion
  * @param {boolean} fullSync
- * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], localBaseVersion: number, fullSync: boolean}>}
+ * @return {Promise<{rawSnapshot: import('overleaf-editor-core/lib/types.js').RawSnapshot, globalBlobs: string[], localBaseVersion: number, fullSync: boolean, dirty: string[]}>}
  */
 async function loadSnapshotFromFile(path, remoteBaseVersion, fullSync) {
   let blob = await fs.promises.readFile(path)
   blob = await gunzip(blob)
-  const { rawSnapshot, globalBlobs, localBaseVersion } = JSON.parse(
-    blob.toString('utf-8')
-  )
+  const {
+    rawSnapshot,
+    globalBlobs,
+    localBaseVersion,
+    dirty = [], // added later, provide a default value.
+  } = JSON.parse(blob.toString('utf-8'))
   if (localBaseVersion < remoteBaseVersion) {
     throw new Errors.MissingUpdatesError('missing updates', {
       baseHistoryVersion: localBaseVersion,
     })
   }
-  return { rawSnapshot, globalBlobs, localBaseVersion, fullSync }
+  return { rawSnapshot, globalBlobs, localBaseVersion, fullSync, dirty }
 }
 
 /**
@@ -169,6 +187,7 @@ async function loadSnapshotFromFile(path, remoteBaseVersion, fullSync) {
  * @param {Snapshot} snapshot
  * @param {number} localBaseVersion
  * @param {string[]} globalBlobs
+ * @param {string[]} dirty
  * @return {Promise<void>}
  */
 async function saveSnapshot(
@@ -176,7 +195,8 @@ async function saveSnapshot(
   userId,
   snapshot,
   localBaseVersion,
-  globalBlobs
+  globalBlobs,
+  dirty
 ) {
   const { dir, path } = snapshotPath(projectId, userId)
   await fs.promises.mkdir(dir, { recursive: true })
@@ -188,7 +208,10 @@ async function saveSnapshot(
         globalBlobs,
         localBaseVersion,
         rawSnapshot: snapshot.toRaw(),
-      })
+        dirty,
+      }),
+      // use cheapest gzip compression level
+      { level: 1 }
     ),
     { flag: 'wx' }
   )
@@ -345,11 +368,15 @@ export async function syncResourcesToDisk(
   timings
 ) {
   const remoteBaseVersion = request.baseHistoryVersion
-  let rawSnapshot, globalBlobs, localBaseVersion, source
-  let fullSync = true
+  let rawSnapshot, globalBlobs, localBaseVersion, source, dirty, fullSync
   try {
-    ;({ rawSnapshot, globalBlobs, fullSync, localBaseVersion } =
-      await loadSnapshot(projectId, userId, remoteBaseVersion))
+    ;({ rawSnapshot, globalBlobs, fullSync, localBaseVersion, dirty } =
+      await loadSnapshot(
+        projectId,
+        userId,
+        remoteBaseVersion,
+        request.populateClsiCache
+      ))
     source = fullSync ? 'clsi-cache' : 'local'
     logger.debug(
       { projectId, userId, localBaseVersion, remoteBaseVersion },
@@ -371,6 +398,8 @@ export async function syncResourcesToDisk(
     localBaseVersion = remoteBaseVersion
     rawSnapshot = request.rawSnapshot
     globalBlobs = []
+    dirty = []
+    fullSync = true
   }
   globalBlobs = Array.from(new Set(globalBlobs.concat(request.globalBlobs)))
 
@@ -397,7 +426,10 @@ export async function syncResourcesToDisk(
     changedPaths.push(...snapshot.getFilePathnames())
     logger.debug({ projectId, userId }, 'compile from cache: full sync')
   } else {
-    const dedupe = new Set()
+    const dedupe = new Set(dirty)
+    if (request.draft) {
+      dedupe.add(request.rootResourcePath)
+    }
     for (const change of changes) {
       for (const operation of change.getOperations()) {
         if (operation instanceof AddFileOperation) {
@@ -421,7 +453,12 @@ export async function syncResourcesToDisk(
     )
   }
 
-  const blobStore = new BlobStore(request.historyId, globalBlobs)
+  const blobStore = new BlobStore(
+    request.historyId,
+    request.filestoreBlobPrefix,
+    request.clsiPerfVariant,
+    globalBlobs
+  )
   const loadEagerStart = performance.now()
   await snapshot.loadFiles('eager', blobStore)
   timings.snapshotLoadEager = Math.ceil(performance.now() - loadEagerStart)
@@ -437,6 +474,8 @@ export async function syncResourcesToDisk(
     await ensureHasParentFolder(compileDir, path, entriesDepthFirst)
   }
 
+  const wasDirty = dirty.length > 0
+  dirty = []
   let createCacheFolder
   // Use Promise.allSettled to ensure that all writes have stopped when we exit.
   const allDone = await promiseMapSettledWithLimit(
@@ -446,8 +485,19 @@ export async function syncResourcesToDisk(
       const file = snapshot.getFile(path)
       if (!file) return // deleted, handled by removeExtraneousEntries
 
-      const content = file.getContent({ filterTrackedDeletes: true })
+      let content = file.getContent({ filterTrackedDeletes: true })
       if (typeof content === 'string') {
+        if (path === request.rootResourcePath) {
+          if (request.draft) {
+            content = DraftModeManager.PREFIX + content
+            dirty.push(path)
+          }
+          await TikzManager.writeOutputFileIfNeeded(
+            compileDir,
+            snapshot,
+            content
+          )
+        }
         await fs.promises.writeFile(
           Path.join(compileDir, path),
           content,
@@ -458,19 +508,28 @@ export async function syncResourcesToDisk(
         if (!hash) {
           throw new OError('unexpected file without content and hash', { path })
         }
-        const fallbackURL = null // no fallback
-        const lastModified = new Date(0) // content is static
         if (!createCacheFolder) {
           createCacheFolder = UrlCache.promises.createProjectDir(projectId)
         }
         await createCacheFolder
-        await UrlCache.promises.downloadUrlToFile(
-          projectId,
-          blobStore.getBlobURL(hash).href,
-          fallbackURL,
-          Path.join(compileDir, path),
-          lastModified
-        )
+        const url = blobStore.getBlobURL(hash).href
+        try {
+          const fallbackURL = null // no fallback
+          const lastModified = new Date(0) // content is static
+          await UrlCache.promises.downloadUrlToFile(
+            projectId,
+            url,
+            fallbackURL,
+            Path.join(compileDir, path),
+            lastModified
+          )
+        } catch (err) {
+          logger.err(
+            { err, projectId, path, resourceUrl: url },
+            'error downloading file for resources'
+          )
+          Metrics.inc('download-failed')
+        }
       }
     }
   )
@@ -480,13 +539,14 @@ export async function syncResourcesToDisk(
     throw OError.tag(result.reason, 'write failed', { path })
   }
   const baseHistoryVersion = localBaseVersion + changes.length
-  if (fullSync || changes.length) {
+  if (fullSync || changes.length || wasDirty || dirty.length) {
     await saveSnapshot(
       projectId,
       userId,
       snapshot,
       baseHistoryVersion,
-      globalBlobs
+      globalBlobs,
+      dirty
     )
   }
   if (fullSync) {
@@ -503,13 +563,21 @@ class BlobStore {
   #historyId
   /** @type {string[]} */
   #globalBlobs
+  /** @type {string} */
+  #filestoreBlobPrefix
+  /** @type {string} */
+  #clsiPerfVariant
 
   /**
    * @param {string} historyId
+   * @param {string} filestoreBlobPrefix
+   * @param {string} clsiPerfVariant
    * @param {string[]} globalBlobs
    */
-  constructor(historyId, globalBlobs) {
+  constructor(historyId, filestoreBlobPrefix, clsiPerfVariant, globalBlobs) {
     this.#historyId = historyId
+    this.#filestoreBlobPrefix = filestoreBlobPrefix
+    this.#clsiPerfVariant = clsiPerfVariant
     this.#globalBlobs = globalBlobs
   }
 
@@ -519,7 +587,12 @@ class BlobStore {
    */
   getBlobURL(hash) {
     const u = new URL(Settings.apis.filestore.url)
-    if (this.#globalBlobs.includes(hash)) {
+    if (this.#filestoreBlobPrefix) {
+      u.pathname = `${this.#filestoreBlobPrefix}/${hash}`
+    } else if (this.#clsiPerfVariant) {
+      u.host = Settings.apis.clsiPerf.host
+      u.pathname = `/variant/${this.#clsiPerfVariant}/hash/${hash}`
+    } else if (this.#globalBlobs.includes(hash)) {
       u.pathname = `/history/global/hash/${hash}`
     } else {
       u.pathname = `/history/project/${this.#historyId}/hash/${hash}`

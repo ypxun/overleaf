@@ -1,12 +1,9 @@
 /* eslint-disable @overleaf/require-script-runner */
-import lodash from 'lodash'
 
 /*
  *
  * This file can be deleted once the Recurly to Stripe migration is complete.
  */
-
-const { isEqual } = lodash
 
 export function coalesceOrEqualOrThrow(a, b, fieldName) {
   const isSetA = !!a
@@ -26,44 +23,6 @@ export function normalizeName(firstName, lastName) {
   const last = (lastName || '').trim()
   const full = `${first} ${last}`.trim()
   return full || null
-}
-
-/**
- * Extract and coalesce customer name from Recurly data.
- *
- * Atomic behavior: first+last name are taken from the same source.
- *
- * Coalesce/equality behavior:
- * - Prefer billingInfo name when both first+last are present.
- * - Fall back to account name otherwise.
- * - If both billingInfo and account have a complete (first+last) name and they differ, throw.
- *
- * @param {object} account - Recurly account object
- * @returns {string|null}
- */
-export function coalesceOrEqualOrThrowName(account) {
-  const billingHasFullName = !!(
-    account.billingInfo?.firstName && account.billingInfo?.lastName
-  )
-  const accountHasFullName = !!(account.firstName && account.lastName)
-
-  const billingName = billingHasFullName
-    ? normalizeName(
-        account.billingInfo?.firstName,
-        account.billingInfo?.lastName
-      )
-    : null
-  const accountName = accountHasFullName
-    ? normalizeName(account.firstName, account.lastName)
-    : null
-
-  if (billingHasFullName && accountHasFullName && billingName !== accountName) {
-    throw new Error(
-      `Name differs between billingInfo and account (${billingName} != ${accountName})`
-    )
-  }
-
-  return billingName ?? accountName
 }
 
 /**
@@ -88,10 +47,8 @@ export function extractNameFromBillingInfo(account) {
  * @returns {string|null}
  */
 export function extractNameFromAccount(account) {
-  const accountHasFullName = !!(account.firstName && account.lastName)
-  return accountHasFullName
-    ? normalizeName(account.firstName, account.lastName)
-    : null
+  // some accounts have only a firstName field populated with the full name, so normalizeName falls back to just firstName if lastName is missing
+  return normalizeName(account.firstName, account.lastName)
 }
 
 /**
@@ -131,52 +88,24 @@ export function normalizeRecurlyAddressToStripe(address) {
     .toUpperCase()
 
   // Only send an address if it has enough data to be plausibly accepted/usable by Stripe.
-  // eslint-disable-next-line camelcase
-  if (!line1 || !postal_code || !country) return null
+  // For now we'll accept just bare minimum of a country code
   if (!/^[A-Z]{2}$/.test(country)) return null
 
   const line2 = (address.street2 || '').trim()
   const city = (address.city || '').trim()
   const state = (address.region || '').trim()
 
+  // Intentionally include empty-string fields so Stripe clears any existing
+  // stale values on the customer address when Recurly has blanks.
   return {
     line1,
-    ...(line2 ? { line2 } : {}),
-    ...(city ? { city } : {}),
-    ...(state ? { state } : {}),
+    line2,
+    city,
+    state,
     // eslint-disable-next-line camelcase
     postal_code,
     country,
   }
-}
-
-/**
- * Extract address from Recurly data.
- *
- * Prefers billingInfo address as this is what the customer entered during checkout.
- * Falls back to account address for manually-created accounts or legacy data.
- *
- * @param {object} account - Recurly account object
- * @returns {import('stripe').Stripe.AddressParam|null}
- */
-export function coalesceOrEqualOrThrowAddress(account) {
-  const billingAddress = normalizeRecurlyAddressToStripe(
-    account.billingInfo?.address
-  )
-  const accountAddress = normalizeRecurlyAddressToStripe(account?.address)
-
-  const isBillingAddressValid = !!billingAddress
-  const isAccountAddressValid = !!accountAddress
-
-  if (!isBillingAddressValid && !isAccountAddressValid) return null
-  if (isBillingAddressValid && !isAccountAddressValid) return billingAddress
-  if (!isBillingAddressValid && isAccountAddressValid) return accountAddress
-
-  if (!isEqual(billingAddress, accountAddress)) {
-    throw new Error('Billing address and account address differ')
-  }
-
-  return billingAddress
 }
 
 /**
@@ -1187,8 +1116,9 @@ export function areStripeAndRecurlyCardDetailsEqual(
   recurlyPaymentMethod
 ) {
   if (
+    !stripePaymentMethod ||
     stripePaymentMethod.type !== 'card' ||
-    !stripePaymentMethod?.card ||
+    !stripePaymentMethod.card ||
     !recurlyPaymentMethod?.lastFour
   ) {
     return false
@@ -1199,4 +1129,469 @@ export function areStripeAndRecurlyCardDetailsEqual(
     stripePaymentMethod.card.exp_month === recurlyPaymentMethod.expMonth &&
     stripePaymentMethod.card.exp_year === recurlyPaymentMethod.expYear
   )
+}
+
+// =============================================================================
+// ADDRESS / STRING COMPARISON HELPERS
+// =============================================================================
+
+export function normalizeComparableString(value) {
+  if (value == null) return ''
+  return String(value).trim()
+}
+
+export function hasAnyAddressValue(address) {
+  if (!address || typeof address !== 'object') return false
+  return Object.values(address).some(v => normalizeComparableString(v) !== '')
+}
+
+export function ccEmailsToArray(ccEmails) {
+  if (ccEmails == null || ccEmails === undefined) return []
+  const normalisedEmails = String(ccEmails)
+    .split(/[\s,;]+/)
+    .filter(Boolean)
+  return [...new Set(normalisedEmails)]
+}
+
+export function normalizeTaxIdValue(taxId) {
+  const value = normalizeComparableString(taxId)
+  return value.replace(/[.\-_\s:/]/g, '').toLowerCase()
+}
+
+// =============================================================================
+// CUSTOM FIELDS
+// =============================================================================
+
+export const RECURLY_CUSTOM_FIELD_NAMES = [
+  'channel',
+  'Industry',
+  'ol_sales_person',
+  'MigratedfromFreeAgent',
+]
+
+/**
+ * Extract Recurly custom fields as Stripe metadata.
+ *
+ * Expects an account object with a `customFields` array (Recurly npm SDK format)
+ * where each element has `name` and `value` properties.
+ *
+ * @param {object} account - Recurly account object (npm SDK format)
+ * @returns {{ metadata: Record<string, string>, counts: Record<string, number> }}
+ */
+export function extractRecurlyCustomFieldMetadata(account) {
+  const customFields = account?.customFields
+  if (!Array.isArray(customFields)) {
+    throw new Error(
+      'Unexpected Recurly response: account.customFields is missing or not an array'
+    )
+  }
+
+  /** @type {Record<string, string>} */
+  const metadata = {}
+
+  const counts = {
+    channel: 0,
+    Industry: 0,
+    ol_sales_person: 0,
+    MigratedfromFreeAgent: 0,
+    noCustomFields: 0,
+  }
+
+  if (customFields.length === 0) {
+    counts.noCustomFields = 1
+    return { metadata, counts }
+  }
+
+  for (const field of customFields) {
+    const name = field?.name?.trim()
+    if (!RECURLY_CUSTOM_FIELD_NAMES.includes(name)) continue
+    const rawValue = field?.value
+    if (rawValue == null) continue
+    const value = String(rawValue).trim()
+    if (!value) continue
+    metadata[name] = value
+    counts[name] = 1
+  }
+  return { metadata, counts }
+}
+
+function normalizeComparableAddress(address) {
+  if (!address || typeof address !== 'object') return null
+  const norm = {
+    line1: normalizeComparableString(address.line1),
+    line2: normalizeComparableString(address.line2),
+    city: normalizeComparableString(address.city),
+    state: normalizeComparableString(address.state),
+    postal_code: normalizeComparableString(address.postal_code),
+    country: normalizeComparableString(address.country).toUpperCase(),
+  }
+  return hasAnyAddressValue(norm) ? norm : null
+}
+
+export function addressesEqual(a, b) {
+  const na = normalizeComparableAddress(a)
+  const nb = normalizeComparableAddress(b)
+  if (!na && !nb) return true
+  if (!na || !nb) return false
+  return (
+    na.line1 === nb.line1 &&
+    na.line2 === nb.line2 &&
+    na.city === nb.city &&
+    na.state === nb.state &&
+    na.postal_code === nb.postal_code &&
+    na.country === nb.country
+  )
+}
+
+// =============================================================================
+// CUSTOMER IDENTITY RESOLUTION
+// =============================================================================
+
+/**
+ * Resolve customer name, address, company, and VAT number from Recurly account data.
+ *
+ * For most customers, billing info and account info agree (or only one source is set),
+ * and the standard coalesce logic applies (billing info preferred, account as fallback).
+ *
+ * When any field has conflicting values across both sources, `fetchCollectionMethod`
+ * is called to determine which source wins:
+ *
+ * - automatic (web sales): billing info is used for the Stripe customer record.
+ * - manual (manual billing): account info is used for the Stripe customer record,
+ *   and billing info is returned separately to be copied to the payment method's
+ *   billing_details.
+ *
+ * @param {object} account - Recurly account object
+ * @param {() => Promise<string|null>} fetchCollectionMethod - Async callback that returns the
+ *   subscription's collection method ('automatic' or 'manual') when a conflict is detected.
+ * @returns {Promise<{
+ *   name: string|null,
+ *   address: import('stripe').Stripe.AddressParam|null,
+ *   companyName: string|null,
+ *   vatNumber: string|null,
+ *   collectionMethod: string|null,
+ *   billingInfoForPaymentMethod: object|null
+ * }>}
+ */
+export async function resolveCustomerIdentity(account, fetchCollectionMethod) {
+  const billingName = extractNameFromBillingInfo(account)
+  const accountName = extractNameFromAccount(account)
+  const nameConflict =
+    billingName !== null && accountName !== null && billingName !== accountName
+
+  const billingAddress = normalizeRecurlyAddressToStripe(
+    account.billingInfo?.address
+  )
+  const accountAddress = normalizeRecurlyAddressToStripe(account?.address)
+  const addressConflict =
+    billingAddress !== null &&
+    accountAddress !== null &&
+    !addressesEqual(billingAddress, accountAddress)
+
+  const billingCompany = account.billingInfo?.company?.trim() || null
+  const accountCompany = account.company?.trim() || null
+  const companyConflict =
+    billingCompany !== null &&
+    accountCompany !== null &&
+    billingCompany !== accountCompany
+
+  const billingVat = account.billingInfo?.vatNumber?.trim() || null
+  const accountVat = account?.vatNumber?.trim() || null
+  const vatConflict =
+    billingVat !== null && accountVat !== null && billingVat !== accountVat
+
+  const hasConflict =
+    nameConflict || addressConflict || companyConflict || vatConflict
+
+  let name,
+    address,
+    companyName,
+    vatNumber,
+    collectionMethod,
+    billingInfoForPaymentMethod
+
+  if (!hasConflict) {
+    name = billingName ?? accountName
+    address = billingAddress ?? accountAddress
+    companyName = billingCompany ?? accountCompany
+    vatNumber = billingVat ?? accountVat
+    collectionMethod = null
+    billingInfoForPaymentMethod = null
+  } else {
+    collectionMethod = await fetchCollectionMethod()
+
+    if (!collectionMethod) {
+      throw new Error(
+        'Conflict between billing info and account fields, but no subscription found to determine collection method'
+      )
+    }
+
+    if (collectionMethod === 'automatic') {
+      name = billingName ?? accountName
+      address = billingAddress ?? accountAddress
+      companyName = billingCompany ?? accountCompany
+      vatNumber = billingVat ?? accountVat
+      billingInfoForPaymentMethod = null
+    } else if (collectionMethod === 'manual') {
+      name = accountName ?? billingName
+      address = accountAddress ?? billingAddress
+      companyName = accountCompany ?? billingCompany
+      vatNumber = accountVat ?? billingVat
+      billingInfoForPaymentMethod = account.billingInfo
+    } else {
+      throw new Error(`Unexpected collectionMethod: ${collectionMethod}`)
+    }
+  }
+
+  if (vatNumber && address?.country === 'GB') {
+    vatNumber = normalisedGBVATNumber(vatNumber)
+  }
+
+  return {
+    name,
+    address,
+    companyName,
+    vatNumber,
+    collectionMethod,
+    billingInfoForPaymentMethod,
+  }
+}
+
+// =============================================================================
+// ACCOUNT COMPARISON
+// =============================================================================
+
+/**
+ * Compare account-level fields between a Recurly account and a Stripe customer.
+ *
+ * This encapsulates the drift-detection logic shared by both the finalize script
+ * and the compare script.
+ *
+ * @param {object} options
+ * @param {object} options.account - Recurly account (npm SDK camelCase format)
+ * @param {object} options.stripeCustomer - Stripe customer (expanded with tax_ids, default_payment_method)
+ * @param {string} options.overleafUserId - Overleaf user ID (for metadata.userId comparison)
+ * @param {() => Promise<string|null>} options.fetchCollectionMethod - Callback to get subscription collection method
+ * @param {Array} options.stripePaymentMethods - Pre-fetched Stripe payment methods
+ * @param {string} options.stripeServiceName - 'stripe-us' or 'stripe-uk'
+ * @returns {Promise<Record<string, { recurly: any, stripe: any }>>} - Per-field diffs (empty = no drift)
+ */
+export async function compareAccountFields({
+  account,
+  stripeCustomer,
+  overleafUserId,
+  fetchCollectionMethod,
+  stripePaymentMethods,
+  stripeServiceName,
+}) {
+  const { name, address, companyName, vatNumber } =
+    await resolveCustomerIdentity(account, fetchCollectionMethod)
+
+  const diffs = {}
+
+  // Email
+  if (
+    normalizeComparableString(account.email) !==
+    normalizeComparableString(stripeCustomer.email)
+  ) {
+    diffs.email = {
+      recurly: account.email || null,
+      stripe: stripeCustomer.email || null,
+    }
+  }
+
+  // Name
+  if (
+    normalizeComparableString(name) !==
+    normalizeComparableString(stripeCustomer.name)
+  ) {
+    diffs.name = {
+      recurly: name || null,
+      stripe: stripeCustomer.name || null,
+    }
+  }
+
+  // Address
+  if (address) {
+    if (!addressesEqual(address, stripeCustomer.address)) {
+      diffs.address = {
+        recurly: address,
+        stripe: stripeCustomer.address || null,
+      }
+    }
+  }
+
+  // Business name (company)
+  if (companyName) {
+    if (
+      normalizeComparableString(companyName) !==
+      normalizeComparableString(stripeCustomer.business_name)
+    ) {
+      diffs.business_name = {
+        recurly: companyName,
+        stripe: stripeCustomer.business_name || null,
+      }
+    }
+  }
+
+  // Metadata
+  const expectedMetadata = {}
+  if (account.createdAt) {
+    expectedMetadata.recurlyCreatedAt = account.createdAt.toISOString()
+  }
+  expectedMetadata.recurlyAccountCode = ''
+  expectedMetadata.userId = overleafUserId
+
+  const { metadata: customFieldMetadata } =
+    extractRecurlyCustomFieldMetadata(account)
+  Object.assign(expectedMetadata, customFieldMetadata)
+
+  // Tax ID
+  let expectedTaxIdType = null
+  let expectedTaxIdValue = null
+  if (vatNumber) {
+    const taxIdTypeResult = getTaxIdType(
+      address?.country,
+      vatNumber,
+      address?.postal_code,
+      false
+    )
+    if (taxIdTypeResult.type && address?.country) {
+      expectedTaxIdType = taxIdTypeResult.type
+      expectedTaxIdValue = vatNumber
+    }
+  }
+
+  for (const [key, expectedValue] of Object.entries(expectedMetadata)) {
+    const stripeValue = stripeCustomer.metadata?.[key] ?? ''
+    if (
+      normalizeComparableString(expectedValue) !==
+      normalizeComparableString(stripeValue)
+    ) {
+      diffs[`metadata.${key}`] = {
+        recurly: expectedValue,
+        stripe: stripeValue || null,
+      }
+    }
+  }
+
+  // Tax exempt
+  const expectedTaxExempt = account.taxExempt ? 'exempt' : 'none'
+  if (expectedTaxExempt !== (stripeCustomer.tax_exempt || 'none')) {
+    diffs.tax_exempt = {
+      recurly: expectedTaxExempt,
+      stripe: stripeCustomer.tax_exempt || 'none',
+    }
+  }
+
+  // CC emails
+  const expectedCcEmails = ccEmailsToArray(account.ccEmails)
+  const stripeCcEmails = stripeCustomer.additional_emails?.cc || []
+  const recurlyCcSorted = [...expectedCcEmails].sort()
+  const stripeCcSorted = [...stripeCcEmails].sort()
+  if (JSON.stringify(recurlyCcSorted) !== JSON.stringify(stripeCcSorted)) {
+    diffs.cc_emails = {
+      recurly: expectedCcEmails,
+      stripe: stripeCcEmails,
+    }
+  }
+
+  // Tax ID
+  if (expectedTaxIdType && expectedTaxIdValue) {
+    const normalizedExpectedTaxIdValue = normalizeTaxIdValue(expectedTaxIdValue)
+    const stripePendingTaxId = stripeCustomer.metadata?.taxInfoPending
+      ? [
+          {
+            type: expectedTaxIdType,
+            value: stripeCustomer.metadata.taxInfoPending,
+          },
+        ]
+      : null
+    const stripeTaxIdsFromStripe = stripeCustomer.tax_ids?.data
+    const stripeTaxIds =
+      Array.isArray(stripeTaxIdsFromStripe) && stripeTaxIdsFromStripe.length > 0
+        ? stripeTaxIdsFromStripe
+        : stripePendingTaxId || []
+    const matchingTaxId = stripeTaxIds.find(
+      tid =>
+        tid.type === expectedTaxIdType &&
+        normalizedExpectedTaxIdValue &&
+        normalizeTaxIdValue(tid.value) === normalizedExpectedTaxIdValue
+    )
+    if (!matchingTaxId) {
+      diffs.tax_id = {
+        recurly: { type: expectedTaxIdType, value: expectedTaxIdValue },
+        stripe:
+          stripeTaxIds.length > 0
+            ? stripeTaxIds.map(t => ({ type: t.type, value: t.value }))
+            : null,
+      }
+    }
+  }
+
+  // Default payment method
+  const stripeDefaultPaymentMethod =
+    stripeCustomer.invoice_settings?.default_payment_method
+  const isPaypalBillingAgreement =
+    account.billingInfo?.paymentMethod?.object === 'paypal_billing_agreement'
+
+  let expectedPaymentMethod = null
+  if (
+    isPaypalBillingAgreement &&
+    !['US', 'CA'].includes(address?.country) &&
+    stripeServiceName !== 'stripe-us'
+  ) {
+    expectedPaymentMethod = { type: 'paypal' }
+  }
+
+  if (
+    !isPaypalBillingAgreement &&
+    stripePaymentMethods.length > 0 &&
+    account.billingInfo &&
+    account.billingInfo.paymentMethod
+  ) {
+    expectedPaymentMethod = account.billingInfo.paymentMethod
+  }
+
+  const stripePaymentMethodCreatedAt = stripeDefaultPaymentMethod?.created
+  const recurlyPaymentMethodUpdatedAt =
+    (account.billingInfo?.updatedAt?.getTime() || 0) / 1000
+  const recurlyPaymentMethodIsNewer =
+    stripePaymentMethodCreatedAt < recurlyPaymentMethodUpdatedAt
+  const paymentMethodIsMissing =
+    (!stripeDefaultPaymentMethod && expectedPaymentMethod) ||
+    (stripeDefaultPaymentMethod && !expectedPaymentMethod)
+  if (
+    paymentMethodIsMissing ||
+    (!areStripeAndRecurlyCardDetailsEqual(
+      stripeDefaultPaymentMethod,
+      expectedPaymentMethod
+    ) &&
+      recurlyPaymentMethodIsNewer)
+  ) {
+    diffs.default_payment_method = {
+      recurly: {
+        type: expectedPaymentMethod?.type || 'card',
+        last4: expectedPaymentMethod?.lastFour || null,
+        expiry: expectedPaymentMethod?.lastFour
+          ? `${expectedPaymentMethod.expMonth}/${expectedPaymentMethod.expYear}`
+          : null,
+        updatedAt: account.billingInfo?.updatedAt?.toISOString() || null,
+      },
+      stripe: {
+        type: stripeDefaultPaymentMethod?.type || null,
+        last4: stripeDefaultPaymentMethod?.card
+          ? stripeDefaultPaymentMethod.card.last4
+          : null,
+        expiry: stripeDefaultPaymentMethod?.card
+          ? `${stripeDefaultPaymentMethod.card.exp_month}/${stripeDefaultPaymentMethod.card.exp_year}`
+          : null,
+        created: stripeDefaultPaymentMethod?.created
+          ? new Date(stripeDefaultPaymentMethod.created * 1000).toISOString()
+          : null,
+      },
+    }
+  }
+
+  return diffs
 }

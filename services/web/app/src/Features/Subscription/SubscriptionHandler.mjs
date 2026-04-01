@@ -11,13 +11,15 @@ import EmailHandler from '../Email/EmailHandler.mjs'
 import { callbackify } from '@overleaf/promise-utils'
 import UserUpdater from '../User/UserUpdater.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
-import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import { AI_ADD_ON_CODE } from './AiHelper.mjs'
 
 /**
  * @import { PaymentProviderSubscriptionChange } from './PaymentProviderEntities.mjs'
  */
 
+/**
+ * @param {any} userId
+ */
 async function validateNoSubscriptionInRecurly(userId) {
   let subscriptions =
     await RecurlyWrapper.promises.listAccountActiveSubscriptions(userId)
@@ -38,6 +40,11 @@ async function validateNoSubscriptionInRecurly(userId) {
   return true
 }
 
+/**
+ * @param {any} user
+ * @param {any} subscriptionDetails
+ * @param {any} recurlyTokenIds
+ */
 async function createSubscription(user, subscriptionDetails, recurlyTokenIds) {
   const valid = await validateNoSubscriptionInRecurly(user._id)
 
@@ -83,7 +90,8 @@ async function previewSubscriptionChange(userId, planCode) {
 
 /**
  * @param user
- * @param planCode
+ * @param {any} user
+ * @param {any} planCode
  */
 async function updateSubscription(user, planCode) {
   let hasSubscription = false
@@ -116,7 +124,7 @@ async function updateSubscription(user, planCode) {
 }
 
 /**
- * @param user
+ * @param {any} user
  */
 async function cancelPendingSubscriptionChange(user) {
   const { hasSubscription, subscription } =
@@ -152,14 +160,9 @@ async function cancelPendingSubscriptionChange(user) {
 
 /**
  * Send cancellation email to user with split test for AI Assist addon
- * @param user
+ * @param {any} user
  */
 async function _sendCancellationEmail(user) {
-  const { variant } = await SplitTestHandler.promises.getAssignmentForUser(
-    user._id,
-    'cancellation-survey-ai-assist'
-  )
-
   const emailOpts = {
     to: user.email,
     first_name: user.first_name,
@@ -167,30 +170,20 @@ async function _sendCancellationEmail(user) {
 
   const ONE_HOUR_IN_MS = 1000 * 60 * 60
 
-  if (variant === 'enabled') {
-    logger.debug(
-      { userId: user._id },
-      'deferred email: canceledSubscriptionOrAddOn'
-    )
+  logger.debug(
+    { userId: user._id },
+    'deferred email: canceledSubscriptionOrAddOn'
+  )
 
-    EmailHandler.sendDeferredEmail(
-      'canceledSubscriptionOrAddOn',
-      emailOpts,
-      ONE_HOUR_IN_MS
-    )
-  } else {
-    logger.debug({ userId: user._id }, 'deferred email: canceledSubscription')
-
-    EmailHandler.sendDeferredEmail(
-      'canceledSubscription',
-      emailOpts,
-      ONE_HOUR_IN_MS
-    )
-  }
+  EmailHandler.sendDeferredEmail(
+    'canceledSubscriptionOrAddOn',
+    emailOpts,
+    ONE_HOUR_IN_MS
+  )
 }
 
 /**
- * @param user
+ * @param {any} user
  */
 async function cancelSubscription(user) {
   const { hasSubscription, subscription } =
@@ -203,7 +196,7 @@ async function cancelSubscription(user) {
 }
 
 /**
- * @param user
+ * @param {any} user
  */
 async function reactivateSubscription(user) {
   try {
@@ -236,8 +229,8 @@ async function reactivateSubscription(user) {
 }
 
 /**
- * @param recurlySubscription
- * @param requesterData
+ * @param {any} recurlySubscription
+ * @param {any} requesterData
  */
 async function syncSubscription(recurlySubscription, requesterData) {
   const storedSubscription = await RecurlyWrapper.promises.getSubscription(
@@ -266,7 +259,7 @@ async function syncSubscription(recurlySubscription, requesterData) {
  * This is used because Recurly doesn't always attempt collection of paast due
  * invoices after Paypal billing info were updated.
  *
- * @param recurlyAccountCode
+ * @param {any} recurlyAccountCode
  */
 async function attemptPaypalInvoiceCollection(recurlyAccountCode) {
   const billingInfo =
@@ -290,6 +283,10 @@ async function attemptPaypalInvoiceCollection(recurlyAccountCode) {
   )
 }
 
+/**
+ * @param {any} subscription
+ * @param {any} daysToExtend
+ */
 async function extendTrial(subscription, daysToExtend) {
   await Modules.promises.hooks.fire('extendTrial', subscription, daysToExtend)
 }
@@ -329,7 +326,7 @@ async function purchaseAddon(userId, addOnCode, quantity) {
 /**
  * Cancels an add-on for a user
  *
- * @param user
+ * @param {any} user
  * @param {string} addOnCode
  */
 async function removeAddon(user, addOnCode) {
@@ -350,6 +347,10 @@ async function reactivateAddon(userId, addOnCode) {
   await Modules.promises.hooks.fire('reactivateAddOn', userId, addOnCode)
 }
 
+/**
+ * @param {any} user
+ * @param {any} pauseCycles
+ */
 async function pauseSubscription(user, pauseCycles) {
   // only allow pausing on monthly plans not in a trial
   const { subscription } =
@@ -383,8 +384,9 @@ async function pauseSubscription(user, pauseCycles) {
     pauseCycles
   )
 }
-
-async function resumeSubscription(user) {
+/**
+ * @param {any} user
+ */ async function resumeSubscription(user) {
   const { subscription } =
     await LimitationsManager.promises.userHasSubscription(user)
   if (

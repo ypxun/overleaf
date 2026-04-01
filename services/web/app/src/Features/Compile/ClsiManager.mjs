@@ -1,9 +1,9 @@
 import { callbackify } from 'node:util'
 import { callbackifyMultiResult } from '@overleaf/promise-utils'
 import {
+  fetchStream,
   fetchString,
   fetchStringWithResponse,
-  fetchStream,
   RequestFailedError,
 } from '@overleaf/fetch-utils'
 import Settings from '@overleaf/settings'
@@ -41,6 +41,10 @@ const CLSI_COOKIES_ENABLED = (Settings.clsiCookie?.key ?? '') !== ''
 
 // The timeout in services/clsi/app.js is 10 minutes, so we'll be on the safe side with 12 minutes
 const COMPILE_REQUEST_TIMEOUT_MS = 12 * 60 * 1000
+
+// Enable clsi-cache for all compiles for 20min when detecting low capacity.
+const ENABLE_COMPILE_FROM_CACHE_ON_503_MS = 20 * 60 * 1000
+let enableCompileFromCacheUntil = 0
 
 function _baseHistoryVersionKey(projectId, userId) {
   return `baseHistoryVersion:${projectId}:${userId}`
@@ -287,7 +291,7 @@ async function _sendBuiltRequest(projectId, userId, req, options) {
     await clearClsiServerId(projectId, userId, options.compileBackendClass)
   }
   const validationProblems = ClsiFormatChecker.checkRecoursesForProblems(
-    req.compile?.resources
+    req.compile?.resources || []
   )
   if (validationProblems != null) {
     logger.debug(
@@ -677,7 +681,9 @@ async function _postToClsi(
         return { response: { compile: { status: 'conflict' } } }
       } else if (err.response.status === 423) {
         return { response: { compile: { status: 'compile-in-progress' } } }
-      } else if (err.response.status === 503) {
+      } else if (err.response.status === 502 || err.response.status === 503) {
+        enableCompileFromCacheUntil =
+          Date.now() + ENABLE_COMPILE_FROM_CACHE_ON_503_MS
         return { response: { compile: { status: 'unavailable' } } }
       } else if (err.response.status === 504) {
         return { response: { compile: { status: 'timedout' } } }
@@ -749,21 +755,45 @@ async function _buildRequest(projectId, userId, options) {
 
   if (options.compileFromHistory && baseHistoryVersion === -1) {
     // full sync
-    return await _buildRequestFromHistoryFull(
-      projectId,
-      historyId,
-      options,
-      project
-    )
+    try {
+      return await _buildRequestFromHistoryFull(
+        projectId,
+        historyId,
+        options,
+        project
+      )
+    } catch (err) {
+      logger.warn(
+        { err, projectId, historyId },
+        'failed to compose history-full request'
+      )
+      // fall back to old compile mode
+      return await _buildRequest(projectId, userId, {
+        ...options,
+        compileFromHistory: false,
+      })
+    }
   } else if (options.compileFromHistory) {
     // incremental sync
-    return await _buildRequestFromHistoryIncremental(
-      projectId,
-      historyId,
-      options,
-      project,
-      baseHistoryVersion
-    )
+    try {
+      return await _buildRequestFromHistoryIncremental(
+        projectId,
+        historyId,
+        options,
+        project,
+        baseHistoryVersion
+      )
+    } catch (err) {
+      logger.warn(
+        { err, projectId, historyId, baseHistoryVersion },
+        'failed to compose history-incremental request'
+      )
+      // fall back to old compile mode
+      return await _buildRequest(projectId, userId, {
+        ...options,
+        compileFromHistory: false,
+      })
+    }
   }
 
   if (options.incrementalCompilesEnabled || options.syncType != null) {
@@ -882,21 +912,7 @@ function _collectGlobalBlobs(rawChangeOperations) {
   return globalBlobs
 }
 
-async function _buildRequestFromHistoryFull(
-  projectId,
-  historyId,
-  options,
-  project
-) {
-  await HistoryManager.promises.flushProject(projectId)
-  const {
-    chunk: {
-      history: { snapshot: rawSnapshot, changes: rawChanges },
-      startVersion,
-    },
-  } = await HistoryManager.promises.getLatestHistoryWithHistoryId(historyId)
-  const rawChangeOperations = _rawChangeOperationsFromChanges(rawChanges)
-  const globalBlobs = _collectGlobalBlobs(rawChangeOperations)
+function collectGlobalBlobsFromRawSnapshot(rawSnapshot, globalBlobs) {
   for (const { hash, rangesHash } of Object.values(rawSnapshot.files)) {
     if (hash && HistoryManager.isGlobalBlob(hash)) {
       globalBlobs.add(hash)
@@ -905,6 +921,30 @@ async function _buildRequestFromHistoryFull(
       globalBlobs.add(rangesHash)
     }
   }
+}
+
+async function _buildRequestFromHistoryFull(
+  projectId,
+  historyId,
+  options,
+  project
+) {
+  await HistoryManager.promises.flushProject(projectId)
+  const [
+    {
+      chunk: {
+        history: { snapshot: rawSnapshot, changes: rawChanges },
+        startVersion,
+      },
+    },
+    /* ensureNoResyncPending throws */
+  ] = await Promise.all([
+    HistoryManager.promises.getLatestHistoryWithHistoryId(historyId),
+    HistoryManager.promises.ensureNoResyncPending(projectId),
+  ])
+  const rawChangeOperations = _rawChangeOperationsFromChanges(rawChanges)
+  const globalBlobs = _collectGlobalBlobs(rawChangeOperations)
+  collectGlobalBlobsFromRawSnapshot(rawSnapshot, globalBlobs)
   options = {
     ...options,
     syncType: 'history-full',
@@ -931,22 +971,26 @@ async function _buildRequestFromHistoryIncremental(
   let size = 0
   while (hasMore) {
     let changes
-    ;({ changes, hasMore } = await HistoryManager.promises.getChanges(
-      historyId,
-      { since }
-    ))
+    ;[{ changes, hasMore } /* resyncPending throws */] = await Promise.all([
+      HistoryManager.promises.getChangesWithHistoryId(historyId, { since }),
+      HistoryManager.promises.ensureNoResyncPending(projectId),
+    ])
     since += changes.length
     const newRawChangeOperations = _rawChangeOperationsFromChanges(changes)
     size += Buffer.from(JSON.stringify(newRawChangeOperations)).byteLength
     if (size > 6.5 * 1024 * 1024) {
       // clsi has a payload limit of 7MiB. Do not send too many operations.
       // Fall back to sending the latest snapshot instead.
-      return await _buildRequestFromHistoryFull(
-        projectId,
-        historyId,
-        options,
-        project
-      )
+      try {
+        return await _buildRequestFromHistoryFull(
+          projectId,
+          historyId,
+          options,
+          project
+        )
+      } catch (err) {
+        throw OError.tag(err, 'upgrade to history-full failed', { size })
+      }
     }
     rawChangeOperations.push(...newRawChangeOperations)
   }
@@ -1104,12 +1148,12 @@ function _finaliseRequest(projectId, options, project, docs, files) {
         compileGroup: options.compileGroup,
         // Overleaf alpha/staff users get compileGroup=alpha (via getProjectCompileLimits in CompileManager), enroll them into the premium rollout of clsi-cache.
         compileFromClsiCache:
-          ['alpha', 'priority'].includes(options.compileGroup) &&
-          options.compileFromClsiCache,
-        populateClsiCache:
+          // enable for premium compiles
           (['alpha', 'priority'].includes(options.compileGroup) ||
-            options.metricsPath === 'clsi-cache-template') &&
-          options.populateClsiCache,
+            // enable for free for short period when we saw low capacity
+            enableCompileFromCacheUntil > Date.now()) &&
+          options.compileFromClsiCache,
+        populateClsiCache: options.populateClsiCache,
         enablePdfCaching:
           (Settings.enablePdfCaching && options.enablePdfCaching) || false,
         pdfCachingMinChunkSize: options.pdfCachingMinChunkSize,
@@ -1218,6 +1262,7 @@ function _getClsiServerIdFromResponse(response) {
 }
 
 export default {
+  collectGlobalBlobsFromRawSnapshot,
   _finaliseRequest,
   sendRequest: callbackifyMultiResult(sendRequest, [
     'status',

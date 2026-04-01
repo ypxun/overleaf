@@ -162,6 +162,18 @@ function parse(body, callback) {
     response.rawSnapshot = compile.rawSnapshot
     response.rawChangeOperations = compile.rawChangeOperations
 
+    // v1 conversions / submissions
+    if (compile.filestoreBlobPrefix) {
+      response.filestoreBlobPrefix = _checkPath(compile.filestoreBlobPrefix)
+    }
+
+    // clsi-perf
+    response.clsiPerfVariant = _parseAttribute(
+      'clsiPerfVariant',
+      compile.options.clsiPerfVariant,
+      { type: 'string' }
+    )
+
     const rootResourcePath = _parseAttribute(
       'rootResourcePath',
       compile.rootResourcePath,

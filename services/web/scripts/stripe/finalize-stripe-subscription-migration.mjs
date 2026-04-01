@@ -39,6 +39,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import * as csv from 'csv'
 import minimist from 'minimist'
+import Settings from '@overleaf/settings'
+import recurly from 'recurly'
 import PQueue from 'p-queue'
 import { z } from '../../app/src/infrastructure/Validation.mjs'
 import { scriptRunner } from '../lib/ScriptRunner.mjs'
@@ -54,8 +56,9 @@ import AccountMappingHelper from '../../app/src/Features/Analytics/AccountMappin
 import PlansLocator from '../../app/src/Features/Subscription/PlansLocator.mjs'
 import UserAnalyticsIdCache from '../../app/src/Features/Analytics/UserAnalyticsIdCache.mjs'
 import CustomerIoHandler from '../../modules/customer-io/app/src/CustomerIoHandler.mjs'
-import { ReportError } from './helpers.mjs'
+import { ReportError, convertToMinorUnits } from './helpers.mjs'
 import isEqual from 'lodash/isEqual.js'
+import { compareAccountFields } from '../helpers/migrate_recurly_customers_to_stripe.helpers.mjs'
 import {
   createRateLimitedApiWrappers,
   DEFAULT_RECURLY_RATE_LIMIT,
@@ -70,6 +73,16 @@ const preloadedProductMetadata = new Map()
 
 // rate limiters - initialized in main()
 let rateLimiters
+
+// Recurly SDK client - initialized at module level
+const recurlyApiKey =
+  process.env.RECURLY_API_KEY || Settings.apis?.recurly?.apiKey
+if (!recurlyApiKey) {
+  throw new Error(
+    'Recurly API key is not set. Set RECURLY_API_KEY env var or configure Settings.apis.recurly.apiKey'
+  )
+}
+const recurlyClient = new recurly.Client(recurlyApiKey)
 
 function usage() {
   console.error(`Usage: node scripts/stripe/finalize-stripe-subscription-migration.mjs [OPTS] [INPUT-FILE]
@@ -314,7 +327,11 @@ async function processMigration(input, commit) {
   try {
     stripeCustomer = await rateLimiters.requestWithRetries(
       stripeClient.serviceName,
-      () => stripeClient.getCustomerById(stripeCustomerId, ['subscriptions']),
+      () =>
+        stripeClient.getCustomerById(stripeCustomerId, [
+          'subscriptions',
+          'subscriptions.data.schedule',
+        ]),
       {
         operation: 'getCustomerById',
         stripeCustomerId,
@@ -362,16 +379,13 @@ async function processMigration(input, commit) {
     )
   }
 
-  // 5. Fetch Recurly subscription
+  // 5. Fetch Recurly subscription and account
   let recurlySubscription
   try {
     recurlySubscription = await rateLimiters.requestWithRetries(
       'recurly',
       () =>
-        RecurlyWrapper.promises.getSubscription(
-          previousRecurlySubscriptionId,
-          {}
-        ),
+        recurlyClient.getSubscription(`uuid-${previousRecurlySubscriptionId}`),
       {
         operation: 'getSubscription',
         recurlySubscriptionId: previousRecurlySubscriptionId,
@@ -384,12 +398,41 @@ async function processMigration(input, commit) {
     )
   }
 
+  let recurlyAccount
+  try {
+    recurlyAccount = await rateLimiters.requestWithRetries(
+      'recurly',
+      () => recurlyClient.getAccount(`code-${overleafUserId}`),
+      {
+        operation: 'getAccount',
+        overleafUserId,
+      }
+    )
+  } catch (err) {
+    throw new ReportError(
+      'no-recurly-account',
+      `Recurly account not found: ${err.message}`
+    )
+  }
+
   // 6. Detect changes between Recurly and Stripe
-  const changes = detectChanges(recurlySubscription, stripeSubscription, region)
-  if (changes.length > 0) {
+  const subscriptionChanges = detectSubscriptionChanges(
+    recurlySubscription,
+    stripeSubscription,
+    region
+  )
+  const accountChanges = await detectAccountChanges(
+    overleafUserId,
+    stripeCustomerId,
+    stripeClient,
+    recurlyAccount,
+    recurlySubscription.collectionMethod || null
+  )
+  const allChanges = [...subscriptionChanges, ...accountChanges]
+  if (allChanges.length > 0) {
     throw new ReportError(
       'changes-detected',
-      `Changes detected between Recurly and Stripe: ${changes.join('; ')}`
+      `Changes detected between Recurly and Stripe: ${allChanges.join('; ')}`
     )
   }
 
@@ -429,6 +472,12 @@ async function processMigration(input, commit) {
 
     result.status = 'migrated'
     result.note = 'Successfully migrated to Stripe'
+
+    if (stripeCustomer.metadata?.taxInfoPending) {
+      result.status += '-tax-info-pending'
+      result.note += '; Tax info pending'
+    }
+
     return result
   } else {
     result.status = 'validated'
@@ -446,38 +495,43 @@ function formatItems(items) {
     .join(', ')
 }
 
-function detectChanges(recurlySubscription, stripeSubscription, region) {
+function detectSubscriptionChanges(
+  recurlySubscription,
+  stripeSubscription,
+  region
+) {
   const changes = []
 
   // Extract item details from Recurly subscription
   const targetRecurlySubscription =
-    recurlySubscription.pending_subscription || recurlySubscription
+    recurlySubscription.pendingChange || recurlySubscription
   const recurlyPlanItem =
     PlansLocator.convertLegacyGroupPlanCodeToConsolidatedGroupPlanCodeIfNeeded(
-      targetRecurlySubscription.plan.plan_code
+      targetRecurlySubscription.plan.code
     )
   const simplifiedPlanCode = recurlyPlanItem.planCode.replace(
     /_free_trial.*$/,
     ''
   )
   const additionalLicenseQuantity =
-    (targetRecurlySubscription.subscription_add_ons || []).find(
-      addOn => addOn.add_on_code === 'additional-license'
+    (targetRecurlySubscription.addOns || []).find(
+      addOn => addOn.addOn.code === 'additional-license'
     )?.quantity || 0
+  const currency = recurlySubscription.currency
   const recurlyItems = [
     {
       code: simplifiedPlanCode,
       quantity: recurlyPlanItem.quantity + additionalLicenseQuantity,
       amount:
-        targetRecurlySubscription.unit_amount_in_cents /
+        convertToMinorUnits(targetRecurlySubscription.unitAmount, currency) /
         recurlyPlanItem.quantity,
     },
-    ...(targetRecurlySubscription.subscription_add_ons || [])
-      .filter(addOn => addOn.add_on_code !== 'additional-license')
+    ...(targetRecurlySubscription.addOns || [])
+      .filter(addOn => addOn.addOn.code !== 'additional-license')
       .map(addOn => ({
-        code: addOn.add_on_code,
+        code: addOn.addOn.code,
         quantity: addOn.quantity,
-        amount: addOn.unit_amount_in_cents,
+        amount: convertToMinorUnits(addOn.unitAmount, currency),
       })),
   ].sort((a, b) => a.code.localeCompare(b.code))
 
@@ -519,6 +573,109 @@ function detectChanges(recurlySubscription, stripeSubscription, region) {
     changes.push(`State: Recurly=${recurlyState}, Stripe=${stripeState}`)
   }
 
+  return changes
+}
+
+/**
+ * Detect account-level drift between the Recurly account and the migrated Stripe customer.
+ *
+ * Uses the Recurly SDK account (which includes billing info), and re-retrieves
+ * the Stripe customer with expanded tax_ids and default_payment_method so the
+ * comparison can cover all the fields that the customer-migration script set.
+ *
+ * @param {string} overleafUserId - Recurly account code / Overleaf user ID
+ * @param {string} stripeCustomerId - Stripe customer ID
+ * @param {object} stripeClient - Stripe client (from getRegionClient)
+ * @param {object} account - Recurly SDK account object (from recurlyClient.getAccount)
+ * @param {string|null} collectionMethod - Recurly subscription collection method
+ * @returns {Promise<string[]>} - Array of change descriptions (empty = no drift)
+ */
+async function detectAccountChanges(
+  overleafUserId,
+  stripeCustomerId,
+  stripeClient,
+  account,
+  collectionMethod
+) {
+  const context = { overleafUserId, stripeCustomerId }
+
+  // Fetch the Stripe customer with tax_ids and payment method expanded
+  const stripeCustomer = await rateLimiters.requestWithRetries(
+    stripeClient.serviceName,
+    () =>
+      stripeClient.stripe.customers.retrieve(stripeCustomerId, {
+        expand: ['tax_ids', 'invoice_settings.default_payment_method'],
+      }),
+    { ...context, operation: 'customers.retrieve' }
+  )
+
+  if (stripeCustomer.deleted) {
+    return [`Stripe customer ${stripeCustomerId} has been deleted`]
+  }
+
+  // Pre-fetch payment methods if needed for comparison
+  let stripePaymentMethods = []
+  const isPaypalBillingAgreement =
+    account.billingInfo?.paymentMethod?.object === 'paypal_billing_agreement'
+  if (!isPaypalBillingAgreement && account.billingInfo?.paymentMethod) {
+    const result = await rateLimiters.requestWithRetries(
+      stripeClient.serviceName,
+      () => stripeClient.stripe.customers.listPaymentMethods(stripeCustomerId),
+      { ...context, operation: 'customers.listPaymentMethods' }
+    )
+    stripePaymentMethods = result.data
+  }
+
+  const diffs = await compareAccountFields({
+    account,
+    stripeCustomer,
+    overleafUserId,
+    fetchCollectionMethod: async () => collectionMethod,
+    stripePaymentMethods,
+    stripeServiceName: stripeClient.serviceName,
+  })
+
+  return formatDiffsAsChanges(diffs)
+}
+
+/**
+ * Convert structured diffs from compareAccountFields into human-readable change descriptions.
+ */
+function formatDiffsAsChanges(diffs) {
+  const changes = []
+  for (const [field, diff] of Object.entries(diffs)) {
+    if (field === 'address') {
+      changes.push(
+        `Address: Recurly=${JSON.stringify(diff.recurly)}, Stripe=${JSON.stringify(diff.stripe)}`
+      )
+    } else if (field === 'cc_emails') {
+      changes.push(
+        `CC emails: Recurly=[${[...diff.recurly].sort().join(',')}], Stripe=[${[...(diff.stripe || [])].sort().join(',')}]`
+      )
+    } else if (field === 'tax_id') {
+      const stripeStr = diff.stripe
+        ? diff.stripe.map(t => `{type:${t.type}, value:${t.value}}`).join(', ')
+        : '(none)'
+      changes.push(
+        `Tax ID: Recurly={type:${diff.recurly.type}, value:${diff.recurly.value}}, Stripe=${stripeStr}`
+      )
+    } else if (field === 'default_payment_method') {
+      changes.push(
+        `Payment method: Recurly=${diff.recurly.type || diff.recurly.last4 || '(none)'}, Stripe=${diff.stripe.type || '(none)'}`
+      )
+    } else if (field.startsWith('metadata.')) {
+      const key = field.slice('metadata.'.length)
+      changes.push(
+        `Metadata ${key}: Recurly=${diff.recurly || '(empty)'}, Stripe=${diff.stripe || '(empty)'}`
+      )
+    } else {
+      const label =
+        field.charAt(0).toUpperCase() + field.slice(1).replace(/_/g, ' ')
+      changes.push(
+        `${label}: Recurly=${diff.recurly || '(empty)'}, Stripe=${diff.stripe || '(empty)'}`
+      )
+    }
+  }
   return changes
 }
 
@@ -564,9 +721,7 @@ async function performCutover(
 
   // Step 3: Postpone Recurly billing by +10 years if Recurly subscription is active
   if (recurlySubscription.state !== 'canceled') {
-    const currentBillingDate = new Date(
-      recurlySubscription.current_period_ends_at
-    )
+    const currentBillingDate = new Date(recurlySubscription.currentPeriodEndsAt)
     const postponedDate = new Date(currentBillingDate)
     postponedDate.setFullYear(currentBillingDate.getFullYear() + 10)
 
@@ -649,6 +804,34 @@ async function performCutover(
       throw new ReportError(
         'migrated-customerio-upload-failed',
         `Successfully migrated to Stripe but failed to upload user to customer.io: ${err.message}`
+      )
+    }
+  }
+
+  // Step 7: Release subscription schedule associated with the migration
+  const schedule = stripeSubscription.schedule
+  if (
+    schedule &&
+    typeof schedule !== 'string' &&
+    schedule.metadata?.billing_migration_id
+  ) {
+    try {
+      await rateLimiters.requestWithRetries(
+        stripeClient.serviceName,
+        () =>
+          stripeClient.stripe.subscriptionSchedules.release(schedule.id, {
+            preserve_cancel_date: true,
+          }),
+        {
+          operation: 'subscriptionSchedules.release',
+          scheduleId: schedule.id,
+          region: stripeClient.serviceName,
+        }
+      )
+    } catch (err) {
+      throw new ReportError(
+        'migrated-schedule-release-failed',
+        `Successfully migrated to Stripe but failed to release subscription schedule: ${err.message}`
       )
     }
   }

@@ -3,6 +3,13 @@ import { FontFamily, LineHeight, OverallTheme } from '@/shared/utils/styles'
 export type Keybindings = 'none' | 'default' | 'vim' | 'emacs'
 export type PdfViewer = 'pdfjs' | 'native'
 
+export type RefProviderSettings = {
+  enabled: boolean
+  disablePersonalLibrary: boolean
+  groups: { id: string }[]
+  migrated?: boolean
+}
+
 export type UserSettings = {
   pdfViewer: PdfViewer
   autoComplete: boolean
@@ -18,8 +25,9 @@ export type UserSettings = {
   lineHeight: LineHeight
   mathPreview: boolean
   referencesSearchMode: 'advanced' | 'simple'
-  enableNewEditor: boolean
-  enableNewEditorLegacy: boolean
   breadcrumbs: boolean
   darkModePdf: boolean
+  zotero: RefProviderSettings
+  mendeley: RefProviderSettings
+  papers: RefProviderSettings
 }

@@ -87,7 +87,9 @@ function runLatex(projectId, options, callback) {
       }
       // number of latex runs and whether there were errors
       const runs =
-        output?.stdout?.match(/^Run number \d+ of .*latex/gm)?.length || 0
+        output?.stdout?.match(/^Run number \d+ of .*latex/gm)?.length || // TeXLive 2022 and later
+        output?.stderr?.match(/^Run number \d+ of .*latex/gm)?.length || // TeXLive 2021 and earlier
+        0
       const failed = output?.stdout?.match(/^Latexmk: Errors/m) != null ? 1 : 0
       // counters from latexmk output
       stats['latexmk-errors'] = failed
@@ -142,10 +144,15 @@ function _writeLogOutput(projectId, directory, output, callback) {
   })
 }
 
+function isRunning(projectId) {
+  const id = `${projectId}`
+  return ProcessTable[id] != null
+}
+
 function killLatex(projectId, callback) {
   const id = `${projectId}`
   logger.debug({ id }, 'killing running compile')
-  if (ProcessTable[id] == null) {
+  if (!isRunning(projectId)) {
     logger.warn({ id }, 'no such project to kill')
     callback(null)
   } else {
@@ -206,6 +213,7 @@ function _buildLatexCommand(mainFile, opts = {}) {
 }
 
 export default {
+  isRunning,
   runLatex,
   killLatex,
   promises: {

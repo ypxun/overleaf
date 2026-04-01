@@ -107,7 +107,7 @@ async function doCompile(request, stats, timings) {
 
   let resourceList, baseHistoryVersion
   try {
-    if (request.historyId) {
+    if (request.rawChangeOperations) {
       ;({ resourceList, baseHistoryVersion } =
         await HistoryResourceWriter.syncResourcesToDisk(
           projectId,
@@ -122,6 +122,25 @@ async function doCompile(request, stats, timings) {
         request,
         compileDir
       )
+
+      // apply a series of file modifications/creations for draft mode and tikz
+      if (request.draft) {
+        await DraftModeManager.promises.injectDraftMode(
+          Path.join(compileDir, request.rootResourcePath)
+        )
+      }
+
+      const needsMainFile = await TikzManager.promises.checkMainFile(
+        compileDir,
+        request.rootResourcePath,
+        resourceList
+      )
+      if (needsMainFile) {
+        await TikzManager.promises.injectOutputFile(
+          compileDir,
+          request.rootResourcePath
+        )
+      }
     }
   } catch (error) {
     if (error instanceof Errors.FilesOutOfSyncError) {
@@ -171,25 +190,6 @@ async function doCompile(request, stats, timings) {
     if (request.check === 'validate') {
       env.CHKTEX_VALIDATE = 1
     }
-  }
-
-  // apply a series of file modifications/creations for draft mode and tikz
-  if (request.draft) {
-    await DraftModeManager.promises.injectDraftMode(
-      Path.join(compileDir, request.rootResourcePath)
-    )
-  }
-
-  const needsMainFile = await TikzManager.promises.checkMainFile(
-    compileDir,
-    request.rootResourcePath,
-    resourceList
-  )
-  if (needsMainFile) {
-    await TikzManager.promises.injectOutputFile(
-      compileDir,
-      request.rootResourcePath
-    )
   }
 
   const compileStart = Date.now()
@@ -383,7 +383,17 @@ async function _readFdbFile(compileDir) {
 
 async function stopCompile(projectId, userId) {
   const compileName = getCompileName(projectId, userId)
+  const lock = LockManager.getExistingLock(getCompileDir(projectId, userId))
+  let lockReleased
+  if (lock) {
+    lockReleased = lock.waitForRelease()
+  } else {
+    if (!LatexRunner.isRunning(compileName)) return
+    logger.warn({ projectId, userId }, 'found running compile without lock')
+    lockReleased = Promise.resolve()
+  }
   await LatexRunner.promises.killLatex(compileName)
+  await lockReleased
 }
 
 async function clearProject(projectId, userId) {
@@ -810,6 +820,7 @@ function _emitMetrics(request, status, stats, timings) {
     draft: request.draft ? 'true' : 'false',
     stop_on_first_error: request.stopOnFirstError ? 'true' : 'false',
     passes,
+    type: request.syncType,
   })
 
   if (timings.sync != null) {
@@ -849,7 +860,7 @@ function _emitMetrics(request, status, stats, timings) {
   if (timings.compileE2E != null) {
     ClsiMetrics.e2eCompileDurationSeconds.observe(
       {
-        compileFromHistory: !!request.historyId,
+        compileFromHistory: !!request.rawChangeOperations,
         compile: request.metricsOpts.compile,
         group: request.compileGroup,
       },

@@ -11,6 +11,7 @@ const en = {
     generating: 'Generating',
     regenerate: 'Regenerate',
     regenerating: 'Regenerating',
+    retry: 'Retry',
     cancel: 'Cancel',
     yes: 'Yes',
     no: 'No',
@@ -126,15 +127,17 @@ const en = {
     'suggestion-card.banner.quick-guide.welcome': 'Welcome to Writefull!',
     'suggestion-card.banner.quick-guide.start':
       'Click here to start a quick guide',
-    'suggestion-card.banner.non-english.question': 'Is your text non-English?',
-    'suggestion-card.banner.non-english.yes': 'Yes, switch to GPT.',
-    'suggestion-card.banner.non-english.no': 'No, continue with English.',
+    'suggestion-card.banner.non-english.introduction':
+      "To view AI-powered language suggestions you'll need to use the GPT model.",
+    'suggestion-card.banner.non-english.choose-model': 'Choose model',
+    'suggestion-card.banner.non-english.disable': 'Disable',
     'suggestion-card.track-changes.show': 'Show track changes',
     'suggestion-card.track-changes.hide': 'Hide track changes',
     'suggestion-card.information-tooltip':
       'This is a language suggestion. You can accept, reject or block the suggestion.',
     'suggestion-card.unpin': 'Unpin the card to show it near the edits',
     'suggestion-card.pin': 'Pin the card to keep its size and position',
+    'suggestion-card.show-info': 'Show information',
     'suggestion-card.block-edit': 'Block this edit from appearing again',
     'suggestion-card.hide-suggestions.title': 'Hide suggestions too?',
     'suggestion-card.hide-suggestions.question':
@@ -156,6 +159,9 @@ const en = {
     'ai-context-menu.select-text-tooltip':
       'Select text to access these options',
     'ai-context-menu.paraphrase': 'Paraphrase',
+    'ai-context-menu.rephrase': 'Rephrase',
+    'ai-context-menu.shorten': 'Shorten',
+    'ai-context-menu.more-scientific': 'More scientific',
     'ai-context-menu.change-style': 'Change style',
     'ai-context-menu.summarize': 'Summarize',
     'ai-context-menu.explain': 'Explain',
@@ -307,7 +313,6 @@ const en = {
       "Complete sentences with 'Shift+Space'",
     'settings.supercomplete': 'Supercomplete',
     'settings.terms-of-service': 'Terms of Service',
-    'settings.manage-plan.freemium': 'Get AI Assist',
     'settings.manage-plan.wf-premium': 'Manage Writefull plan',
     'settings.manage-plan': 'Manage plan',
     'settings.open': 'Open settings dialog',
@@ -370,6 +375,7 @@ const en = {
       'Enter your password below to link the accounts associated with',
     'welcome.choose-a-different-writefull-account':
       'choose a different Writefull account',
+    'welcome.language-suggestions': 'Language suggestions',
     'welcome.writefull':
       'Get Writefull’s AI-powered language suggestions and editing tools in Overleaf to help you write smarter and faster.',
     'welcome.writefull-enabled':
@@ -403,6 +409,7 @@ const en = {
       'information Overleaf shares with Writefull',
     'welcome.and-its': 'and its',
     'welcome.privacy-notice': 'privacy notice',
+    'welcome.ok': 'OK',
     'welcome.go-back': 'Go back',
     'welcome.reset-password': 'Reset password',
     'welcome.enable-writefull':
@@ -509,6 +516,7 @@ const es = {
     generating: 'Generando',
     regenerate: 'Regenerar',
     regenerating: 'Regenerando',
+    retry: 'Reintentar',
     cancel: 'Cancelar',
     yes: 'Sí',
     no: 'No',
@@ -631,10 +639,10 @@ const es = {
     'suggestion-card.banner.quick-guide.welcome': '¡Bienvenido a Writefull!',
     'suggestion-card.banner.quick-guide.start':
       'Haga clic aquí para una guía rápida',
-    'suggestion-card.banner.non-english.question':
-      '¿Tu texto está en otro idioma que no sea inglés?',
-    'suggestion-card.banner.non-english.yes': 'Sí, cambiar a GPT.',
-    'suggestion-card.banner.non-english.no': 'No, continuar con inglés.',
+    'suggestion-card.banner.non-english.introduction':
+      'Para ver sugerencias de lenguaje impulsadas por IA, necesitarás usar el modelo GPT.',
+    'suggestion-card.banner.non-english.choose-model': 'Elegir modelo',
+    'suggestion-card.banner.non-english.disable': 'Deshabilitar',
     'suggestion-card.track-changes.show': 'Mostrar cambios',
     'suggestion-card.track-changes.hide': 'Ocultar cambios',
     'suggestion-card.information-tooltip':
@@ -643,6 +651,7 @@ const es = {
       'Desanclar la tarjeta para mostrarla cerca de las sugerencias',
     'suggestion-card.pin':
       'Anclar la tarjeta para mantener su tamaño y posición',
+    'suggestion-card.show-info': 'Mostrar información',
     'suggestion-card.block-edit':
       'Bloquear esta sugerencia para que no aparezca de nuevo',
     'suggestion-card.hide-suggestions.title':
@@ -667,6 +676,9 @@ const es = {
     'ai-context-menu.select-text-tooltip':
       'Seleccione texto para acceder a estas opciones',
     'ai-context-menu.paraphrase': 'Parafrasear',
+    'ai-context-menu.rephrase': 'Reformular',
+    'ai-context-menu.shorten': 'Acortar',
+    'ai-context-menu.more-scientific': 'Más científico',
     'ai-context-menu.change-style': 'Cambiar estilo',
     'ai-context-menu.summarize': 'Resumir',
     'ai-context-menu.explain': 'Explicar',
@@ -822,7 +834,6 @@ const es = {
       "Completar oraciones con 'Shift+Espacio'",
     'settings.supercomplete': 'Supercomplete',
     'settings.terms-of-service': 'Términos de Servicio',
-    'settings.manage-plan.freemium': 'Obtener AI Assist',
     'settings.manage-plan.wf-premium': 'Gestionar Plan Writefull',
     'settings.manage-plan': 'Gestionar plan',
     'settings.open': 'Abrir diálogo de configuración',
@@ -887,6 +898,7 @@ const es = {
       'Introduce tu contraseña a continuación para vincular las cuentas asociadas con',
     'welcome.choose-a-different-writefull-account':
       'elige una cuenta de Writefull diferente',
+    'welcome.language-suggestions': 'Sugerencias de lenguaje',
     'welcome.writefull':
       'Obtén las sugerencias de lenguaje y las herramientas de edición impulsadas por IA de Writefull en Overleaf para ayudarte a escribir de manera más inteligente y rápida.',
     'welcome.writefull-enabled':
@@ -920,6 +932,7 @@ const es = {
     'welcome.and-its': 'y su',
     'welcome.privacy-notice': 'aviso de privacidad',
     'welcome.go-back': 'Volver',
+    'welcome.ok': 'OK',
     'welcome.reset-password': 'Restablecer contraseña',
     'welcome.enable-writefull':
       'Habilitar Writefull para soporte de lenguaje y LaTeX',

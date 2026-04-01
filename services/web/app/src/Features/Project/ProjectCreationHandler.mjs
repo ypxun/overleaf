@@ -163,8 +163,8 @@ async function populateClsiCacheForExampleProject(
   return projectId
 }
 
-async function createExampleProject(ownerId, projectName) {
-  const project = await _createBlankProject(ownerId, projectName)
+async function createExampleProject(ownerId, projectName, attributes = {}) {
+  const project = await _createBlankProject(ownerId, projectName, attributes)
 
   const { fileEntries, docEntries } = await _addExampleProjectFiles(
     ownerId,
@@ -310,6 +310,9 @@ async function _createRootDoc(project, ownerId, docLines) {
       null
     )
     await ProjectEntityUpdateHandler.promises.setRootDoc(project._id, doc._id)
+    // update the rootDoc id on the project in memory
+    // used to identify the rootResourcePath when doing an initial compile from history
+    project.rootDoc_id = doc._id
     return doc
   } catch (error) {
     throw OError.tag(error, 'error adding root doc when creating project')

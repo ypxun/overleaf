@@ -57,6 +57,14 @@ describe('DockerRunner', () => {
       },
     }))
 
+    ctx.LastProjectAccess = {
+      getLastProjectAccessTime: sinon
+        .stub()
+        .returns(Date.now() - 24 * 60 * 60 * 1000),
+    }
+
+    vi.doMock('../../../app/js/LastProjectAccess', () => ctx.LastProjectAccess)
+
     vi.doMock('../../../app/js/LockManager', () => ({
       default: {
         runWithLock(key, runner, callback) {
@@ -115,7 +123,7 @@ describe('DockerRunner', () => {
         await new Promise((resolve, reject) => {
           ctx.DockerRunner._runAndWaitForContainer = sinon
             .stub()
-            .callsArgWith(3, null, (ctx.output = 'mock-output'))
+            .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
           return ctx.DockerRunner.run(
             ctx.project_id,
             ctx.command,
@@ -160,7 +168,7 @@ describe('DockerRunner', () => {
         ctx.directory = '/var/lib/overleaf/data/compiles/xyz'
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         return ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -191,7 +199,7 @@ describe('DockerRunner', () => {
         ctx.directory = '/var/lib/overleaf/data/output/xyz/generated-files/id'
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -222,7 +230,7 @@ describe('DockerRunner', () => {
         ctx.directory = '/var/lib/overleaf/data/compile/xyz'
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -253,7 +261,7 @@ describe('DockerRunner', () => {
         ctx.directory = '/var/lib/overleaf/data/compile/xyz'
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -282,7 +290,7 @@ describe('DockerRunner', () => {
     describe('when the run throws an error', () => {
       beforeEach(ctx => {
         let firstTime = true
-        ctx.output = 'mock-output'
+        ctx.output = { stdout: 'mock-output' }
         ctx.DockerRunner._runAndWaitForContainer = (
           options,
           volumes,
@@ -334,7 +342,7 @@ describe('DockerRunner', () => {
       beforeEach(ctx => {
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -364,7 +372,7 @@ describe('DockerRunner', () => {
         ctx.Settings.texliveImageNameOveride = 'overrideimage.com/something'
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -391,7 +399,7 @@ describe('DockerRunner', () => {
         ]
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
       })
 
       describe('with a valid image', () => {
@@ -469,7 +477,7 @@ describe('DockerRunner', () => {
         }
         ctx.DockerRunner._runAndWaitForContainer = sinon
           .stub()
-          .callsArgWith(3, null, (ctx.output = 'mock-output'))
+          .callsArgWith(3, null, (ctx.output = { stdout: 'mock-output' }))
         ctx.DockerRunner.run(
           ctx.project_id,
           ctx.command,
@@ -512,7 +520,7 @@ describe('DockerRunner', () => {
         attachStreamHandler,
         callback
       ) => {
-        attachStreamHandler(null, (ctx.output = 'mock-output'))
+        attachStreamHandler(null, (ctx.output = { stdout: 'mock-output' }))
         callback(null, (ctx.containerId = 'container-id'))
       }
       sinon.spy(ctx.DockerRunner, 'startContainer')
@@ -782,16 +790,25 @@ describe('DockerRunner', () => {
         const oneHourInSeconds = 60 * 60
         const oneHourInMilliseconds = oneHourInSeconds * 1000
         const nowInSeconds = Date.now() / 1000
+        ctx.recentlyAccessProjectId = '68494e7daa5c3680ee7182b1'
+        ctx.LastProjectAccess.getLastProjectAccessTime
+          .withArgs(ctx.recentlyAccessProjectId)
+          .returns(Date.now() - 1)
         ctx.containers = [
           {
-            Name: '/project-old-container-name',
+            Name: '/project-69b72c66b1a8c2f5846b24a8-container-name',
             Id: 'old-container-id',
             Created: nowInSeconds - oneHourInSeconds - 100,
           },
           {
-            Name: '/project-new-container-name',
+            Name: '/project-69b72c66b1a8c2f5846b24a9-container-name',
             Id: 'new-container-id',
             Created: nowInSeconds - oneHourInSeconds + 100,
+          },
+          {
+            Name: `/project-${ctx.recentlyAccessProjectId}-container-name`,
+            Id: 'recent-access-container-id',
+            Created: nowInSeconds - 2 * oneHourInSeconds,
           },
           {
             Name: '/totally-not-a-project-container',
@@ -816,13 +833,28 @@ describe('DockerRunner', () => {
     it('should destroy old containers', ctx => {
       ctx.DockerRunner.destroyContainer.callCount.should.equal(1)
       ctx.DockerRunner.destroyContainer
-        .calledWith('project-old-container-name', 'old-container-id')
+        .calledWith(
+          'project-69b72c66b1a8c2f5846b24a8-container-name',
+          'old-container-id'
+        )
         .should.equal(true)
     })
 
     it('should not destroy new containers', ctx => {
       ctx.DockerRunner.destroyContainer
-        .calledWith('project-new-container-name', 'new-container-id')
+        .calledWith(
+          'project-69b72c66b1a8c2f5846b24a9-container-name',
+          'new-container-id'
+        )
+        .should.equal(false)
+    })
+
+    it('should not destroy old containers that were recently used', ctx => {
+      ctx.DockerRunner.destroyContainer
+        .calledWith(
+          'project-68494e7daa5c3680ee7182b1-container-name',
+          'recent-access-container-id'
+        )
         .should.equal(false)
     })
 

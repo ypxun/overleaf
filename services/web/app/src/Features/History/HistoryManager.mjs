@@ -50,7 +50,7 @@ function getFilestoreBlobURL(historyId, hash) {
 async function initializeProject(projectId) {
   const body = await fetchJson(`${settings.apis.project_history.url}/project`, {
     method: 'POST',
-    json: { historyId: projectId.toString() },
+    json: { historyId: projectId },
   })
   const historyId = body && body.project && body.project.id
   if (!historyId) {
@@ -194,6 +194,7 @@ async function requestBlob(historyId, hash, method = 'GET', range = '') {
   try {
     ;({ stream, response } = await fetchStreamWithResponse(url, {
       ...opts,
+      signal: AbortSignal.timeout(10 * 60 * 1000),
       basicAuth: {
         user: settings.apis.v1_history.user,
         password: settings.apis.v1_history.pass,
@@ -290,6 +291,19 @@ async function getLatestHistoryWithHistoryId(historyId) {
   )
 }
 
+async function ensureNoResyncPending(projectId) {
+  const { resyncPending } = await fetchJson(
+    `${settings.apis.project_history.url}/project/${projectId}/resync-pending`
+  )
+  if (resyncPending) throw new OError('broken history with pending resync')
+}
+
+async function getDebugInfo(projectId) {
+  return await fetchJson(
+    `${settings.apis.project_history.url}/project/${projectId}/debug-info`
+  )
+}
+
 /**
  * Get history changes since a given version
  *
@@ -299,7 +313,17 @@ async function getLatestHistoryWithHistoryId(historyId) {
  */
 async function getChanges(projectId, opts = {}) {
   const historyId = await getHistoryId(projectId)
+  return await getChangesWithHistoryId(historyId, opts)
+}
 
+/**
+ * Get history changes since a given version and historyId
+ *
+ * @param {string} historyId
+ * @param {object} [opts]
+ * @param {number} [opts.since] - The start version of changes to get
+ */
+async function getChangesWithHistoryId(historyId, opts = {}) {
   const url = new URL(`${HISTORY_V1_URL}/projects/${historyId}/changes`)
   if (opts.since) {
     url.searchParams.set('since', opts.since)
@@ -449,8 +473,11 @@ export default {
     requestBlobWithProjectId,
     getLatestHistory,
     getChanges,
+    getChangesWithHistoryId,
     getProjectBlobStats,
     getBlobStats,
     getLatestHistoryWithHistoryId,
+    ensureNoResyncPending,
+    getDebugInfo,
   },
 }

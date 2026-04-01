@@ -55,7 +55,6 @@ import { DetachCompileContext } from '@/shared/context/detach-compile-context'
 import { type CompileContext } from '@/shared/context/local-compile-context'
 import { EditorContext } from '@/shared/context/editor-context'
 import { Cobranding } from '@ol-types/cobranding'
-import { TutorialContext } from '@/shared/context/tutorial-context'
 import { EDITOR_SESSION_ID } from '@/features/pdf-preview/util/metrics'
 
 // these constants can be imported in tests instead of
@@ -67,8 +66,6 @@ export const USER_EMAIL = 'testuser@example.com'
 
 const defaultUserSettings = {
   ...defaultSettings,
-  enableNewEditor: false,
-  enableNewEditorLegacy: false,
   referencesSearchMode: 'simple',
 } satisfies UserSettings
 
@@ -309,25 +306,6 @@ export function makeEditorProvider({
     )
   }
   return EditorProvider
-}
-
-export const makeTutorialProvider = (opts?: {
-  inactiveTutorials: string[]
-}) => {
-  const TutorialProvider: FC<PropsWithChildren> = ({ children }) => {
-    const value = {
-      deactivateTutorial: () => {},
-      inactiveTutorials: opts?.inactiveTutorials ?? [],
-      currentPopup: null,
-      setCurrentPopup: () => {},
-    }
-    return (
-      <TutorialContext.Provider value={value}>
-        {children}
-      </TutorialContext.Provider>
-    )
-  }
-  return TutorialProvider
 }
 
 const makeReferencesProvider = () => {

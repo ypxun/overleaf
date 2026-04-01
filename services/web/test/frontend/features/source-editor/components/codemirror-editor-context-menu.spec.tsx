@@ -13,6 +13,7 @@ import { DetachCompileContext } from '@/shared/context/detach-compile-context'
 import { FileTreeDataContext } from '@/shared/context/file-tree-data-context'
 import PackageVersions from '../../../../../app/src/infrastructure/PackageVersions'
 import { mockProject } from '../helpers/mock-project'
+import { GlobalToasts } from '@/features/ide-react/components/global-toasts'
 
 const createPermissionsProvider = (
   permissions: Partial<Permissions>
@@ -162,6 +163,61 @@ describe('editor context menu', { scrollBehavior: false }, function () {
     cy.findByRole('menu').should('not.exist')
   })
 
+  it('should move the cursor when right-clicking a different position on the same line', function () {
+    grantClipboardPermissions()
+
+    const pasteContent = 'XX'
+    const scope = mockScope()
+
+    cy.mount(
+      <TestContainer>
+        <EditorProviders scope={scope}>
+          <CodeMirrorEditor />
+        </EditorProviders>
+      </TestContainer>
+    )
+
+    // Stub clipboard to return known content for pasting
+    cy.window().then(win => {
+      const getTypeStub = cy.stub()
+      getTypeStub
+        .withArgs('text/plain')
+        .resolves(new Blob([pasteContent], { type: 'text/plain' }))
+
+      cy.stub(win.navigator.clipboard, 'read').resolves([
+        {
+          types: ['text/plain'],
+          getType: getTypeStub,
+        },
+      ])
+      cy.stub(win.navigator.clipboard, 'readText').resolves(pasteContent)
+    })
+
+    cy.get('.cm-line').eq(16).as('line')
+    cy.get('@line').click()
+    cy.get('@line').type('aaaa bbbb')
+
+    // Right-click the left side of the line — opens context menu with cursor near start
+    cy.get('@line').rightclick('left')
+    cy.findByRole('menu').should('be.visible')
+
+    // Right-click the right side of the same line while menu is still open —
+    // cursor should move to the end of the line
+    cy.get('@line').rightclick('right')
+    cy.findByRole('menu').should('be.visible')
+
+    // Paste via context menu — content goes wherever the cursor is
+    cy.findByRole('menu').within(() => {
+      cy.findByRole('menuitem', { name: pasteLabelMatcher }).click()
+    })
+
+    // If cursor moved: "aaaa bbbbXX" (pasted at end)
+    cy.get('@line').should($line => {
+      const text = $line.text()
+      expect(text).to.equal('aaaa bbbb' + pasteContent)
+    })
+  })
+
   it('should should close when clicking outside the editor', function () {
     const scope = mockScope()
     const outsideEditorButtonName = 'Recompile'
@@ -183,7 +239,7 @@ describe('editor context menu', { scrollBehavior: false }, function () {
   })
 
   describe('when nothing is selected', function () {
-    it('should enable Cut, Copy, Paste, Suggest edits and disable Delete, Comment', function () {
+    it('should enable Cut, Copy, Paste, Suggest edits, Comment and disable Delete', function () {
       const scope = mockScope()
 
       cy.mount(
@@ -213,11 +269,7 @@ describe('editor context menu', { scrollBehavior: false }, function () {
           'aria-disabled',
           'true'
         )
-        cy.findByRole('menuitem', { name: /comment/i }).should(
-          'have.attr',
-          'aria-disabled',
-          'true'
-        )
+        cy.findByRole('menuitem', { name: /comment/i }).should('be.enabled')
         cy.findByRole('menuitem', { name: /suggest edits/i }).should(
           'be.enabled'
         )
@@ -659,6 +711,62 @@ describe('editor context menu', { scrollBehavior: false }, function () {
         cy.findByRole('menuitem', { name: /copy/i }).should('be.enabled')
         cy.findByRole('menuitem', { name: /comment/i }).should('not.exist')
       })
+    })
+  })
+
+  describe('when clipboard access is blocked', function () {
+    beforeEach(function () {
+      cy.window().then(win => {
+        const blocked = new DOMException('Not allowed', 'NotAllowedError')
+        cy.stub(win.navigator.clipboard, 'read').rejects(blocked)
+        cy.stub(win.navigator.clipboard, 'readText').rejects(blocked)
+      })
+    })
+
+    it('should show a toast when clicking Paste', function () {
+      const scope = mockScope()
+
+      cy.mount(
+        <TestContainer>
+          <EditorProviders scope={scope}>
+            <GlobalToasts />
+            <CodeMirrorEditor />
+          </EditorProviders>
+        </TestContainer>
+      )
+
+      cy.get('.cm-line').eq(10).rightclick()
+      cy.findByRole('menu').within(() => {
+        cy.findByRole('menuitem', { name: pasteLabelMatcher }).click()
+      })
+
+      cy.get('.global-toasts').should(
+        'contain.text',
+        'Use the shortcut key to paste'
+      )
+    })
+
+    it('should show a toast when clicking Paste with formatting', function () {
+      const scope = mockScope()
+
+      cy.mount(
+        <TestContainer>
+          <EditorProviders scope={scope}>
+            <GlobalToasts />
+            <CodeMirrorEditor />
+          </EditorProviders>
+        </TestContainer>
+      )
+
+      cy.get('.cm-line').eq(10).rightclick()
+      cy.findByRole('menu').within(() => {
+        cy.findByRole('menuitem', { name: /paste with formatting/i }).click()
+      })
+
+      cy.get('.global-toasts').should(
+        'contain.text',
+        'Use the shortcut key to paste'
+      )
     })
   })
 

@@ -104,6 +104,31 @@ async function getAllDeletedDocs(projectId) {
 }
 
 /**
+ *
+ * @param {string|ObjectId} projectId
+ * @return {Promise<{_id: string, version: number}[]>}
+ */
+async function getAllDocVersions(projectId) {
+  const url = new URL(settings.apis.docstore.url)
+  url.pathname = path.posix.join(
+    'project',
+    projectId.toString(),
+    'doc-versions'
+  )
+  try {
+    return await fetchJson(url, { signal: AbortSignal.timeout(TIMEOUT) })
+  } catch (error) {
+    if (error instanceof RequestFailedError) {
+      throw new OError('docstore api responded with non-success code', {
+        projectId,
+        status: error.response.status,
+      })
+    }
+    throw OError.tag(error, 'could not get doc versions from docstore')
+  }
+}
+
+/**
  * @param {string} projectId
  */
 async function getCommentThreadIds(projectId) {
@@ -238,7 +263,13 @@ async function isDocDeleted(projectId, docId) {
  * @param ranges
  * @return {Promise<{modified: *, rev: *}>}
  */
-async function updateDoc(projectId, docId, lines, version, ranges) {
+async function updateDoc(
+  projectId,
+  docId,
+  lines,
+  version,
+  /** @type {any} */ ranges
+) {
   const url = new URL(settings.apis.docstore.url)
   url.pathname = path.posix.join('project', projectId, 'doc', docId)
   try {
@@ -362,6 +393,7 @@ export default {
   destroyProject: callbackify(destroyProject),
   promises: {
     deleteDoc,
+    getAllDocVersions,
     getAllDocs,
     getAllDeletedDocs,
     getAllRanges,

@@ -62,12 +62,12 @@ import { SubscriptionCreationPreview } from '../../../types/subscription/subscri
 import { DefaultNavbarMetadata } from '@/shared/components/types/default-navbar-metadata'
 import { FooterMetadata } from '@/shared/components/types/footer-metadata'
 import type { ScriptLogType } from '../../../modules/admin-panel/frontend/js/features/script-logs/script-log'
-import { ActiveExperiment } from './labs-utils'
 import { Subscription as AdminSubscription } from '../../../types/admin/subscription'
 import { AdminCapability } from '../../../types/admin-capabilities'
 import { AlgoliaConfig } from '../../../modules/algolia-search/frontend/js/types'
 import { WritefullPublicEnv } from '@wf/domain/writefull-public-env'
 import { UserNotificationPreferences } from '../../../types/notifications'
+import { SharingPermissions } from '../../../modules/sharing-permissions/app/src/types'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -151,6 +151,7 @@ export interface Meta {
   'ol-groupSubscriptionsPendingEnrollment': PendingGroupSubscriptionEnrollment[]
   'ol-groupsAndEnterpriseBannerVariant': GroupsAndEnterpriseBannerVariant
   'ol-hasAiAssistViaWritefull': boolean
+  'ol-hasAiFreeTier': boolean
   'ol-hasGroupSSOFeature': boolean
   'ol-hasIndividualPaidSubscription': boolean
   'ol-hasManagedUsersFeature': boolean
@@ -159,6 +160,7 @@ export interface Meta {
   'ol-hasSplitTestWriteAccess': boolean
   'ol-hasSubscription': boolean
   'ol-hasTrackChangesFeature': boolean
+  'ol-hasUnlimitedAi': boolean
   'ol-hasWriteAccess': boolean
   'ol-hideLinkingWidgets': boolean // CI only
   'ol-historyBlobStats': {
@@ -191,7 +193,15 @@ export interface Meta {
   'ol-itm_referrer': string
   'ol-joinedGroupName': string
   'ol-labs': boolean
-  'ol-labsExperiments': ActiveExperiment[] | undefined
+  'ol-labsExperiments': Array<{
+    name: string
+    title: string
+    description: string
+    icon: string
+    surveyLink: string
+    isFull: boolean
+    optedIn: boolean
+  }>
   'ol-languages': SpellCheckLanguage[]
   'ol-learnedWords': string[]
   'ol-legacyEditorThemes': { name: string; dark: boolean }[]
@@ -220,7 +230,6 @@ export interface Meta {
   'ol-notificationsInstitution': InstitutionType[]
   'ol-oauthProviders': OAuthProviders
   'ol-odcData': OnboardingFormData
-  'ol-onAiFreeTrial': boolean
   'ol-otMigrationStage': number
   'ol-overallThemes': OverallThemeMeta[]
   'ol-ownerIsManaged': boolean
@@ -266,6 +275,7 @@ export interface Meta {
   'ol-script-logs': ScriptLogType[]
   'ol-settingsGroupSSO': { enabled: boolean } | undefined
   'ol-settingsPlans': Plan[]
+  'ol-sharingPermissions': SharingPermissions
   'ol-shouldAllowEditingDetails': boolean
   'ol-shouldLoadHotjar': boolean
   'ol-showAiFeatures': boolean

@@ -425,8 +425,19 @@ module.exports = {
   },
 
   aiFeatures: {
-    freeTrialQuota: 'basic',
+    freeQuota: 'free',
+    standardQuota: 'standard',
+    basicQuota: 'basic',
     unlimitedQuota: 'unlimited',
+  },
+
+  quotaGrants: {
+    ai: {
+      free: 0,
+      basic: 0,
+      standard: 0,
+      unlimited: 0,
+    },
   },
 
   groupPlanModalOptions: {
@@ -1093,6 +1104,8 @@ module.exports = {
   managedUsers: {
     enabled: false,
   },
+
+  enablePandocConversions: process.env.ENABLE_PANDOC_CONVERSIONS === 'true',
 }
 
 module.exports.mergeWith = function (overrides) {

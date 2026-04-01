@@ -329,11 +329,23 @@ async function unsubscribe(req, res, next) {
   })
 }
 
+const refProviderSettingsSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    groups: z.array(z.object({ id: z.string() })).optional(),
+    disablePersonalLibrary: z.boolean().optional(),
+    migrated: z.boolean().optional(),
+  })
+  .optional()
+
 const updateUserSettingsSchema = z.object({
   body: z
     .object({
       first_name: z.string().max(255).nullish(),
       last_name: z.string().max(255).nullish(),
+      zotero: refProviderSettingsSchema,
+      mendeley: refProviderSettingsSchema,
+      papers: refProviderSettingsSchema,
     })
     .passthrough(),
   // TODO: complete the schema and remove the passthrough
@@ -410,11 +422,17 @@ async function updateUserSettings(req, res, next) {
     const mode = body.referencesSearchMode === 'simple' ? 'simple' : 'advanced'
     user.ace.referencesSearchMode = mode
   }
-  if (body.enableNewEditor != null) {
-    user.ace.enableNewEditorStageFour = Boolean(body.enableNewEditor)
-  }
   if (body.darkModePdf != null) {
     user.ace.darkModePdf = Boolean(body.darkModePdf)
+  }
+  if (body.zotero != null) {
+    user.ace.zotero = { ...user.ace.zotero, ...body.zotero }
+  }
+  if (body.mendeley != null) {
+    user.ace.mendeley = { ...user.ace.mendeley, ...body.mendeley }
+  }
+  if (body.papers != null) {
+    user.ace.papers = { ...user.ace.papers, ...body.papers }
   }
   await user.save()
 
