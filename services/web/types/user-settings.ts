@@ -15,6 +15,7 @@ export type UserSettings = {
   autoComplete: boolean
   autoPairDelimiters: boolean
   syntaxValidation: boolean
+  previewTabs: boolean
   editorTheme: string
   editorLightTheme: string
   editorDarkTheme: string
@@ -26,6 +27,7 @@ export type UserSettings = {
   mathPreview: boolean
   referencesSearchMode: 'advanced' | 'simple'
   breadcrumbs: boolean
+  nonBlinkingCursor: boolean
   darkModePdf: boolean
   zotero: RefProviderSettings
   mendeley: RefProviderSettings

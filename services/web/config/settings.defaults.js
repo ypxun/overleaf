@@ -327,6 +327,8 @@ module.exports = {
   // that are sent out, generated links, etc.
   siteUrl: (siteUrl = process.env.PUBLIC_URL || 'http://127.0.0.1:3000'),
 
+  isCodeSpace: process.env.IS_CODE_SPACE === 'true',
+
   lockManager: {
     lockTestInterval: intFromEnv('LOCK_MANAGER_LOCK_TEST_INTERVAL', 50),
     maxTestInterval: intFromEnv('LOCK_MANAGER_MAX_TEST_INTERVAL', 1000),
@@ -741,11 +743,11 @@ module.exports = {
 
   // Maximum Delay before sending comment mention notifications
   notificationMaxDelay:
-    parseInt(process.env.COMMENT_MENTION_DELAY_MINUTES) || 30 * 60 * 1000, // 30 minutes
+    parseInt(process.env.COMMENT_MENTION_DELAY_MS) || 30 * 60 * 1000, // 30 minutes
 
   // Comment mention notifications will wait at least this long before being sent
   notificationMinDelay:
-    parseInt(process.env.COMMENT_MENTION_DELAY_MINUTES) || 10 * 60 * 1000, // 10 minutes
+    parseInt(process.env.COMMENT_MENTION_DELAY_MS) || 10 * 60 * 1000, // 10 minutes
 
   // Maximum JSON size in HTTP requests
   // We should be able to process twice the max doc length, to allow for

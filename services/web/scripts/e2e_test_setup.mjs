@@ -28,13 +28,20 @@ async function createUser(email) {
   const features = email.startsWith('free+')
     ? Settings.defaultFeatures
     : Settings.features.professional
+  const isAdmin = email.startsWith('admin+')
+  let adminRoles = []
+  if (email.startsWith('admin+finance')) {
+    adminRoles = ['finance']
+  } else if (isAdmin) {
+    adminRoles = ['engineering']
+  }
   await db.users.updateOne(
     { _id: user._id },
     {
       $set: {
         // Set admin flag.
-        isAdmin: email.startsWith('admin+'),
-        adminRoles: email.startsWith('admin+') ? ['engineering'] : [],
+        isAdmin,
+        adminRoles,
         // Disable spell-checking for performance and flakiness reasons.
         'ace.spellCheckLanguage': '',
         // Override features.
@@ -78,7 +85,7 @@ async function deleteUser(email) {
   await UserDeleter.promises.expireDeletedUser(user._id)
 }
 
-async function createProjectWithOldHistoryId(userId) {
+export async function createProjectWithOldHistoryId(userId) {
   const projectName = 'old history id'
   const historyId = parseInt(
     await HistoryManager.promises.initializeProject(),
@@ -130,7 +137,7 @@ async function purgeNewUsers() {
   )
 }
 
-async function provisionSplitTests() {
+export async function provisionSplitTests() {
   const backup = Path.join(
     MONOREPO,
     'backup',
@@ -206,12 +213,7 @@ async function main() {
   await Promise.all([purgeNewUsers(), provisionUsers(), provisionSplitTests()])
 }
 
-await main()
-await GracefulShutdown.gracefulShutdown(
-  {
-    close(cb) {
-      cb()
-    },
-  },
-  'SIGTERM'
-)
+if (import.meta.main) {
+  await main()
+  await GracefulShutdown.gracefulShutdown()
+}

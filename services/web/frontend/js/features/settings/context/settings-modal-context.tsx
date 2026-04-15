@@ -3,6 +3,7 @@ import { useLayoutContext } from '@/shared/context/layout-context'
 import AutoCloseBracketsSetting from '@/features/settings/components/editor-settings/auto-close-brackets-setting'
 import AutoCompleteSetting from '@/features/settings/components/editor-settings/auto-complete-setting'
 import CodeCheckSetting from '@/features/settings/components/editor-settings/code-check-setting'
+import PreviewTabsSetting from '@/features/settings/components/editor-settings/preview-tabs-setting'
 import KeybindingSetting from '@/features/settings/components/editor-settings/keybinding-setting'
 import PDFViewerSetting from '@/features/settings/components/editor-settings/pdf-viewer-setting'
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
@@ -10,6 +11,7 @@ import SpellCheckSetting from '@/features/settings/components/editor-settings/sp
 import DictionarySetting from '@/features/settings/components/editor-settings/dictionary-setting'
 import { useTranslation } from 'react-i18next'
 import BreadcrumbsSetting from '@/features/settings/components/editor-settings/breadcrumbs-setting'
+import NonBlinkingCursorSetting from '@/features/settings/components/editor-settings/non-blinking-cursor-setting'
 import MathPreviewSetting from '@/features/settings/components/editor-settings/math-preview-setting'
 import RootDocumentSetting from '@/features/settings/components/compiler-settings/root-document-setting'
 import CompilerSetting from '@/features/settings/components/compiler-settings/compiler-setting'
@@ -90,6 +92,7 @@ export const SettingsModalProvider: FC<React.PropsWithChildren> = ({
   const { leftMenuShown, setLeftMenuShown } = useLayoutContext()
 
   const hasEmailNotifications = useFeatureFlag('email-notifications')
+  const hasEditorTabs = useFeatureFlag('editor-tabs')
 
   const allSettingsTabs: SettingsEntry[] = useMemo(
     () => [
@@ -110,8 +113,17 @@ export const SettingsModalProvider: FC<React.PropsWithChildren> = ({
                 component: <AutoCloseBracketsSetting />,
               },
               {
+                key: 'nonBlinkingCursor',
+                component: <NonBlinkingCursorSetting />,
+              },
+              {
                 key: 'syntaxValidation',
                 component: <CodeCheckSetting />,
+              },
+              {
+                key: 'previewTabs',
+                component: <PreviewTabsSetting />,
+                hidden: !hasEditorTabs,
               },
               {
                 key: 'mode',
@@ -264,7 +276,7 @@ export const SettingsModalProvider: FC<React.PropsWithChildren> = ({
         hidden: !isOverleaf,
       },
     ],
-    [t, overallTheme, hasEmailNotifications, isOverleaf]
+    [t, overallTheme, hasEmailNotifications, isOverleaf, hasEditorTabs]
   )
 
   const settingsTabs = useMemo(
