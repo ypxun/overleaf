@@ -1,4 +1,4 @@
-import { User, Features } from '../../../types/user'
+import { User, Features, FeatureUsage } from '../../../types/user'
 import { User as MinimalUser } from '../../../types/admin/user'
 import { User as ManagedUser } from '../../../types/group-management/user'
 import { UserSettings } from '../../../types/user-settings'
@@ -68,6 +68,7 @@ import { AlgoliaConfig } from '../../../modules/algolia-search/frontend/js/types
 import { WritefullPublicEnv } from '@wf/domain/writefull-public-env'
 import { UserNotificationPreferences } from '../../../types/notifications'
 import { SharingPermissions } from '../../../modules/sharing-permissions/app/src/types'
+import { FullHistoryFailure } from '@ol-types/history/projectHistory'
 
 export interface Meta {
   'ol-ExposedSettings': ExposedSettings
@@ -127,6 +128,7 @@ export interface Meta {
   'ol-error': { name: string } | undefined
   'ol-errorType': string | undefined
   'ol-expired': boolean
+  'ol-featureUsage': FeatureUsage
   'ol-features': Features
   'ol-footer': FooterMetadata
   'ol-fromPlansPage': boolean
@@ -183,6 +185,7 @@ export interface Meta {
   'ol-isCollectionMethodManual': boolean
   'ol-isExternalAuthenticationSystemUsed': boolean
   'ol-isManagedAccount': boolean
+  'ol-isManagedGroupAdmin': boolean
   'ol-isProfessional': boolean
   'ol-isRegisteredViaGoogle': boolean
   'ol-isRestrictedTokenMember': boolean
@@ -249,6 +252,7 @@ export interface Meta {
   'ol-primaryEmail': { email: string; confirmed: boolean }
   'ol-project': any // TODO
   'ol-projectEntityCounts': { files: number; docs: number }
+  'ol-projectHistoryFailures': FullHistoryFailure[]
   'ol-projectName': string
   'ol-projectSyncSuccessMessage': string
   'ol-projectTags': Tag[]

@@ -193,6 +193,10 @@ const rateLimiters = {
     points: 10,
     duration: 60,
   }),
+  documentExport: new RateLimiter('document-export', {
+    points: 5,
+    duration: 60,
+  }),
 }
 
 async function initialize(webRouter, privateApiRouter, publicApiRouter) {
@@ -589,6 +593,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     RateLimiterMiddleware.rateLimit(rateLimiters.compileProjectHttp, {
       params: ['Project_id'],
     }),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     CompileController.compile
   )
@@ -601,6 +606,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
 
   webRouter.get(
     '/project/:Project_id/output/cached/output.overleaf.json',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     ClsiCacheController.getLatestBuildFromCache
   )
@@ -680,11 +686,13 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   webRouter.get(
     '/project/:Project_id/sync/code',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     CompileController.proxySyncCode
   )
   webRouter.get(
     '/project/:Project_id/sync/pdf',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     CompileController.proxySyncPdf
   )
@@ -760,6 +768,18 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     ExportsController.exportDownload
   )
 
+  if (Settings.enablePandocConversions) {
+    webRouter.get(
+      '/project/:Project_id/download/conversion/:type',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiters.documentExport, {
+        params: ['Project_id'],
+      }),
+      AuthorizationMiddleware.ensureUserCanReadProject,
+      ProjectDownloadsController.exportProjectConversion
+    )
+  }
+
   webRouter.get(
     '/Project/:Project_id/download/zip',
     RateLimiterMiddleware.rateLimit(rateLimiters.zipDownload, {
@@ -778,6 +798,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
 
   webRouter.get(
     '/project/:project_id/metadata',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     Settings.allowAnonymousReadAndWriteSharing
       ? (req, res, next) => {
@@ -788,6 +809,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
   webRouter.post(
     '/project/:project_id/doc/:doc_id/metadata',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     Settings.allowAnonymousReadAndWriteSharing
       ? (req, res, next) => {

@@ -2,15 +2,21 @@ import { useCallback, useEffect, useState } from 'react'
 import { useProjectContext } from '@/shared/context/project-context'
 import { getJSON, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
-import type { NotificationPreferencesSchema } from '../../../../../modules/notifications/app/src/types.js'
+import type {
+  GlobalNotificationPreferencesSchema,
+  NotificationPreferencesSchema,
+} from '../../../../../modules/notifications/app/src/types.js'
+import { sendMB } from '@/infrastructure/event-tracking'
+import { useIdeReactContext } from '@/features/ide-react/context/ide-react-context'
 
-export type NotificationLevel = 'all' | 'replies' | 'off'
+export type SettableNotificationLevel = 'all' | 'replies' | 'off'
+export type NotificationLevel = SettableNotificationLevel | 'global-off'
 
 /**
  * Map UI notification level to backend preferences
  */
 function levelToPreferences(
-  level: NotificationLevel
+  level: SettableNotificationLevel
 ): NotificationPreferencesSchema {
   switch (level) {
     case 'all':
@@ -53,8 +59,12 @@ function levelToPreferences(
  * Map backend preferences to UI notification level
  */
 function preferencesToLevel(
-  preferences: NotificationPreferencesSchema
+  preferences: GlobalNotificationPreferencesSchema
 ): NotificationLevel {
+  if (preferences.muteAllNotifications) {
+    return 'global-off'
+  }
+
   // If all notifications are off
   if (
     !preferences.commentOnOwnProject &&
@@ -83,13 +93,14 @@ function preferencesToLevel(
 
 export function useProjectNotificationPreferences() {
   const { projectId } = useProjectContext()
+  const { permissionsLevel } = useIdeReactContext()
   const [notificationLevel, setNotificationLevel] =
     useState<NotificationLevel>('all')
   const [isLoading, setIsLoading] = useState(true)
 
   // Load preferences on mount
   useEffect(() => {
-    getJSON<NotificationPreferencesSchema>(
+    getJSON<GlobalNotificationPreferencesSchema>(
       `/notifications/preferences/project/${projectId}`
     )
       .then(prefs => {
@@ -100,14 +111,19 @@ export function useProjectNotificationPreferences() {
   }, [projectId])
 
   const setLevel = useCallback(
-    (level: NotificationLevel) => {
+    (level: SettableNotificationLevel) => {
       setNotificationLevel(level)
       const preferences = levelToPreferences(level)
+      sendMB('setting-changed', {
+        changedSetting: 'projectEmailNotifications',
+        changedSettingVal: level,
+        projectRole: permissionsLevel,
+      })
       postJSON(`/notifications/preferences/project/${projectId}`, {
         body: preferences,
       }).catch(debugConsole.error)
     },
-    [projectId]
+    [projectId, permissionsLevel]
   )
 
   return {

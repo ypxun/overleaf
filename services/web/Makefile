@@ -99,11 +99,11 @@ test_module: test_unit_module test_acceptance_module
 test_unit: test_unit_all
 test_unit_all: export COMPOSE_PROJECT_NAME=unit_test_all_$(BUILD_DIR_NAME)
 test_unit_all: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit npm run test:unit:all
+	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:all
 
 test_unit_all_silent: export COMPOSE_PROJECT_NAME=unit_test_all_$(BUILD_DIR_NAME)
 test_unit_all_silent: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit npm run test:unit:all:silent
+	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:all:silent
 
 test_unit_app: export COMPOSE_PROJECT_NAME=unit_test_$(BUILD_DIR_NAME)
 test_unit_app: mongo_migrations_for_tests
@@ -112,16 +112,16 @@ test_unit_app: mongo_migrations_for_tests
 test_unit_parallel: export JUNIT_ROOT_SUITE_NAME = ESM unit tests - parallel
 test_unit_parallel: export COMPOSE_PROJECT_NAME=unit_test_parallel_$(BUILD_DIR_NAME)
 test_unit_parallel: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit npm run test:unit:parallel
+	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:parallel
 
 test_unit_sequential: export JUNIT_ROOT_SUITE_NAME = ESM unit tests - sequential
 test_unit_sequential: export COMPOSE_PROJECT_NAME=unit_test_sequential_$(BUILD_DIR_NAME)
 test_unit_sequential: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit npm run test:unit:sequential
+	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:sequential
 
 test_unit_watch: export COMPOSE_PROJECT_NAME=unit_test_watch_$(BUILD_DIR_NAME)
 test_unit_watch: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit npm run test:unit:watch
+	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:watch
 
 TEST_SUITES = $(sort $(filter-out \
 	$(wildcard test/unit/src/helpers/*), \
@@ -155,7 +155,7 @@ test_unit_module: mongo_migrations_for_tests
 	$(MAKE) modules/$(MODULE_NAME)/test_unit
 
 mongo_migrations_for_tests:
-	$(DOCKER_COMPOSE) run --rm --workdir /overleaf/tools/migrations test_unit npm run migrations -- migrate -t saas
+	$(DOCKER_COMPOSE) run --rm --workdir /overleaf/tools/migrations test_unit yarn run migrations migrate -t saas
 
 #
 # Frontend tests
@@ -181,6 +181,17 @@ TEST_FRONTEND_CT_VARIANTS = \
 	test_frontend_ct_editor_other \
 	test_frontend_ct_editor_visual \
 
+TEST_FRONTEND_CT_TARGETS = \
+	$(TEST_FRONTEND_CT_VARIANTS) \
+	build_test_frontend_ct \
+	test_frontend_ct_ui \
+
+$(TEST_FRONTEND_CT_TARGETS): export USER_UID=$(shell id -u)
+$(TEST_FRONTEND_CT_TARGETS): export USER_GID=$(shell id -g)
+
+test_frontend_ct_ui:
+	docker compose -f docker-compose.cypress.yml run --rm cypress run cypress:open-ct -- --browser chrome
+
 #
 # Writefull tests
 #
@@ -192,7 +203,8 @@ test_writefull:
 
 # Note: The below cypress targets are for CI only
 build_test_frontend_ct:
-	docker run --rm --volume /dev/shm:/dev/shm --user root $(IMAGE_CI) bash -ec 'for path in /overleaf/services/web/cypress/results /overleaf/services/web/node_modules/.cache; do mkdir -p $$path; chown -R node:node $$path; done && tar -cC / overleaf | tar -xC /dev/shm'
+	$(DOCKER_COMPOSE) build test_frontend_ct
+	docker run --rm --volume /dev/shm:/dev/shm --user root $(IMAGE_CI) bash -ec 'for path in /overleaf/services/web/cypress/results /overleaf/services/web/cypress/support /overleaf/services/web/node_modules/.cache; do mkdir -p $$path; chown -R node:node $$path; done && tar -cC / overleaf | tar -xC /dev/shm'
 
 test_frontend_ct_core_other: export CYPRESS_DOWNLOADS=./cypress/downloads/core
 test_frontend_ct_core_other: export CYPRESS_RESULTS=./cypress/results/core
@@ -237,10 +249,10 @@ TEST_ACCEPTANCE_APP :=  \
 
 ifeq ($(DEBUG),true)
 TEST_ACCEPTANCE_DEBUG_PORT := -p 127.0.0.1:19999:19999
-TEST_ACCEPTANCE_NPM_SCRIPT := npm run --silent test:acceptance:app:debug
+TEST_ACCEPTANCE_YARN_SCRIPT := yarn run --silent test:acceptance:app:debug
 else
 TEST_ACCEPTANCE_DEBUG_PORT :=
-TEST_ACCEPTANCE_NPM_SCRIPT := npm run --silent test:acceptance:app
+TEST_ACCEPTANCE_YARN_SCRIPT := yarn run --silent test:acceptance:app
 endif
 
 test_acceptance_app: $(TEST_ACCEPTANCE_APP)
@@ -255,7 +267,7 @@ test_acceptance_app_server_pro: export COMPOSE_PROJECT_NAME=acceptance_test_serv
 test_acceptance_app_server_pro: export OVERLEAF_CONFIG=$(CFG_SERVER_PRO)
 
 $(TEST_ACCEPTANCE_APP):
-	$(DOCKER_COMPOSE) run --rm $(TEST_ACCEPTANCE_DEBUG_PORT) test_acceptance $(TEST_ACCEPTANCE_NPM_SCRIPT)
+	$(DOCKER_COMPOSE) run --rm $(TEST_ACCEPTANCE_DEBUG_PORT) test_acceptance $(TEST_ACCEPTANCE_YARN_SCRIPT)
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # We are using _make magic_ for turning these file-targets into calls to
@@ -323,14 +335,14 @@ test_acceptance_module_maybe_in_server_pro: export BASE_CONFIG=$(CFG_SERVER_PRO)
 # Either the grep will find and emit the module, or exits with code 1, which
 #  we handle with a fallback to a noop make target.
 # Run the node command in a docker compose container which provides the needed
-#  npm dependencies (from disk in dev-env or from the CI image in CI).
+#  yarn dependencies (from disk in dev-env or from the CI image in CI).
 # Pick the test_unit service which is very light-weight -- the test_acceptance
 #  service would start mongo/redis.
 $(TEST_ACCEPTANCE_MODULE_MAYBE_IN): test_acceptance_module_maybe_in_%:
 	$(MAKE) $(shell \
 		OVERLEAF_CONFIG=$(BASE_CONFIG) \
 		$(DOCKER_COMPOSE) run --rm test_unit \
-		node test/acceptance/getModuleTargets test_acceptance_$* \
+		yarn node test/acceptance/getModuleTargets test_acceptance_$* \
 		| grep -e /$(MODULE_NAME)/ || echo test_acceptance_module_noop LABEL=$* \
 	)
 
@@ -353,7 +365,7 @@ $(TEST_ACCEPTANCE_MODULES_MERGED_INNER): %/test_acceptance_merged_inner: %/Makef
 test_acceptance_modules_merged_inner:
 	$(MAKE) $(shell \
 		OVERLEAF_CONFIG=$(BASE_CONFIG) \
-		node test/acceptance/getModuleTargets test_acceptance_merged_inner \
+		yarn node test/acceptance/getModuleTargets test_acceptance_merged_inner \
 	)
 
 # inner loop for running saas tests in parallel
@@ -376,7 +388,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_INNER_SPLIT = \
 $(TEST_ACCEPTANCE_MODULES_MERGED_INNER_SPLIT):
 	$(MAKE) $(shell \
 		OVERLEAF_CONFIG=$(BASE_CONFIG) \
-		node test/acceptance/getModuleTargets test_acceptance_merged_inner \
+		yarn node test/acceptance/getModuleTargets test_acceptance_merged_inner \
 		| tail -n+$(START) | head -n 10 \
 		| grep -e . || echo no_more_targets \
 	)
@@ -405,7 +417,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS = \
 	test_acceptance_modules_merged_server_pro \
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS):
-	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner
+	$(DOCKER_COMPOSE) run --rm test_acceptance yarn exec make test_acceptance_modules_merged_inner
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # outer loop for running saas tests in parallel
@@ -427,7 +439,7 @@ $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export BASE_CONFIG = $(CFG_SAAS)
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export JUNIT_ROOT_SUITE_NAME = SaaS modules acceptance tests
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): test_acceptance_modules_merged_saas_%:
-	$(DOCKER_COMPOSE) run --rm test_acceptance make test_acceptance_modules_merged_inner_$*
+	$(DOCKER_COMPOSE) run --rm test_acceptance yarn exec make test_acceptance_modules_merged_inner_$*
 	$(DOCKER_COMPOSE) down -v -t 0
 
 test_acceptance_modules: $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS)
@@ -453,12 +465,12 @@ ci:
 
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
-RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/web/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ -w /overleaf $(IMAGE_CI) npm run --silent
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.14.1 npm run --silent
+RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/web/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ -w /overleaf $(IMAGE_CI) yarn run --silent
+RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.14.1 corepack yarn run --silent
 
 ORG_PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN_LINT_FORMAT ?= \
-	docker run --rm --env BRANCH_NAME --env CI --env COMMIT_SHA --env MONOREPO --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume ${PWD}/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ ${IMAGE_CI}
+	docker run --rm --env BRANCH_NAME --env CI --env COMMIT_SHA --env MONOREPO --env PATH=/overleaf/node_modules/.bin:$(ORG_PATH) --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume ${PWD}/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ ${IMAGE_CI}
 
 NODE_MODULES_PATH := ${PATH}:${PWD}/node_modules/.bin:/overleaf/services/web/node_modules/.bin
 WITH_NODE_MODULES_PATH = \
@@ -503,20 +515,23 @@ $(WITH_CACHE_FOLDER): ../../node_modules/.cache/stylelint/
 lint: lint_eslint
 lint_eslint:
 ifeq ($(CI),true)
-	-npm run lint -- --format json --output-file data/reports/eslint.json
+	-yarn run lint --format json --output-file data/reports/eslint.json
 	sed -i 's_"filePath":"/overleaf_"filePath":"$(MONOREPO)_g' data/reports/eslint.json
 else
-	npm run lint
+	yarn run lint
 endif
 
 lint: lint_stylelint
 lint_stylelint:
 ifeq ($(CI),true)
-	-npm run lint:styles -- --formatter json --output-file data/reports/stylelint.json
+	-yarn run lint:styles --formatter json --output-file data/reports/stylelint.json
 	sed -i 's_"source":"/overleaf_"source":"$(MONOREPO)_g' data/reports/stylelint.json
 else
-	npm run lint:styles
+	yarn run lint:styles
 endif
+
+lint_stylelint_fix:
+	npm run --silent lint:styles:fix
 
 lint: lint_pug
 lint_pug:
@@ -546,24 +561,24 @@ lint_overleafModuleImports:
 
 lint: typecheck_frontend
 typecheck_frontend:
-	npm run --silent type-check
+	yarn run --silent type-check
 
 lint: typecheck_backend
 typecheck_backend:
-	npm run --silent type-check:backend
+	yarn run --silent type-check:backend
 
 lint_in_docker:
 	$(RUN_LINT_FORMAT) make lint -j2 --output-sync
 
 format: format_js
 format_js:
-	$(RUN_LINTING_MONOREPO) format -- services/web
+	$(RUN_LINTING_MONOREPO) format services/web
 
 format_ci:
-	$(RUN_LINTING_CI_MONOREPO) format -- services/web
+	$(RUN_LINTING_CI_MONOREPO) format services/web
 
 format_fix:
-	$(RUN_LINTING_MONOREPO) format:fix -- services/web
+	$(RUN_LINTING_MONOREPO) format:fix services/web
 
 format_styles:
 	$(RUN_LINTING_MONOREPO) format:styles
@@ -584,7 +599,7 @@ format_jenkins_fix:
 	$(RUN_LINTING_MONOREPO) format:jenkins:fix
 
 format_in_docker:
-	$(RUN_LINT_FORMAT) npm run --prefix /overleaf format -- services/web
+	$(RUN_LINT_FORMAT) bash -c 'cd /overleaf && yarn run format services/web'
 
 SHELLCHECK_OPTS = \
 	--shell=bash \
@@ -617,7 +632,7 @@ IMAGE_REPO_FINAL ?= $(IMAGE_REPO):$(BRANCH_NAME_TAG_SAFE)-$(BUILD_NUMBER)
 IMAGE_SCRATCH ?= $(IMAGE_REPO):do-not-use-this-tag-for-deploys--it-is-used-for-early-pushes-in-ci
 IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
 	$(MONOREPO)/package.json \
-	$(MONOREPO)/package-lock.json \
+	$(MONOREPO)/yarn.lock \
 	$(MONOREPO)/libraries/access-token-encryptor/package.json \
   $(MONOREPO)/libraries/eslint-plugin/package.json \
   $(MONOREPO)/libraries/fetch-utils/package.json \
@@ -634,6 +649,7 @@ IMAGE_CACHE ?= $(IMAGE_REPO):cache-$(shell cat \
   $(MONOREPO)/libraries/stream-utils/package.json \
   $(MONOREPO)/libraries/validation-tools/package.json \
 	$(MONOREPO)/services/web/package.json \
+	$(MONOREPO)/services/web/scripts/fetch-pyodide-packages.mjs \
 	$(MONOREPO)/patches/* \
 | sha256sum | cut -d '-' -f1)
 
@@ -712,9 +728,10 @@ tar:
 	COMPOSE_PROJECT_NAME=tar_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) down -v -t 0
 
 build_storybook:
-	npm run lezer-latex:generate
+	yarn run lezer-latex:generate
 	mkdir -p data/storybook/
-	npm run build-storybook -- --output-dir data/storybook/$(BRANCH_NAME) --loglevel warn --quiet
+	rm -rf data/storybook/$(BRANCH_NAME)
+	yarn run build-storybook --output-dir data/storybook/$(BRANCH_NAME) --loglevel warn --quiet
 
 storybook_index:
 	mkdir -p data/storybook/

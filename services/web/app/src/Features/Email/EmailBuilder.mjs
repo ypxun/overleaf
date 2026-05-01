@@ -3,7 +3,7 @@ import settings from '@overleaf/settings'
 import moment from 'moment'
 import EmailMessageHelper from './EmailMessageHelper.mjs'
 import StringHelper from '../Helpers/StringHelper.mjs'
-import BaseWithHeaderEmailLayout from './Layouts/BaseWithHeaderEmailLayout.mjs'
+import BaseEmailLayout from './Layouts/BaseEmailLayout.mjs'
 import SpamSafe from './SpamSafe.mjs'
 import ctaEmailBody from './Bodies/cta-email.mjs'
 import NoCTAEmailBody from './Bodies/NoCTAEmailBody.mjs'
@@ -38,6 +38,12 @@ function _emailBodyPlainText(content, opts, ctaEmail) {
     emailBody += settings.email.template.customFooter
   }
 
+  const footerMessage = content.footerMessage(opts, true)
+  if (footerMessage) {
+    emailBody += `\r\n\r\n`
+    emailBody += footerMessage
+  }
+
   return emailBody
 }
 
@@ -62,11 +68,17 @@ function ctaTemplate(content) {
   if (!content.gmailGoToAction) {
     content.gmailGoToAction = () => {}
   }
+  if (!content.footerMessage) {
+    content.footerMessage = () => {}
+  }
   return {
     subject(opts) {
       return content.subject(opts)
     },
-    layout: BaseWithHeaderEmailLayout,
+    layout: BaseEmailLayout,
+    footerMessage(opts) {
+      return content.footerMessage(opts)
+    },
     plainTextTemplate(opts) {
       return _emailBodyPlainText(content, opts, true)
     },
@@ -96,7 +108,7 @@ function NoCTAEmailTemplate(content) {
     subject(opts) {
       return content.subject(opts)
     },
-    layout: BaseWithHeaderEmailLayout,
+    layout: BaseEmailLayout,
     plainTextTemplate(opts) {
       return `\
 ${content.greeting(opts)}
@@ -127,6 +139,9 @@ function buildEmail(templateName, opts) {
   const template = templates[templateName]
   opts.siteUrl = settings.siteUrl
   opts.body = template.compiledTemplate(opts)
+  opts.footerMessage = template.footerMessage
+    ? template.footerMessage(opts)
+    : ''
   return {
     subject: template.subject(opts),
     html: template.layout(opts),

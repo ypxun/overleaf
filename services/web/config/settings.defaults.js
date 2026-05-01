@@ -55,6 +55,7 @@ const defaultTextExtensions = [
   'ldf',
   'rmd',
   'lua',
+  'py',
   'gv',
   'mf',
   'yml',
@@ -328,6 +329,7 @@ module.exports = {
   siteUrl: (siteUrl = process.env.PUBLIC_URL || 'http://127.0.0.1:3000'),
 
   isCodeSpace: process.env.IS_CODE_SPACE === 'true',
+  isDevEnv: process.env.NODE_ENV === 'development',
 
   lockManager: {
     lockTestInterval: intFromEnv('LOCK_MANAGER_LOCK_TEST_INTERVAL', 50),

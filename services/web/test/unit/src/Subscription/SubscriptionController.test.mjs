@@ -77,7 +77,7 @@ describe('SubscriptionController', function () {
           },
           immediateCharge: { amount: 0 },
           nextPlanCode: 'professional',
-          nextPlanName: 'Professional',
+          nextPlanName: 'Pro',
           nextPlanPrice: 2000,
           nextAddOns: [],
           subtotal: 2000,
@@ -492,6 +492,32 @@ describe('SubscriptionController', function () {
       expect(ctx.data.groupSettingsEnabledFor).to.deep.equal([])
     })
 
+    it('should pass isManagedGroupAdmin as false when not set', function (ctx) {
+      expect(ctx.data.isManagedGroupAdmin).to.equal(false)
+    })
+
+    describe('when user is a managed group admin', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.isManagedGroupAdmin = true
+        await new Promise((resolve, reject) => {
+          ctx.res.render = (view, data) => {
+            ctx.data = data
+            expect(view).to.equal('subscriptions/dashboard-react')
+            resolve()
+          }
+          ctx.SubscriptionController.userSubscriptionPage(
+            ctx.req,
+            ctx.res,
+            ctx.rejectOnError(reject)
+          )
+        })
+      })
+
+      it('should pass isManagedGroupAdmin as true', function (ctx) {
+        expect(ctx.data.isManagedGroupAdmin).to.equal(true)
+      })
+    })
+
     describe('when errorCode query param is present', function () {
       beforeEach(async function (ctx) {
         ctx.req.query.errorCode = 'payment_failed'
@@ -658,7 +684,7 @@ describe('SubscriptionController', function () {
       ctx.next = sinon.stub()
       await expect(
         ctx.SubscriptionController.pauseSubscription(ctx.req, ctx.res, ctx.next)
-      ).to.be.rejectedWith('Not found')
+      ).to.be.rejectedWith('Invalid params')
     })
 
     it('should throw an error if an invalid pause length is provided', async function (ctx) {

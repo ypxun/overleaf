@@ -28,11 +28,11 @@ describe('ProjectDownloadsController', function () {
     )
 
     vi.doMock('../../../../app/src/Features/Project/ProjectGetter.mjs', () => ({
-      default: (ctx.ProjectGetter = {}),
-    }))
-
-    vi.doMock('@overleaf/metrics', () => ({
-      default: (ctx.metrics = {}),
+      default: (ctx.ProjectGetter = {
+        promises: {
+          getProject: sinon.stub(),
+        },
+      }),
     }))
 
     vi.doMock(
@@ -50,6 +50,32 @@ describe('ProjectDownloadsController', function () {
         }),
       })
     )
+
+    vi.doMock(
+      '../../../../app/src/Features/Authentication/SessionManager.mjs',
+      () => ({
+        default: (ctx.SessionManager = {
+          getLoggedInUserId: sinon
+            .stub()
+            .callsFake(session => session?.user?._id),
+        }),
+      })
+    )
+
+    vi.doMock(
+      '../../../../app/src/Features/Uploads/DocumentConversionManager.mjs',
+      () => ({
+        default: (ctx.DocumentConversionManager = {
+          promises: {
+            convertProjectToDocument: sinon.stub(),
+          },
+        }),
+      })
+    )
+
+    vi.doMock('node:stream/promises', () => ({
+      pipeline: (ctx.pipeline = sinon.stub().resolves()),
+    }))
 
     ctx.ProjectDownloadsController = (await import(modulePath)).default
   })
@@ -75,7 +101,7 @@ describe('ProjectDownloadsController', function () {
       ctx.DocumentUpdaterHandler.flushProjectToMongo = sinon
         .stub()
         .callsArgWith(1)
-      ctx.metrics.inc = sinon.stub()
+      ctx.Metrics.inc = sinon.stub()
       return ctx.ProjectDownloadsController.downloadProject(
         ctx.req,
         ctx.res,
@@ -119,7 +145,7 @@ describe('ProjectDownloadsController', function () {
     })
 
     it('should record the action via Metrics', function (ctx) {
-      return ctx.metrics.inc.calledWith('zip-downloads').should.equal(true)
+      return ctx.Metrics.inc.calledWith('zip-downloads').should.equal(true)
     })
 
     it('should add an audit log entry', function (ctx) {
@@ -152,7 +178,7 @@ describe('ProjectDownloadsController', function () {
       ctx.DocumentUpdaterHandler.flushMultipleProjectsToMongo = sinon
         .stub()
         .callsArgWith(1)
-      ctx.metrics.inc = sinon.stub()
+      ctx.Metrics.inc = sinon.stub()
       return ctx.ProjectDownloadsController.downloadMultipleProjects(
         ctx.req,
         ctx.res,
@@ -191,7 +217,7 @@ describe('ProjectDownloadsController', function () {
     })
 
     it('should record the action via Metrics', function (ctx) {
-      return ctx.metrics.inc
+      return ctx.Metrics.inc
         .calledWith('zip-downloads-multiple')
         .should.equal(true)
     })
@@ -210,6 +236,109 @@ describe('ProjectDownloadsController', function () {
           )
           .should.equal(true)
       }
+    })
+  })
+
+  describe('exportProjectConversion', function () {
+    describe('when an unsupported type is requested', function () {
+      beforeEach(async function (ctx) {
+        ctx.req.params = { Project_id: 'test-project-id', type: 'unsupported' }
+        ctx.req.session = { user: { _id: 'test-user-id' } }
+
+        await ctx.ProjectDownloadsController.exportProjectConversion(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should return 400', function (ctx) {
+        expect(ctx.res.statusCode).to.equal(400)
+      })
+
+      it('should not call the conversion manager', function (ctx) {
+        sinon.assert.notCalled(
+          ctx.DocumentConversionManager.promises.convertProjectToDocument
+        )
+      })
+    })
+
+    describe('with a supported type', function () {
+      beforeEach(async function (ctx) {
+        ctx.projectId = 'test-project-id'
+        ctx.userId = 'test-user-id'
+        ctx.projectName = 'My Test Project'
+        ctx.exportStream = { pipe: sinon.stub() }
+        ctx.contentLength = 9876
+
+        ctx.req.params = { Project_id: ctx.projectId, type: 'docx' }
+        ctx.req.session = { user: { _id: ctx.userId } }
+        ctx.req.ip = '192.168.1.1'
+
+        ctx.res.attachment = sinon.stub().returns(ctx.res)
+
+        ctx.SessionManager.getLoggedInUserId.returns(ctx.userId)
+        ctx.ProjectGetter.promises.getProject.resolves({
+          name: ctx.projectName,
+        })
+        ctx.DocumentConversionManager.promises.convertProjectToDocument.resolves(
+          {
+            stream: ctx.exportStream,
+            contentLength: ctx.contentLength,
+          }
+        )
+
+        await ctx.ProjectDownloadsController.exportProjectConversion(
+          ctx.req,
+          ctx.res,
+          ctx.next
+        )
+      })
+
+      it('should call convertProjectToDocument with the docx type', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.DocumentConversionManager.promises.convertProjectToDocument,
+          ctx.projectId,
+          ctx.userId,
+          'docx'
+        )
+      })
+
+      it('should set the Content-Length header', function (ctx) {
+        expect(ctx.res.headers['Content-Length']).to.equal(ctx.contentLength)
+      })
+
+      it('should set the attachment filename with safe project name', function (ctx) {
+        sinon.assert.calledWith(ctx.res.attachment, 'My_Test_Project.docx')
+      })
+
+      it('should set the X-Content-Type-Options header', function (ctx) {
+        expect(ctx.res.headers['X-Content-Type-Options']).to.equal('nosniff')
+      })
+
+      it('should set the X-Accel-Buffering header', function (ctx) {
+        expect(ctx.res.headers['X-Accel-Buffering']).to.equal('no')
+      })
+
+      it('should add an audit log entry', function (ctx) {
+        sinon.assert.calledWith(
+          ctx.ProjectAuditLogHandler.addEntryInBackground,
+          ctx.projectId,
+          'project-exported-docx',
+          ctx.userId,
+          ctx.req.ip
+        )
+      })
+
+      it('should record the action via Metrics', function (ctx) {
+        ctx.Metrics.inc
+          .calledWith('document-exports', 1, { type: 'docx' })
+          .should.equal(true)
+      })
+
+      it('should stream the document to the response', function (ctx) {
+        sinon.assert.calledWith(ctx.pipeline, ctx.exportStream, ctx.res)
+      })
     })
   })
 })

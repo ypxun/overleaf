@@ -320,9 +320,19 @@ h4.group-settings-title {
 }
 
 .group-domains-table {
+  table-layout: fixed;
+
   thead {
-    td {
+    th {
       border-bottom-width: var(--bs-border-width) !important;
+    }
+
+    th:first-child {
+      width: 60px;
+    }
+
+    th:last-child {
+      width: 100px;
     }
   }
 
@@ -340,6 +350,10 @@ h4.group-settings-title {
     }
   }
 
+  td {
+    overflow-wrap: break-word;
+  }
+
   .domain-verification-status-table-cell {
     text-wrap: nowrap;
   }
@@ -347,4 +361,17 @@ h4.group-settings-title {
   .domain-verification-failure-reason {
     margin-bottom: var(--spacing-05);
   }
+
+  .domain-verification-token-container {
+    margin-bottom: var(--spacing-03);
+  }
+}
+
+.domain-verification-token-container {
+  background-color: var(--bg-light-secondary);
+  padding: var(--spacing-05);
+  border-radius: var(--border-radius-base);
+  border: 1px solid var(--border-disabled);
+  display: flex;
+  justify-content: space-between;
 }

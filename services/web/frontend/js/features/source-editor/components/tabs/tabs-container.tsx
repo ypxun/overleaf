@@ -4,6 +4,7 @@ import {
   useTabsContext,
 } from '@/features/ide-react/context/tabs-context'
 import { Tab } from './tab'
+import { TabsContextMenu } from './tabs-context-menu'
 import SplitTestBadge from '@/shared/components/split-test-badge'
 import { useCallback, useMemo, useState } from 'react'
 import { throttle } from 'lodash'
@@ -11,10 +12,27 @@ import { debugConsole } from '@/utils/debugging'
 import classNames from 'classnames'
 
 export const TabsContainer = () => {
-  const { tabs, openTab, closeTab, moveTab, makeTabPermanent } =
-    useTabsContext()
+  const {
+    tabs,
+    openTab,
+    closeTab,
+    moveTab,
+    makeTabPermanent,
+    setContextMenuTarget,
+  } = useTabsContext()
   const { openEntity } = useFileTreeOpenContext()
   const [hovered, setHovered] = useState<boolean>(false)
+
+  const openContextMenu = useCallback(
+    (coords: { top: number; left: number }, tabId: string) => {
+      setContextMenuTarget({ ...coords, tabId })
+    },
+    [setContextMenuTarget]
+  )
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuTarget(null)
+  }, [setContextMenuTarget])
 
   const throttledOnDragOver = useMemo(
     () =>
@@ -59,6 +77,14 @@ export const TabsContainer = () => {
     setHovered(false)
   }, [throttledOnDragOver])
 
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    if (e.deltaY !== 0 && e.deltaX === 0) {
+      // if this is a purely vertical scroll, convert it to a horizontal scroll
+      // instead
+      e.currentTarget.scrollLeft += e.deltaY
+    }
+  }, [])
+
   return (
     <div className="editor-tabs-container">
       <div
@@ -69,6 +95,7 @@ export const TabsContainer = () => {
         onDragOver={onDragOver}
         onDrop={onDrop}
         onDragLeave={onDragLeave}
+        onWheel={onWheel}
         tabIndex={-1}
       >
         {tabs.map(tab => (
@@ -80,6 +107,8 @@ export const TabsContainer = () => {
             isSelected={openEntity?.entity._id === tab.id}
             onTabDrop={moveTab}
             makeTabPermanent={makeTabPermanent}
+            openContextMenu={openContextMenu}
+            closeContextMenu={closeContextMenu}
           />
         ))}
       </div>
@@ -89,6 +118,7 @@ export const TabsContainer = () => {
           displayOnVariants={['enabled']}
         />
       </div>
+      <TabsContextMenu />
     </div>
   )
 }

@@ -133,9 +133,6 @@ describe('ProjectListController', function () {
     ctx.Features = {
       hasFeature: sinon.stub(),
     }
-    ctx.Metrics = {
-      inc: sinon.stub(),
-    }
     ctx.SplitTestHandler = {
       promises: {
         getAssignment: sinon.stub().resolves({ variant: 'default' }),
@@ -206,10 +203,6 @@ describe('ProjectListController', function () {
 
     vi.doMock('@overleaf/settings', () => ({
       default: ctx.settings,
-    }))
-
-    vi.doMock('@overleaf/metrics', () => ({
-      default: ctx.Metrics,
     }))
 
     vi.doMock(
@@ -472,6 +465,34 @@ describe('ProjectListController', function () {
         expect(opts.usersBestSubscription).to.be.undefined
       }
       await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+    })
+
+    it('should send groupRole to customer.io for group admins', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.SubscriptionViewModelBuilder.promises.getUsersSubscriptionDetails.resolves(
+        {
+          bestSubscription: { type: 'free' },
+          individualSubscription: null,
+          memberGroupSubscriptions: [],
+          managedGroupSubscriptions: [
+            {
+              planCode: 'group_professional',
+              membersLimit: 12,
+            },
+          ],
+        }
+      )
+      ctx.res.render = () => {}
+
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+
+      expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'setUserProperties',
+        ctx.user._id,
+        sinon.match({
+          group_role: 'admin',
+        })
+      )
     })
 
     it('should show INR Banner for Indian users with free account', async function (ctx) {

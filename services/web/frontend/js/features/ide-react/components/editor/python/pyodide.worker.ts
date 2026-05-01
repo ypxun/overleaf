@@ -1,6 +1,9 @@
+/// <reference lib="webworker" />
 import path from 'path-browserify'
 import type { PyodideInterface } from 'pyodide'
 import type {
+  OutputFileData,
+  InitRequest,
   ProjectFileData,
   PyodideWorkerRequest,
   RunCodeRequest,
@@ -47,6 +50,7 @@ function syncProjectFiles(fs: PyodideFS, files: ProjectFileData[]) {
 }
 
 let pyodideModule: PyodideModule | null = null
+let pyodideIndexUrl: string | undefined
 
 async function loadPyodideModule(pyodideIndexUrl: string) {
   const runtimeModuleUrl = `${pyodideIndexUrl}pyodide.mjs`
@@ -64,11 +68,8 @@ async function loadPyodideModule(pyodideIndexUrl: string) {
   }
 }
 
-async function handleInit(msg: { baseAssetPath: string }) {
-  const pyodideIndexUrl = new URL(
-    PYODIDE_INDEX_PATH,
-    msg.baseAssetPath
-  ).toString()
+async function handleInit(msg: InitRequest) {
+  pyodideIndexUrl = new URL(PYODIDE_INDEX_PATH, msg.baseAssetPath).toString()
 
   try {
     pyodideModule = await loadPyodideModule(pyodideIndexUrl)
@@ -84,24 +85,30 @@ async function handleInit(msg: { baseAssetPath: string }) {
 }
 
 async function handleRunCode(msg: RunCodeRequest) {
-  if (!pyodideModule) {
-    const error = 'Pyodide is not initialized'
+  const { fileId, executionId } = msg
+
+  if (!pyodideModule || !pyodideIndexUrl) {
     self.postMessage({
       type: 'output-line',
       stream: 'stderr',
-      line: error,
-      requestId: msg.id,
+      line: 'Pyodide is not initialized',
+      fileId,
+      executionId,
     })
     self.postMessage({
       type: 'run-code-result',
-      id: msg.id,
+      fileId,
+      executionId,
+      success: false,
       outputs: [],
+      outputFiles: [],
     })
     return
   }
 
   const instance = await pyodideModule.loadPyodide({
     env: { MPLBACKEND: 'Agg' },
+    packageBaseUrl: `${pyodideIndexUrl}${pyodideModule.version}/`,
   })
 
   const writtenPaths = new Set<string>()
@@ -112,7 +119,8 @@ async function handleRunCode(msg: RunCodeRequest) {
         type: 'output-line',
         stream: 'stdout',
         line,
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     },
   })
@@ -122,13 +130,15 @@ async function handleRunCode(msg: RunCodeRequest) {
         type: 'output-line',
         stream: 'stderr',
         line,
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     },
   })
 
   const fs = instance.FS
   const originalWrite = fs.write as PyodideFS['write']
+  let runError: unknown = null
   try {
     if (msg.files.length > 0) {
       syncProjectFiles(fs, msg.files)
@@ -147,16 +157,25 @@ async function handleRunCode(msg: RunCodeRequest) {
       return originalWrite.call(fs, ...args)
     }) as PyodideFS['write']
 
+    await instance.loadPackagesFromImports(msg.code)
     const result = await instance.runPythonAsync(msg.code)
     if (result !== undefined) {
       self.postMessage({
         type: 'output-line',
         stream: 'stdout',
         line: String(result),
-        requestId: msg.id,
+        fileId,
+        executionId,
       })
     }
-  } catch (runError) {
+  } catch (e) {
+    runError = e
+  }
+  fs.write = originalWrite
+
+  const paths = [...writtenPaths]
+
+  if (runError) {
     const errorMessage =
       runError instanceof Error ? runError.message : String(runError)
 
@@ -164,17 +183,46 @@ async function handleRunCode(msg: RunCodeRequest) {
       type: 'output-line',
       stream: 'stderr',
       line: errorMessage,
-      requestId: msg.id,
+      fileId,
+      executionId,
     })
-  } finally {
-    fs.write = originalWrite
-    const outputs = [...writtenPaths].sort()
     self.postMessage({
       type: 'run-code-result',
-      id: msg.id,
-      outputs,
+      fileId,
+      executionId,
+      success: false,
+      outputs: paths,
+      outputFiles: [],
     })
+    return
   }
+
+  const outputFiles: OutputFileData[] = []
+  const transferables: Transferable[] = []
+  for (const writtenPath of paths) {
+    const content = fs.readFile(writtenPath)
+    const relativePath = writtenPath.slice(PROJECT_FS_PREFIX.length)
+    outputFiles.push({ relativePath, content })
+    if (content.buffer instanceof ArrayBuffer) {
+      transferables.push(content.buffer)
+    }
+  }
+
+  // The transferables moves ownership of each ArrayBuffer to the main thread
+  // instead of structured-cloning it. The buffers are already referenced from
+  // outputFiles.content; listing them here just swaps copy for move, so file
+  // contents travel through once rather than being allocated on both sides.
+  self.postMessage(
+    {
+      type: 'run-code-result',
+      fileId,
+      executionId,
+      success: true,
+      outputs: paths,
+      outputFiles,
+    },
+    transferables
+  )
 }
 
 self.addEventListener('message', async event => {

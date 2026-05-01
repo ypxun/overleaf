@@ -263,12 +263,17 @@ const _ProjectController = {
     res.setTimeout(5 * 60 * 1000) // allow extra time for the copy to complete
     metrics.inc('cloned-project')
     const projectId = req.params.Project_id
-    const { projectName, isDebugCopy, tags } = req.body
+    let { projectName, isDebugCopy, cloneHistory, cloneRanges, tags } = req.body
+    const currentUser = SessionManager.getSessionUser(req.session)
+    if (!hasAdminAccess(currentUser)) {
+      isDebugCopy = false
+      cloneHistory = false
+      cloneRanges = false
+    }
     logger.debug({ projectId, projectName, isDebugCopy }, 'cloning project')
     if (!SessionManager.isUserLoggedIn(req.session)) {
       return res.json({ redir: '/register' })
     }
-    const currentUser = SessionManager.getSessionUser(req.session)
     const { first_name: firstName, last_name: lastName, email } = currentUser
     try {
       const project = await ProjectDuplicator.promises.duplicate(
@@ -276,7 +281,7 @@ const _ProjectController = {
         projectId,
         projectName,
         tags,
-        isDebugCopy
+        { isDebugCopy, cloneHistory, cloneRanges }
       )
       ProjectAuditLogHandler.addEntryIfManagedInBackground(
         projectId,
@@ -456,7 +461,6 @@ const _ProjectController = {
       'hotjar',
       'word-count-client',
       'editor-popup-ux-survey-03-2026',
-      'editor-redesign-new-users',
       'chat-edit-delete',
       'ai-workbench-release',
       'compile-timeout-target-plans',
@@ -476,6 +480,8 @@ const _ProjectController = {
       'wf-fake-non-english-suggestions',
       'editor-tabs',
       'overleaf-code',
+      'export-docx',
+      'sharing-updates',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -534,17 +540,16 @@ const _ProjectController = {
       const responses = await pProps({
         userValues: userId ? getUserValues(userId) : defaultUserValues(),
         project: ProjectGetter.promises.getProject(projectId, {
+          _id: 1,
           name: 1,
+          active: 1,
+          deferredTpdsFlushCounter: 1,
           lastUpdated: 1,
           track_changes: 1,
           owner_ref: 1,
           brandVariationId: 1,
           overleaf: 1,
           tokens: 1,
-          tokenAccessReadAndWrite_refs: 1, // used for link sharing analytics
-          collaberator_refs: 1, // used for link sharing analytics
-          pendingEditor_refs: 1, // used for link sharing analytics
-          reviewer_refs: 1,
         }),
         userIsMemberOfGroupSubscription: sessionUser
           ? (async () =>
@@ -554,15 +559,14 @@ const _ProjectController = {
                 )
               ).isMember)()
           : false,
-        _flushToTpds:
-          TpdsProjectFlusher.promises.flushProjectToTpdsIfNeeded(projectId),
-        _activate:
-          InactiveProjectManager.promises.reactivateProjectIfRequired(
-            projectId
-          ),
       })
 
       const { project, userValues, userIsMemberOfGroupSubscription } = responses
+
+      await Promise.all([
+        InactiveProjectManager.promises.reactivateProjectIfRequired(project),
+        TpdsProjectFlusher.promises.flushProjectToTpdsIfNeeded(project),
+      ])
 
       const {
         user,
@@ -700,9 +704,11 @@ const _ProjectController = {
         project.owner_ref
       )
       if (userId) {
+        const projectAccess =
+          await CollaboratorsGetter.promises.getProjectAccess(projectId)
         const planLimit = ownerFeatures?.collaborators || 0
-        const namedEditors = project.collaberator_refs?.length || 0
-        const pendingEditors = project.pendingEditor_refs?.length || 0
+        const { namedEditors, pendingEditors, tokenEditors } =
+          projectAccess.getStats()
         const exceedAtLimit = planLimit > -1 && namedEditors >= planLimit
 
         let mode = 'edit'
@@ -722,7 +728,7 @@ const _ProjectController = {
           projectId: project._id,
           namedEditors,
           pendingEditors,
-          tokenEditors: project.tokenAccessReadAndWrite_refs?.length || 0,
+          tokenEditors,
           planLimit,
           exceedAtLimit,
         }

@@ -8,7 +8,7 @@
     "jsx": "preserve" /* Specify JSX code generation */,
     "noEmit": true /* Do not emit outputs. */,
     "strict": true /* Enable all strict type-checking options. */,
-    "moduleResolution": "node" /* Specify module resolution strategy */,
+    "moduleResolution": "bundler" /* Specify module resolution strategy */,
     "isolatedModules": true,
     "esModuleInterop": true /* Enables emit interoperability between CommonJS and ES Modules via creation of namespace objects for all imports. Implies 'allowSyntheticDefaultImports'. */,
     "skipLibCheck": true /* Skip type checking of declaration files. */,
@@ -45,5 +45,8 @@
     "cypress",
     "types"
   ],
-  "exclude": ["**/*.min.js"]
+  "exclude": [
+    "**/*.min.js",
+    "modules/writefull/frontend/js/integration/src/vite-env.d.ts"
+  ]
 }

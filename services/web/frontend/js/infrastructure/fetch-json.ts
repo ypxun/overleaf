@@ -190,7 +190,7 @@ function fetchJSON<T>(
   })
 }
 
-async function parseResponseBody(response: Response) {
+export async function parseResponseBody(response: Response) {
   const contentType = response.headers.get('Content-Type')
 
   if (!contentType) {
@@ -248,6 +248,13 @@ export function getUserFacingMessage(error: Error | null) {
 export function isRateLimited(error?: Error | FetchError | any) {
   if (error && error instanceof FetchError) {
     return error.response?.status === 429
+  }
+  return false
+}
+
+export function isForbidden(error?: Error | FetchError | any) {
+  if (error && error instanceof FetchError) {
+    return error.response?.status === 403
   }
   return false
 }

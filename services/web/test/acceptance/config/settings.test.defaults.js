@@ -194,19 +194,19 @@ module.exports = {
     },
     {
       planCode: 'collaborator',
-      name: 'Collaborator',
+      name: 'Standard monthly',
       price_in_cents: 1500,
       features: features.collaborator,
     },
     {
       planCode: 'professional',
-      name: 'Professional',
+      name: 'Pro monthly',
       price_in_cents: 3000,
       features: features.professional,
     },
     {
       planCode: 'group_professional',
-      name: 'Professional - Group Account - Enterprise',
+      name: 'Pro group',
       hideFromUsers: true,
       price_in_cents: 0,
       annual: true,
@@ -218,7 +218,7 @@ module.exports = {
     },
     {
       planCode: 'group_collaborator',
-      name: 'Collaborator - Group Account - Enterprise',
+      name: 'Standard group',
       hideFromUsers: true,
       price_in_cents: 0,
       annual: true,

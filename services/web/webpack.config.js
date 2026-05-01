@@ -316,6 +316,9 @@ module.exports = {
         __dirname,
         './modules/writefull/frontend/js/integration/src/'
       ),
+      // Ensure all packages use the same jQuery instance (prevents duplicate
+      // copies from Yarn hoisting breaking jQuery plugins like daterangepicker)
+      jquery: require.resolve('jquery'),
     },
     // symlinks: false, // enable this while using `npm link`
     extensions: ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.json'],
@@ -408,7 +411,9 @@ module.exports = {
           toType: 'dir',
           context: `${dictionariesDir}/dictionaries`,
         },
-        // Copy Pyodide runtime assets from npm package for local serving.
+        // Copy Pyodide runtime assets from the npm package so the loader is
+        // always available. Python package wheels are fetched separately by
+        // scripts/fetch-pyodide-packages.mjs into the same directory on disk.
         {
           from: 'pyodide.mjs',
           to: 'js/libs/pyodide',

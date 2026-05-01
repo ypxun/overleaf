@@ -85,8 +85,10 @@ async function deleteUser(email) {
   await UserDeleter.promises.expireDeletedUser(user._id)
 }
 
-export async function createProjectWithOldHistoryId(userId) {
-  const projectName = 'old history id'
+export async function createProjectWithOldHistoryId(
+  userId,
+  projectName = 'old history id'
+) {
   const historyId = parseInt(
     await HistoryManager.promises.initializeProject(),
     10
@@ -137,7 +139,7 @@ async function purgeNewUsers() {
   )
 }
 
-export async function provisionSplitTests() {
+export async function provisionSplitTests(merge = false, extraSplitTests = []) {
   const backup = Path.join(
     MONOREPO,
     'backup',
@@ -157,31 +159,19 @@ export async function provisionSplitTests() {
   // Imported from production via https://www.overleaf.com/admin/split-test -> "Copy all split tests" -> "Copy for E2E test setup"
   const SPLIT_TESTS = JSON.parse(
     await fs.promises.readFile(
-      Path.join(MONOREPO, 'tools/saas-e2e/split-tests.json')
+      Path.join(MONOREPO, 'tools/saas-e2e/split-tests.json'),
+      'utf-8'
     )
   )
-  // Add WIP split test, we can update the JSON blob once this is in production
-  SPLIT_TESTS.push({
-    name: 'compile-from-history',
-    versions: [
-      {
-        versionNumber: 1,
-        createdAt: '2026-02-25T14:55:31.260Z',
-        active: true,
-        analyticsEnabled: false,
-        phase: 'release',
-        variants: [
-          {
-            name: 'enabled',
-            rolloutPercent: 0,
-            rolloutStripes: [],
-          },
-        ],
-      },
-    ],
-  })
   console.log(`> Importing ${SPLIT_TESTS.length} split-tests from production.`)
-  await SplitTestManager.replaceSplitTests(SPLIT_TESTS)
+  if (merge) {
+    await SplitTestManager.mergeSplitTests(SPLIT_TESTS, false)
+  } else {
+    await SplitTestManager.replaceSplitTests(SPLIT_TESTS)
+  }
+  if (extraSplitTests.length > 0) {
+    await SplitTestManager.mergeSplitTests(extraSplitTests, false)
+  }
 }
 
 async function checkNoTableScan() {

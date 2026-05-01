@@ -2,6 +2,7 @@ import {
   EditorFileTab,
   TAB_TRANSFER_TYPE,
 } from '@/features/ide-react/context/tabs-context'
+import FileTreeIcon from '@/features/file-tree/components/file-tree-icon'
 import MaterialIcon from '@/shared/components/material-icon'
 import { debugConsole } from '@/utils/debugging'
 import classNames from 'classnames'
@@ -22,6 +23,11 @@ type TabProps = {
   openTab: (id: string) => void
   closeTab: (id: string) => void
   makeTabPermanent: (id: string) => void
+  openContextMenu: (
+    coords: { top: number; left: number },
+    tabId: string
+  ) => void
+  closeContextMenu: () => void
   isSelected: boolean
   onTabDrop: (
     sourceTabId: string,
@@ -47,6 +53,8 @@ export const Tab = memo(function Tab({
   openTab,
   closeTab,
   makeTabPermanent,
+  openContextMenu,
+  closeContextMenu,
   isSelected,
   onTabDrop,
 }: TabProps) {
@@ -152,6 +160,18 @@ export const Tab = memo(function Tab({
     [closeTab, tab]
   )
 
+  const onContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.shiftKey) {
+        closeContextMenu()
+        return
+      }
+      e.preventDefault()
+      openContextMenu({ top: e.pageY, left: e.pageX }, tab.id)
+    },
+    [openContextMenu, closeContextMenu, tab]
+  )
+
   useLayoutEffect(() => {
     if (isSelected && tabRef.current) {
       tabRef.current.scrollIntoView({
@@ -188,6 +208,8 @@ export const Tab = memo(function Tab({
       onClick={onClick}
       onMouseUp={onMouseUp}
       onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
+      data-tab-id={tab.id}
       tabIndex={0}
       className={classNames('editor-file-tab', {
         'tab-selected': isSelected,
@@ -196,6 +218,9 @@ export const Tab = memo(function Tab({
         'tab-temporary': tab.lifetime === 'temporary',
       })}
     >
+      <span className="editor-file-tab-icon">
+        <FileTreeIcon isLinkedFile={tab.isLinkedFile} name={tab.name} />
+      </span>
       <div className="editor-file-tab-path">&lrm;{tab.displayPath}</div>
       <div className="editor-file-tab-action">
         <button

@@ -12,6 +12,9 @@ import { callbackify } from '@overleaf/promise-utils'
 import UserUpdater from '../User/UserUpdater.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import { AI_ADD_ON_CODE } from './AiHelper.mjs'
+import CustomerIoPlanHelpers from './CustomerIoPlanHelpers.mjs'
+import WorkbenchRateLimiter from '../../infrastructure/rate-limiters/WorkbenchRateLimiter.mjs'
+import AiFeatureUsageRateLimiter from '../../infrastructure/rate-limiters/AiFeatureUsageRateLimiter.mjs'
 
 /**
  * @import { PaymentProviderSubscriptionChange } from './PaymentProviderEntities.mjs'
@@ -115,12 +118,39 @@ async function updateSubscription(user, planCode) {
     return
   }
 
+  const previousPlanType = CustomerIoPlanHelpers.normalizePlanType({
+    plan: {
+      planCode: subscription.planCode,
+      groupPlan: subscription.groupPlan,
+    },
+  })
+
   await Modules.promises.hooks.fire(
     'updatePaidSubscription',
     subscription,
     planCode,
     user._id
   )
+
+  try {
+    await WorkbenchRateLimiter.resetTokenUsage(user._id)
+    await AiFeatureUsageRateLimiter.resetFeatureUsage(user._id)
+  } catch (err) {
+    logger.error({ err, userId: user._id }, 'failed to reset AI usage limits')
+  }
+
+  if (previousPlanType) {
+    Modules.promises.hooks
+      .fire('setUserProperties', user._id, {
+        previous_plan_type: previousPlanType,
+      })
+      .catch(err => {
+        logger.warn(
+          { err, userId: user._id },
+          'Failed to set previous_plan_type in customer.io'
+        )
+      })
+  }
 }
 
 /**
