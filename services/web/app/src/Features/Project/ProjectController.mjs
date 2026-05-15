@@ -17,6 +17,7 @@ import { User } from '../../models/User.mjs'
 import SubscriptionLocator from '../Subscription/SubscriptionLocator.mjs'
 import SubscriptionHelper from '../Subscription/SubscriptionHelper.mjs'
 import LimitationsManager from '../Subscription/LimitationsManager.mjs'
+import { isProfessionalGroupPlan } from '../Subscription/PlansHelper.mjs'
 import Settings from '@overleaf/settings'
 import AuthorizationManager from '../Authorization/AuthorizationManager.mjs'
 import InactiveProjectManager from '../InactiveData/InactiveProjectManager.mjs'
@@ -482,6 +483,7 @@ const _ProjectController = {
       'overleaf-code',
       'export-docx',
       'sharing-updates',
+      'export-markdown',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -932,6 +934,9 @@ const _ProjectController = {
           planCode,
           planName: planDetails?.name,
           isAnnualPlan: planCode && planDetails?.annual,
+          isProfessionalGroupPlan: Boolean(
+            subscription && isProfessionalGroupPlan(subscription)
+          ),
           isMemberOfGroupSubscription: userIsMemberOfGroupSubscription,
           hasInstitutionLicence: userHasInstitutionLicence,
         },

@@ -6,19 +6,44 @@ import CommandRunner from './CommandRunner.js'
 import LockManager from './LockManager.js'
 import OError from '@overleaf/o-error'
 
-async function convertDocxToLaTeXWithLock(conversionId, inputPath) {
+const CONVERSION_CONFIGS = {
+  docx: {
+    inputFilename: 'input.docx',
+    pandocArgs: ['--extract-media=.', '--from', 'docx+citations', '--citeproc'],
+  },
+  markdown: {
+    inputFilename: 'input.md',
+    pandocArgs: ['--from', 'markdown'],
+  },
+}
+
+async function convertToLaTeXWithLock(conversionId, inputPath, conversionType) {
   const conversionDir = Path.join(Settings.path.compilesDir, conversionId)
   const lock = LockManager.acquire(conversionDir)
   try {
-    return await convertDocxToLaTeX(conversionId, conversionDir, inputPath)
+    return await convertToLaTeX(
+      conversionId,
+      conversionDir,
+      inputPath,
+      conversionType
+    )
   } finally {
     lock.release()
   }
 }
 
-async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
+async function convertToLaTeX(
+  conversionId,
+  conversionDir,
+  inputPath,
+  conversionType
+) {
+  const config = CONVERSION_CONFIGS[conversionType]
+  if (!config) {
+    throw new OError('unsupported conversion type', { conversionType })
+  }
   await fs.mkdir(conversionDir, { recursive: true })
-  const newSourcePath = Path.join(conversionDir, 'input.docx')
+  const newSourcePath = Path.join(conversionDir, config.inputFilename)
   await fs.copyFile(inputPath, newSourcePath)
   const outputName = crypto.randomUUID() + '.zip'
 
@@ -31,16 +56,13 @@ async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
       conversionId,
       [
         'pandoc',
-        'input.docx',
+        config.inputFilename,
         '--output',
         'main.tex',
-        '--extract-media=.',
-        '--from',
-        'docx+citations',
         '--to',
         'latex',
-        '--citeproc',
         '--standalone',
+        ...config.pandocArgs,
       ],
       conversionDir,
       Settings.pandocImage,
@@ -94,12 +116,43 @@ async function convertDocxToLaTeX(conversionId, conversionDir, inputPath) {
   return Path.join(conversionDir, outputName)
 }
 
+const LATEX_EXPORT_CONFIGS = {
+  docx: {
+    fileExtension: 'docx',
+    compressOutput: false,
+    getPandocArgs: ({ outputPath }) => [
+      '--output',
+      outputPath,
+      '--from',
+      'latex',
+      '--to',
+      'docx',
+      '--citeproc',
+      '--number-sections',
+      '--resource-path=.',
+    ],
+  },
+  markdown: {
+    fileExtension: 'md',
+    compressOutput: true,
+    getPandocArgs: ({ outputPath, subdirName }) => [
+      '--output',
+      outputPath,
+      '--from',
+      'latex',
+      '--to',
+      'markdown',
+      '--resource-path=.',
+      `--extract-media=${subdirName}`,
+    ],
+  },
+}
+
 async function convertLaTeXToDocumentInDirWithLock(
   conversionId,
   compileDir,
   rootDocPath,
-  type,
-  extension
+  type
 ) {
   const lock = LockManager.acquire(compileDir)
   try {
@@ -107,8 +160,7 @@ async function convertLaTeXToDocumentInDirWithLock(
       conversionId,
       compileDir,
       rootDocPath,
-      type,
-      extension
+      type
     )
   } finally {
     lock.release()
@@ -119,11 +171,25 @@ async function convertLaTeXToDocumentInDir(
   conversionId,
   compileDir,
   rootDocPath = 'main.tex',
-  type,
-  extension
+  type
 ) {
-  const outputName = crypto.randomUUID() + '.' + extension
+  if (!Object.hasOwn(LATEX_EXPORT_CONFIGS, type)) {
+    throw new OError('unsupported conversion type', { type })
+  }
+  const config = LATEX_EXPORT_CONFIGS[type]
+
   const timeoutMs = Settings.conversionTimeoutSeconds * 1000
+  const outputId = crypto.randomUUID()
+
+  let pandocOutputPath, finalOutputName
+  if (config.compressOutput) {
+    await fs.mkdir(Path.join(compileDir, outputId), { recursive: true })
+    pandocOutputPath = Path.join(outputId, `main.${config.fileExtension}`)
+    finalOutputName = outputId + '.zip'
+  } else {
+    pandocOutputPath = outputId + '.' + config.fileExtension
+    finalOutputName = pandocOutputPath
+  }
 
   logger.debug(
     { compileDir, rootDocPath, type },
@@ -135,13 +201,10 @@ async function convertLaTeXToDocumentInDir(
     [
       'pandoc',
       rootDocPath,
-      '--output',
-      outputName,
-      '--from',
-      'latex',
-      '--to',
-      type,
-      '--resource-path=.',
+      ...config.getPandocArgs({
+        outputPath: pandocOutputPath,
+        subdirName: outputId,
+      }),
     ],
     compileDir,
     Settings.pandocImage,
@@ -159,12 +222,48 @@ async function convertLaTeXToDocumentInDir(
     })
   }
 
-  return Path.join(compileDir, outputName)
+  logger.debug(
+    { stdout, stderr, exitCode },
+    'pandoc latex-to-document conversion completed'
+  )
+
+  if (!config.compressOutput) {
+    return Path.join(compileDir, finalOutputName)
+  }
+
+  const {
+    exitCode: zipExitCode,
+    stdout: zipStdout,
+    stderr: zipStderr,
+  } = await CommandRunner.promises.run(
+    conversionId,
+    ['sh', '-c', `cd ${outputId} && zip -r ../${finalOutputName} .`],
+    compileDir,
+    Settings.pandocImage,
+    timeoutMs,
+    {},
+    'conversions'
+  )
+
+  if (zipExitCode !== 0) {
+    throw new OError('zip compression of export failed', {
+      exitCode: zipExitCode,
+      stdout: zipStdout,
+      stderr: zipStderr,
+    })
+  }
+
+  logger.debug(
+    { stdout: zipStdout, stderr: zipStderr, exitCode: zipExitCode },
+    'export compressed'
+  )
+
+  return Path.join(compileDir, finalOutputName)
 }
 
 export default {
   promises: {
-    convertDocxToLaTeXWithLock,
+    convertToLaTeXWithLock,
     convertLaTeXToDocumentInDirWithLock,
   },
 }

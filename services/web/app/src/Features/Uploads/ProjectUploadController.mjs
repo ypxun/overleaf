@@ -16,6 +16,7 @@ import { expressify } from '@overleaf/promise-utils'
 import { DuplicateNameError, FileTooLargeError } from '../Errors/Errors.js'
 import DocumentConversionManager from './DocumentConversionManager.mjs'
 import ProjectOptionsHandler from '../Project/ProjectOptionsHandler.mjs'
+import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 
 const defaultsDeep = lodash.defaultsDeep
 
@@ -84,7 +85,9 @@ async function uploadFile(req, res, next) {
   const userId = SessionManager.getLoggedInUserId(req.session)
   let { folder_id: folderId } = req.query
   if (name == null || name.length === 0 || name.length > 150) {
-    fs.unlink(path, function () {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn({ err: unlinkErr, path }, 'error unlinking uploaded file')
+    })
     return res.status(422).json({
       success: false,
       error: 'invalid_filename',
@@ -109,7 +112,9 @@ async function uploadFile(req, res, next) {
       folderId = lastFolder._id
     }
   } catch (error) {
-    fs.unlink(path, function () {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn({ err: unlinkErr, path }, 'error unlinking uploaded file')
+    })
     throw error
   }
 
@@ -174,16 +179,21 @@ async function uploadFile(req, res, next) {
  * @param {any} res
  * @param {any} next
  */
-async function importDocx(req, res, next) {
+async function importDocument(req, res, next) {
   const userId = SessionManager.getLoggedInUserId(req.session)
-  logger.debug({ path: req.file?.path, userId }, 'importing docx file')
   const { path } = req.file
-  const name = Path.basename(req.body.name, '.docx')
+  const conversionType = req.query.type
+  if (!['docx', 'markdown'].includes(conversionType)) {
+    return res.status(400).json({ success: false, error: 'invalid_type' })
+  }
+  const name = Path.basename(req.body.name, Path.extname(req.body.name))
+  logger.debug({ path, userId, conversionType }, 'importing document file')
   try {
     const archivePath =
-      await DocumentConversionManager.promises.convertDocxToLaTeXZipArchive(
+      await DocumentConversionManager.promises.convertDocumentToLaTeXZipArchive(
         path,
-        userId
+        userId,
+        conversionType
       )
     try {
       const project =
@@ -193,12 +203,33 @@ async function importDocx(req, res, next) {
           archivePath
         )
       await ProjectOptionsHandler.promises.setCompiler(project._id, 'lualatex')
+      AnalyticsManager.recordEventForUserInBackground(
+        userId,
+        'convert-format',
+        {
+          sourceFormat: conversionType,
+          targetFormat: 'latex',
+          status: 'success',
+          operation: 'import',
+        }
+      )
       res.json({ success: true, project_id: project._id })
     } finally {
-      await fsPromises.unlink(archivePath).catch(() => {})
+      await fsPromises.unlink(archivePath).catch(unlinkErr => {
+        logger.warn(
+          { err: unlinkErr, archivePath },
+          'error unlinking after docx conversion'
+        )
+      })
     }
   } catch (error) {
-    logger.error({ error }, 'error importing docx file')
+    logger.error({ error }, 'error importing document file')
+    AnalyticsManager.recordEventForUserInBackground(userId, 'convert-format', {
+      sourceFormat: conversionType,
+      targetFormat: 'latex',
+      status: 'failure',
+      operation: 'import',
+    })
     if (
       error instanceof FileTooLargeError ||
       error?.name === 'FileTooLargeError'
@@ -213,7 +244,12 @@ async function importDocx(req, res, next) {
       error: req.i18n.translate('upload_failed'),
     })
   } finally {
-    await fsPromises.unlink(path).catch(() => {})
+    await fsPromises.unlink(path).catch(unlinkErr => {
+      logger.warn(
+        { err: unlinkErr, path },
+        'error unlinking uploaded file in importDocx'
+      )
+    })
   }
 }
 
@@ -253,5 +289,5 @@ export default {
   uploadProject,
   uploadFile: expressify(uploadFile),
   multerMiddleware,
-  importDocx: expressify(importDocx),
+  importDocument: expressify(importDocument),
 }

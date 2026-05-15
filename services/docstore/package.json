@@ -30,7 +30,7 @@
     "bunyan": "^1.8.15",
     "celebrate": "^15.0.3",
     "express": "4.22.1",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "mongodb-legacy": "6.1.3",
     "p-map": "^4.0.0"
   },
@@ -42,7 +42,6 @@
     "mocha": "^11.1.0",
     "mocha-junit-reporter": "^2.2.1",
     "mocha-multi-reporters": "^1.5.1",
-    "sandboxed-module": "~2.0.4",
     "sinon": "~9.0.2",
     "sinon-chai": "^3.7.0",
     "typescript": "^5.0.4",

@@ -30,13 +30,34 @@ function compile(projectId, data) {
   })
 }
 
-async function convertDocx(path) {
+async function convertDocument(path, type) {
   const formData = new FormData()
   formData.append('qqfile', fs.createReadStream(path))
-  return await fetchStream(`${host}/convert/docx-to-latex`, {
+  return await fetchStream(`${host}/convert/document-to-latex?type=${type}`, {
     method: 'POST',
     body: formData,
   })
+}
+
+async function convertProjectToDocument(
+  projectId,
+  userId,
+  type,
+  request,
+  responseFormat
+) {
+  const url = new URL(
+    `${host}/project/${projectId}/user/${userId}/download/project-to-document`
+  )
+  url.searchParams.set('type', type)
+  if (responseFormat) {
+    url.searchParams.set('responseFormat', responseFormat)
+  }
+  const opts = { method: 'POST', json: { compile: request } }
+  if (responseFormat === 'json') {
+    return await fetchJson(url.href, opts)
+  }
+  return await fetchStream(url.href, opts)
 }
 
 async function stopCompile(projectId) {
@@ -202,7 +223,8 @@ function smokeTest() {
 export default {
   randomId,
   compile,
-  convertDocx,
+  convertProjectToDocument,
+  convertDocument,
   stopCompile,
   clearCache,
   getOutputFile,

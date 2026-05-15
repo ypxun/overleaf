@@ -47,11 +47,17 @@ const DEFAULT_ASSIGNMENT = {
  * @param req the request
  * @param res the Express response object
  * @param splitTestName the unique name of the split test
- * @param options {Object<sync: boolean>} - for test purposes only, to force the synchronous update of the user's profile
+ * @param {Object} options
+ * @param {boolean} options.sync - for test purposes only, to force the synchronous update of the user's profile
+ * @param {boolean} options.includeReferer For ajax requests and downloads include the split test overrides of the page
  * @returns {Promise<Assignment>}
  */
-async function getAssignment(req, res, splitTestName, { sync = false } = {}) {
-  const query = req.query || {}
+async function getAssignment(
+  req,
+  res,
+  splitTestName,
+  { sync = false, includeReferer = false } = {}
+) {
   let assignment
 
   try {
@@ -59,6 +65,20 @@ async function getAssignment(req, res, splitTestName, { sync = false } = {}) {
       assignment = _getNonSaasAssignment(splitTestName)
     } else {
       await _loadSplitTestInfoInLocals(res.locals, splitTestName, req.session)
+
+      let query = req.query || {}
+      if (includeReferer && req.headers.referer) {
+        // Pick up the query of the top-level page, i.e. what's in the browsers address bar, from ajax requests.
+        // E.g. /project/:id?split-test=foo -> ajax /project/:id/compile should see split-test=foo.
+        // E.g. /project/:id?split-test=foo -> redirect /project/:id/download/zip should see split-test=foo.
+        try {
+          const u = new URL(req.headers.referer, Settings.siteUrl)
+          query = {
+            ...Object.fromEntries(u.searchParams.entries()),
+            ...query,
+          }
+        } catch {}
+      }
 
       // Check the query string for an override, ignoring an invalid value
       const queryVariant = query[splitTestName]
@@ -311,6 +331,30 @@ async function getOneTimeAssignment(splitTestName) {
     logger.error({ err: error }, 'Failed to get one time split test assignment')
     return DEFAULT_ASSIGNMENT
   }
+}
+
+/**
+ * Checks if a feature flag is enabled for a specific user
+ *
+ * Retrieves the feature flag assignment for a user and determines if the assigned variant is 'enabled'
+ *
+ * @param req the request
+ * @param res the Express response object
+ * @param {string} splitTestName - The unique name of the feature flag
+ * @param {Object} options
+ * @param {boolean} options.includeReferer For ajax requests and downloads include the split test overrides of the page
+ * @returns {Promise<boolean>} True if the user's assigned variant is 'enabled', false otherwise
+ */
+async function featureFlagEnabled(
+  req,
+  res,
+  splitTestName,
+  { includeReferer = false } = { includeReferer: false }
+) {
+  const { variant } = await getAssignment(req, res, splitTestName, {
+    includeReferer,
+  })
+  return variant === 'enabled'
 }
 
 /**
@@ -958,10 +1002,26 @@ async function decrementLabsVariantCounter(splitTestName) {
   }
 }
 
+async function userMaintenanceOnLogin(user) {
+  const splitTests = (await SplitTestCache.get('')).values()
+  const toCleanup = {}
+  for (const splitTest of splitTests) {
+    if (splitTest.archived && user.splitTests?.[splitTest.name]) {
+      toCleanup[`splitTests.${splitTest.name}`] = 1
+    }
+  }
+  if (Object.keys(toCleanup).length > 0) {
+    await UserUpdater.promises.updateUser(user._id, {
+      $unset: toCleanup,
+    })
+  }
+}
+
 export default {
   getPercentile,
   getAssignment: callbackify(getAssignment),
   getAssignmentForUser: callbackify(getAssignmentForUser),
+  featureFlagEnabled: callbackify(featureFlagEnabled),
   featureFlagEnabledForUser: callbackify(featureFlagEnabledForUser),
   getOneTimeAssignment: callbackify(getOneTimeAssignment),
   getActiveAssignmentsForUser: callbackify(getActiveAssignmentsForUser),
@@ -971,11 +1031,13 @@ export default {
   promises: {
     getAssignment,
     getAssignmentForUser,
+    featureFlagEnabled,
     featureFlagEnabledForUser,
     getOneTimeAssignment,
     getActiveAssignmentsForUser,
     hasUserBeenAssignedToVariant,
     decrementLabsVariantCounter,
     incrementLabsVariantCounterIfBelowLimit,
+    userMaintenanceOnLogin,
   },
 }

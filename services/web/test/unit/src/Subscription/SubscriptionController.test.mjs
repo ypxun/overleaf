@@ -283,6 +283,10 @@ describe('SubscriptionController', function () {
           res.status(400)
           res.json({ message })
         }),
+        forbidden: sinon.stub().callsFake((req, res, message) => {
+          res.status(403)
+          res.json({ message })
+        }),
       }),
     }))
 
@@ -405,6 +409,7 @@ describe('SubscriptionController', function () {
             title: 'thank_you',
             personalSubscription: 'foo',
             postCheckoutRedirect: undefined,
+            isUpgrade: false,
             user: {
               _id: ctx.user._id,
               features: ctx.user.features,
@@ -678,13 +683,19 @@ describe('SubscriptionController', function () {
   })
 
   describe('pauseSubscription', function () {
+    beforeEach(function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment
+        .withArgs(sinon.match.any, sinon.match.any, 'pause-subscription')
+        .resolves({ variant: 'enabled' })
+    })
+
     it('should throw an error if no pause length is provided', async function (ctx) {
       ctx.res = new MockResponse(vi)
       ctx.req = new MockRequest(vi)
       ctx.next = sinon.stub()
       await expect(
         ctx.SubscriptionController.pauseSubscription(ctx.req, ctx.res, ctx.next)
-      ).to.be.rejectedWith('Invalid params')
+      ).to.be.rejectedWith('Invalid request parameters')
     })
 
     it('should throw an error if an invalid pause length is provided', async function (ctx) {
@@ -711,6 +722,25 @@ describe('SubscriptionController', function () {
         ctx.next
       )
       expect(ctx.res.statusCode).to.equal(200)
+    })
+
+    it('should return a 403 when the pause-subscription feature flag is not enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment
+        .withArgs(sinon.match.any, sinon.match.any, 'pause-subscription')
+        .resolves({ variant: 'default' })
+      ctx.res = new MockResponse(vi)
+      ctx.req = new MockRequest(vi)
+      ctx.req.params = { pauseCycles: '3' }
+      ctx.next = sinon.stub()
+      await ctx.SubscriptionController.pauseSubscription(
+        ctx.req,
+        ctx.res,
+        ctx.next
+      )
+      expect(ctx.res.statusCode).to.equal(403)
+      expect(
+        ctx.SubscriptionHandler.promises.pauseSubscription.called
+      ).to.equal(false)
     })
   })
 
@@ -928,6 +958,19 @@ describe('SubscriptionController', function () {
       expect(ctx.SubscriptionHandler.promises.purchaseAddon).to.not.have.been
         .called
       expect(ctx.FeaturesUpdater.promises.refreshFeatures).to.not.have.been
+        .called
+      expect(ctx.res.sendStatus).to.have.been.calledWith(404)
+    })
+
+    it('should return 404 when plans-2026-phase-1 split test is enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment.resolves({
+        variant: 'enabled',
+      })
+      ctx.res.sendStatus = sinon.spy()
+
+      await ctx.SubscriptionController.purchaseAddon(ctx.req, ctx.res, ctx.next)
+
+      expect(ctx.SubscriptionHandler.promises.purchaseAddon).to.not.have.been
         .called
       expect(ctx.res.sendStatus).to.have.been.calledWith(404)
     })
@@ -1415,6 +1458,88 @@ describe('SubscriptionController', function () {
     })
   })
 
+  describe('makeChangePreview', function () {
+    let pendingChange, baseSubscription, subscriptionChange
+
+    beforeEach(function (ctx) {
+      pendingChange = {
+        nextPlanCode: 'student',
+        nextPlanName: 'Student',
+        nextPlanPrice: 1000,
+        nextAddOns: [],
+      }
+
+      baseSubscription = {
+        currency: 'USD',
+        netTerms: 0,
+        periodEnd: new Date('2027-04-29'),
+        taxRate: 0,
+        pendingChange,
+      }
+
+      subscriptionChange = {
+        subscription: baseSubscription,
+        nextPlanCode: 'professional',
+        nextPlanName: 'Professional',
+        nextPlanPrice: 2000,
+        nextAddOns: [],
+        immediateCharge: {
+          subtotal: 0,
+          tax: 0,
+          total: 0,
+          discount: 0,
+          lineItems: [],
+        },
+      }
+    })
+
+    it('uses subscriptionChange plan for future invoice when type is premium-subscription', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'premium-subscription',
+          plan: { code: 'professional', name: 'Professional' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+
+    it('uses subscriptionChange plan for future invoice when type is group-plan-upgrade', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        { type: 'group-plan-upgrade', prevPlan: { name: 'Standard' } },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+
+    it('uses pendingChange plan for future invoice when type is add-on-purchase', function (ctx) {
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'add-on-purchase',
+          addOn: { code: 'ai-assist', name: 'AI Assist' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Student')
+      expect(preview.nextInvoice.plan.amount).to.equal(1000)
+    })
+
+    it('uses subscriptionChange plan for future invoice when there is no pending change', function (ctx) {
+      baseSubscription.pendingChange = undefined
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'premium-subscription',
+          plan: { code: 'professional', name: 'Professional' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Professional')
+      expect(preview.nextInvoice.plan.amount).to.equal(2000)
+    })
+  })
+
   describe('previewAddonPurchase', function () {
     beforeEach(function (ctx) {
       ctx.req = new MockRequest(vi)
@@ -1426,6 +1551,19 @@ describe('SubscriptionController', function () {
         .withArgs('getPaymentMethod')
         .resolves(['fake-method'])
       ctx.SubscriptionLocator.promises.getUsersSubscription.resolves(null)
+    })
+
+    it('should redirect with ai-assist-unavailable when plans-2026-phase-1 is enabled', async function (ctx) {
+      ctx.SplitTestV2Hander.promises.getAssignment.resolves({
+        variant: 'enabled',
+      })
+      ctx.res.redirect = sinon.stub()
+
+      await ctx.SubscriptionController.previewAddonPurchase(ctx.req, ctx.res)
+
+      expect(ctx.res.redirect).to.have.been.calledWith(
+        '/user/subscription?redirect-reason=ai-assist-unavailable'
+      )
     })
 
     describe('when user has manual or custom subscription', function () {

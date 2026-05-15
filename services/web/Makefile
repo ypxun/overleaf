@@ -5,7 +5,7 @@ BUILD_NUMBER ?= local
 ifeq ($(BRANCH_NAME),)
   export BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
 endif
-BRANCH_NAME_TAG_SAFE := $(subst /,--,$(BRANCH_NAME))
+BRANCH_NAME_TAG_SAFE := $(shell echo "$(BRANCH_NAME)" | sed 's/\//\-\-/g' | cut -c1-96)
 ifeq ($(COMMIT_SHA),)
   export COMMIT_SHA := $(shell git rev-parse HEAD)
 endif
@@ -29,6 +29,16 @@ DOCKER_COMPOSE := BUILD_NUMBER=$(BUILD_NUMBER) \
 	MOCHA_GREP=${MOCHA_GREP} \
 	docker compose ${DOCKER_COMPOSE_FLAGS}
 
+# Common flags for docker compose run.
+# --rm           Tear down test runner container
+# --build        Make sure that we use the latest base image
+# --quiet-build  Hide build output
+ifeq ($(CI),true)
+	DC_RUN_FLAGS := --rm
+else
+	DC_RUN_FLAGS := --rm --build --quiet-build
+endif
+
 MODULE_DIRS := $(shell find modules -mindepth 1 -maxdepth 1 -type d -not -name '.git' )
 MODULE_MAKEFILES := $(MODULE_DIRS:=/Makefile)
 MODULE_NAME=$(shell basename $(MODULE))
@@ -36,6 +46,13 @@ MODULE_NAME=$(shell basename $(MODULE))
 create_module_Makefiles: $(MODULE_MAKEFILES)
 $(MODULE_MAKEFILES): Makefile.module
 	cp Makefile.module $@ || diff Makefile.module $@
+
+MODULE_APP_SRC_DIRS := $(shell find modules -mindepth 3 -maxdepth 3 -type d -path '*/app/src')
+MODULE_TSCONFIGS := $(MODULE_APP_SRC_DIRS:=/tsconfig.json)
+
+create_module_tsconfigs: $(MODULE_TSCONFIGS)
+$(MODULE_TSCONFIGS): tsconfig.module.json
+	cp tsconfig.module.json $@ || diff tsconfig.module.json $@
 
 #
 # Clean
@@ -57,6 +74,7 @@ SHARD_PROJECT_NAMES = \
 	acceptance_test_modules_merged_saas_2_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_saas_3_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_saas_4_$(BUILD_DIR_NAME) \
+	acceptance_test_modules_merged_saas_5_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_server_ce_$(BUILD_DIR_NAME) \
 	acceptance_test_modules_merged_server_pro_$(BUILD_DIR_NAME) \
 	frontend_test_$(BUILD_DIR_NAME) \
@@ -99,11 +117,11 @@ test_module: test_unit_module test_acceptance_module
 test_unit: test_unit_all
 test_unit_all: export COMPOSE_PROJECT_NAME=unit_test_all_$(BUILD_DIR_NAME)
 test_unit_all: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:all
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit yarn run test:unit:all
 
 test_unit_all_silent: export COMPOSE_PROJECT_NAME=unit_test_all_$(BUILD_DIR_NAME)
 test_unit_all_silent: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:all:silent
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit yarn run test:unit:all:silent
 
 test_unit_app: export COMPOSE_PROJECT_NAME=unit_test_$(BUILD_DIR_NAME)
 test_unit_app: mongo_migrations_for_tests
@@ -112,16 +130,16 @@ test_unit_app: mongo_migrations_for_tests
 test_unit_parallel: export JUNIT_ROOT_SUITE_NAME = ESM unit tests - parallel
 test_unit_parallel: export COMPOSE_PROJECT_NAME=unit_test_parallel_$(BUILD_DIR_NAME)
 test_unit_parallel: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:parallel
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit yarn run test:unit:parallel
 
 test_unit_sequential: export JUNIT_ROOT_SUITE_NAME = ESM unit tests - sequential
 test_unit_sequential: export COMPOSE_PROJECT_NAME=unit_test_sequential_$(BUILD_DIR_NAME)
 test_unit_sequential: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:sequential
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit yarn run test:unit:sequential
 
 test_unit_watch: export COMPOSE_PROJECT_NAME=unit_test_watch_$(BUILD_DIR_NAME)
 test_unit_watch: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit yarn run test:unit:watch
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit yarn run test:unit:watch
 
 TEST_SUITES = $(sort $(filter-out \
 	$(wildcard test/unit/src/helpers/*), \
@@ -144,7 +162,7 @@ test_unit_app_parallel_gnu_make: $(TEST_SUITES)
 test_unit_app_parallel_gnu_make_docker: export COMPOSE_PROJECT_NAME = \
 	unit_test_parallel_make_$(BUILD_DIR_NAME)
 test_unit_app_parallel_gnu_make_docker: mongo_migrations_for_tests
-	$(DOCKER_COMPOSE) run --rm test_unit \
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit \
 		make test_unit_app_parallel_gnu_make --output-sync -j $(J)
 
 TEST_UNIT_MODULES = $(MODULE_DIRS:=/test_unit)
@@ -155,7 +173,7 @@ test_unit_module: mongo_migrations_for_tests
 	$(MAKE) modules/$(MODULE_NAME)/test_unit
 
 mongo_migrations_for_tests:
-	$(DOCKER_COMPOSE) run --rm --workdir /overleaf/tools/migrations test_unit yarn run migrations migrate -t saas
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) --workdir /overleaf/tools/migrations test_unit yarn run migrations migrate -t saas
 
 #
 # Frontend tests
@@ -163,7 +181,7 @@ mongo_migrations_for_tests:
 
 test_frontend_jsdom: export JUNIT_ROOT_SUITE_NAME = JSDOM frontend tests
 test_frontend_jsdom:
-	COMPOSE_PROJECT_NAME=frontend_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run --rm test_frontend_jsdom
+	COMPOSE_PROJECT_NAME=frontend_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_frontend_jsdom
 	COMPOSE_PROJECT_NAME=frontend_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) down -v -t 0
 
 test_frontend: test_frontend_jsdom test_frontend_ct
@@ -190,7 +208,7 @@ $(TEST_FRONTEND_CT_TARGETS): export USER_UID=$(shell id -u)
 $(TEST_FRONTEND_CT_TARGETS): export USER_GID=$(shell id -g)
 
 test_frontend_ct_ui:
-	docker compose -f docker-compose.cypress.yml run --rm cypress run cypress:open-ct -- --browser chrome
+	docker compose -f docker-compose.cypress.yml run $(DC_RUN_FLAGS) cypress run cypress:open-ct -- --browser chrome
 
 #
 # Writefull tests
@@ -198,7 +216,7 @@ test_frontend_ct_ui:
 
 test_writefull: export JUNIT_ROOT_SUITE_NAME = Writefull tests
 test_writefull:
-	COMPOSE_PROJECT_NAME=writefull_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run --rm test_writefull
+	COMPOSE_PROJECT_NAME=writefull_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_writefull
 	COMPOSE_PROJECT_NAME=writefull_test_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) down -v -t 0
 
 # Note: The below cypress targets are for CI only
@@ -230,7 +248,7 @@ test_frontend_ct_editor_visual: export CYPRESS_RESULTS=./cypress/results/editor_
 test_frontend_ct_editor_visual: export CYPRESS_SPEC_PATTERN=./test/frontend/features/source-editor/components/codemirror-editor-visual*.spec.{js,jsx,ts,tsx}
 
 $(TEST_FRONTEND_CT_VARIANTS):
-	COMPOSE_PROJECT_NAME=$@_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run --rm test_frontend_ct
+	COMPOSE_PROJECT_NAME=$@_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_frontend_ct
 	COMPOSE_PROJECT_NAME=$@_$(BUILD_DIR_NAME) $(DOCKER_COMPOSE) down -v -t 0
 
 #
@@ -267,7 +285,7 @@ test_acceptance_app_server_pro: export COMPOSE_PROJECT_NAME=acceptance_test_serv
 test_acceptance_app_server_pro: export OVERLEAF_CONFIG=$(CFG_SERVER_PRO)
 
 $(TEST_ACCEPTANCE_APP):
-	$(DOCKER_COMPOSE) run --rm $(TEST_ACCEPTANCE_DEBUG_PORT) test_acceptance $(TEST_ACCEPTANCE_YARN_SCRIPT)
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) $(TEST_ACCEPTANCE_DEBUG_PORT) test_acceptance $(TEST_ACCEPTANCE_YARN_SCRIPT)
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # We are using _make magic_ for turning these file-targets into calls to
@@ -341,7 +359,7 @@ test_acceptance_module_maybe_in_server_pro: export BASE_CONFIG=$(CFG_SERVER_PRO)
 $(TEST_ACCEPTANCE_MODULE_MAYBE_IN): test_acceptance_module_maybe_in_%:
 	$(MAKE) $(shell \
 		OVERLEAF_CONFIG=$(BASE_CONFIG) \
-		$(DOCKER_COMPOSE) run --rm test_unit \
+		$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_unit \
 		yarn node test/acceptance/getModuleTargets test_acceptance_$* \
 		| grep -e /$(MODULE_NAME)/ || echo test_acceptance_module_noop LABEL=$* \
 	)
@@ -371,16 +389,18 @@ test_acceptance_modules_merged_inner:
 # inner loop for running saas tests in parallel
 no_more_targets:
 
-# If we ever have more than 40 modules, we need to add _5 targets to all the places and have it START at 41.
+# If we ever have more than 50 modules, we need to add _6 targets to all the places and have it START at 51.
 test_acceptance_modules_merged_inner_1: export START=1
 test_acceptance_modules_merged_inner_2: export START=11
 test_acceptance_modules_merged_inner_3: export START=21
 test_acceptance_modules_merged_inner_4: export START=31
+test_acceptance_modules_merged_inner_5: export START=41
 TEST_ACCEPTANCE_MODULES_MERGED_INNER_SPLIT = \
 	test_acceptance_modules_merged_inner_1 \
 	test_acceptance_modules_merged_inner_2 \
 	test_acceptance_modules_merged_inner_3 \
 	test_acceptance_modules_merged_inner_4 \
+	test_acceptance_modules_merged_inner_5 \
 
 # The node script prints one module per line.
 # Using tail and head we skip over the first n=START entries and print the last 10.
@@ -417,7 +437,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS = \
 	test_acceptance_modules_merged_server_pro \
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS):
-	$(DOCKER_COMPOSE) run --rm test_acceptance yarn exec make test_acceptance_modules_merged_inner
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_acceptance yarn exec make test_acceptance_modules_merged_inner
 	$(DOCKER_COMPOSE) down -v -t 0
 
 # outer loop for running saas tests in parallel
@@ -426,6 +446,7 @@ TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS = \
 	test_acceptance_modules_merged_saas_2 \
 	test_acceptance_modules_merged_saas_3 \
 	test_acceptance_modules_merged_saas_4 \
+	test_acceptance_modules_merged_saas_5 \
 
 test_acceptance_modules_merged_saas_1: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_1_$(BUILD_DIR_NAME)
@@ -435,11 +456,13 @@ test_acceptance_modules_merged_saas_3: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_3_$(BUILD_DIR_NAME)
 test_acceptance_modules_merged_saas_4: export COMPOSE_PROJECT_NAME = \
 	acceptance_test_modules_merged_saas_4_$(BUILD_DIR_NAME)
+test_acceptance_modules_merged_saas_5: export COMPOSE_PROJECT_NAME = \
+	acceptance_test_modules_merged_saas_5_$(BUILD_DIR_NAME)
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export BASE_CONFIG = $(CFG_SAAS)
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): export JUNIT_ROOT_SUITE_NAME = SaaS modules acceptance tests
 
 $(TEST_ACCEPTANCE_MODULES_MERGED_SPLIT_SAAS): test_acceptance_modules_merged_saas_%:
-	$(DOCKER_COMPOSE) run --rm test_acceptance yarn exec make test_acceptance_modules_merged_inner_$*
+	$(DOCKER_COMPOSE) run $(DC_RUN_FLAGS) test_acceptance yarn exec make test_acceptance_modules_merged_inner_$*
 	$(DOCKER_COMPOSE) down -v -t 0
 
 test_acceptance_modules: $(TEST_ACCEPTANCE_MODULES_MERGED_VARIANTS)
@@ -466,7 +489,8 @@ ci:
 # Run the linting commands in the scope of the monorepo.
 # Eslint and prettier (plus some configs) are on the root.
 RUN_LINTING_CI_MONOREPO = docker run --rm --volume $(MONOREPO)/.editorconfig:/overleaf/.editorconfig --volume $(MONOREPO)/.eslintignore:/overleaf/.eslintignore --volume $(MONOREPO)/.eslintrc:/overleaf/.eslintrc --volume $(MONOREPO)/.prettierignore:/overleaf/.prettierignore --volume $(MONOREPO)/.prettierrc:/overleaf/.prettierrc --volume $(MONOREPO)/tsconfig.backend.json:/overleaf/tsconfig.backend.json --volume $(MONOREPO)/services/web/data/reports:/overleaf/services/web/data/reports --volume $(MONOREPO)/node_modules/.cache/:/overleaf/node_modules/.cache/ -w /overleaf $(IMAGE_CI) yarn run --silent
-RUN_LINTING_MONOREPO = docker run --rm -v $(MONOREPO):$(MONOREPO) -w $(MONOREPO) --user node node:24.14.1 corepack yarn run --silent
+RUN_LINTING = ../../bin/run -w /overleaf/services/$(PROJECT_NAME) monorepo yarn run --silent
+RUN_LINTING_MONOREPO = ../../bin/run monorepo yarn run --silent
 
 ORG_PATH = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN_LINT_FORMAT ?= \
@@ -518,7 +542,7 @@ ifeq ($(CI),true)
 	-yarn run lint --format json --output-file data/reports/eslint.json
 	sed -i 's_"filePath":"/overleaf_"filePath":"$(MONOREPO)_g' data/reports/eslint.json
 else
-	yarn run lint
+	$(RUN_LINTING) lint
 endif
 
 lint: lint_stylelint
@@ -527,11 +551,11 @@ ifeq ($(CI),true)
 	-yarn run lint:styles --formatter json --output-file data/reports/stylelint.json
 	sed -i 's_"source":"/overleaf_"source":"$(MONOREPO)_g' data/reports/stylelint.json
 else
-	yarn run lint:styles
+	$(RUN_LINTING) lint:styles
 endif
 
 lint_stylelint_fix:
-	npm run --silent lint:styles:fix
+	$(RUN_LINTING) lint:styles:fix
 
 lint: lint_pug
 lint_pug:
@@ -561,11 +585,19 @@ lint_overleafModuleImports:
 
 lint: typecheck_frontend
 typecheck_frontend:
+ifeq ($(CI),true)
 	yarn run --silent type-check
+else
+	$(RUN_LINTING) type-check
+endif
 
 lint: typecheck_backend
 typecheck_backend:
+ifeq ($(CI),true)
 	yarn run --silent type-check:backend
+else
+	$(RUN_LINTING) type-check:backend
+endif
 
 lint_in_docker:
 	$(RUN_LINT_FORMAT) make lint -j2 --output-sync

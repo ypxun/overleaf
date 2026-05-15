@@ -217,7 +217,6 @@ async function userSubscriptionPage(req, res) {
   const userCanExtendTrial = (
     await Modules.promises.hooks.fire('userCanExtendTrial', user)
   )?.[0]
-  const fromPlansPage = req.query.hasSubscription
   const redirectedPaymentErrorCode = req.query.errorCode
   const isInTrial = SubscriptionHelper.isInTrial(
     personalSubscription?.payment?.trialEndsAt
@@ -321,7 +320,6 @@ async function userSubscriptionPage(req, res) {
     planCodesChangingAtTermEnd: plansData?.planCodesChangingAtTermEnd,
     user,
     hasSubscription,
-    fromPlansPage,
     redirectedPaymentErrorCode,
     personalSubscription,
     userCanExtendTrial,
@@ -361,6 +359,7 @@ async function successfulSubscription(req, res) {
     )
 
   const postCheckoutRedirect = req.session?.postCheckoutRedirect
+  const isUpgrade = req.query.upgrade === 'true'
 
   if (!personalSubscription) {
     res.redirect('/user/subscription/plans')
@@ -378,6 +377,7 @@ async function successfulSubscription(req, res) {
       title: 'thank_you',
       personalSubscription,
       postCheckoutRedirect,
+      isUpgrade,
       user: {
         _id: user._id,
         features: userInDb.features,
@@ -399,6 +399,14 @@ const pauseSubscriptionSchema = z.object({
  */
 async function pauseSubscription(req, res, next) {
   const user = SessionManager.getSessionUser(req.session)
+  const { variant } = await SplitTestHandler.promises.getAssignment(
+    req,
+    res,
+    'pause-subscription'
+  )
+  if (variant !== 'enabled') {
+    return HttpErrorHandler.forbidden(req, res)
+  }
   const { params } = parseReq(req, pauseSubscriptionSchema)
   const pauseCycles = params.pauseCycles
   if (pauseCycles < 0) {
@@ -532,6 +540,18 @@ async function previewAddonPurchase(req, res) {
     return HttpErrorHandler.notFound(req, res, `Unknown add-on: ${addOnCode}`)
   }
 
+  const { variant: plans2026Phase1Variant } =
+    await SplitTestHandler.promises.getAssignment(
+      req,
+      res,
+      'plans-2026-phase-1'
+    )
+  if (plans2026Phase1Variant === 'enabled') {
+    return res.redirect(
+      '/user/subscription?redirect-reason=ai-assist-unavailable'
+    )
+  }
+
   const canUseAi = await PermissionsManager.promises.checkUserPermissions(
     user,
     ['use-ai']
@@ -653,6 +673,16 @@ async function purchaseAddon(req, res, next) {
   const quantity = 1
   // currently we only support one add-on, the Ai add-on
   if (addOnCode !== AI_ADD_ON_CODE) {
+    return res.sendStatus(404)
+  }
+
+  const { variant: plans2026Phase1Variant } =
+    await SplitTestHandler.promises.getAssignment(
+      req,
+      res,
+      'plans-2026-phase-1'
+    )
+  if (plans2026Phase1Variant === 'enabled') {
     return res.sendStatus(404)
   }
 
@@ -1207,11 +1237,23 @@ function makeChangePreview(
       }
     }
 
+    // If the current change is a plan change, it overrides the pending scheduled
+    // plan change — use the new plan for future payments, not the stale pending one.
+    const isPlanChange =
+      subscriptionChangeDescription.type === 'premium-subscription' ||
+      subscriptionChangeDescription.type === 'group-plan-upgrade'
+
     futureInvoiceChange = new PaymentProviderSubscriptionChange({
       subscription,
-      nextPlanCode: pendingChange.nextPlanCode,
-      nextPlanName: pendingChange.nextPlanName,
-      nextPlanPrice: pendingChange.nextPlanPrice,
+      nextPlanCode: isPlanChange
+        ? subscriptionChange.nextPlanCode
+        : pendingChange.nextPlanCode,
+      nextPlanName: isPlanChange
+        ? subscriptionChange.nextPlanName
+        : pendingChange.nextPlanName,
+      nextPlanPrice: isPlanChange
+        ? subscriptionChange.nextPlanPrice
+        : pendingChange.nextPlanPrice,
       nextAddOns: mergedAddOns,
     })
   } else {

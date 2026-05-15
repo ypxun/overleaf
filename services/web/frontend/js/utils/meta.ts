@@ -131,7 +131,6 @@ export interface Meta {
   'ol-featureUsage': FeatureUsage
   'ol-features': Features
   'ol-footer': FooterMetadata
-  'ol-fromPlansPage': boolean
   'ol-galleryTagName': string
   'ol-gitBridgeEnabled': boolean
   'ol-gitBridgePublicBaseUrl': string
@@ -190,6 +189,7 @@ export interface Meta {
   'ol-isRegisteredViaGoogle': boolean
   'ol-isRestrictedTokenMember': boolean
   'ol-isSaas': boolean
+  'ol-isUpgrade': boolean
   'ol-isUserGroupManager': boolean
   'ol-itm_campaign': string
   'ol-itm_content': string

@@ -1,10 +1,13 @@
+import path from 'path-browserify'
 import type {
+  ExecutionErrorType,
   OutputStream,
-  OutputFileData,
   ProjectFileData,
   PyodideWorkerRequest,
   PyodideWorkerResponse,
 } from './pyodide-worker-messages'
+import type { BatchUploadItem } from '@/infrastructure/batch-file-uploader'
+import type { FileUploader } from './python-runner'
 
 export type OutputCallback = (
   stream: OutputStream,
@@ -23,7 +26,9 @@ export type LifecycleCallback = (
         executionId: string
         success: boolean
         outputs: string[]
-        outputFiles: OutputFileData[]
+        failedUploads: string[]
+        imports: string[]
+        errorType?: ExecutionErrorType
       }
 ) => void
 
@@ -37,17 +42,20 @@ export class PyodideWorkerClient {
   private pendingMessages: PyodideWorkerRequest[] = []
   private outputCallback: OutputCallback | null
   private lifecycleCallback: LifecycleCallback | null
+  private fileUploader: FileUploader
 
   constructor(options: {
     baseAssetPath: string
     createWorker: () => Worker
     onOutput?: OutputCallback
     onLifecycle?: LifecycleCallback
+    fileUploader: FileUploader
   }) {
     this.baseAssetPath = options.baseAssetPath
     this.createWorker = options.createWorker
     this.outputCallback = options.onOutput ?? null
     this.lifecycleCallback = options.onLifecycle ?? null
+    this.fileUploader = options.fileUploader
     this.worker = this.createWorker()
     this.worker.addEventListener('message', this.receive)
 
@@ -119,7 +127,7 @@ export class PyodideWorkerClient {
     }
   }
 
-  private receive = (event: MessageEvent<PyodideWorkerResponse>) => {
+  private receive = async (event: MessageEvent<PyodideWorkerResponse>) => {
     // Discard messages from a previously terminated worker
     if (event.target !== this.worker) {
       return
@@ -158,15 +166,60 @@ export class PyodideWorkerClient {
         )
         return
 
-      case 'run-code-result':
+      case 'run-code-result': {
+        let success = response.success
+        const failedUploads: string[] = []
+
+        if (success && response.outputFiles.length > 0) {
+          const items: BatchUploadItem[] = response.outputFiles.map(file => ({
+            file: new Blob([file.content as Uint8Array<ArrayBuffer>]),
+            name: path.basename(file.relativePath),
+            relativePath: file.relativePath,
+          }))
+
+          try {
+            const results = await this.fileUploader(items)
+            for (const result of results) {
+              if (result.status === 'error') {
+                failedUploads.push(result.relativePath!)
+                this.outputCallback?.(
+                  'stderr',
+                  `Failed to upload output file ${result.relativePath!}: ${result.error}`,
+                  response.fileId,
+                  response.executionId
+                )
+              }
+            }
+            if (failedUploads.length > 0) {
+              success = false
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            this.outputCallback?.(
+              'stderr',
+              `Failed to upload output files: ${message}`,
+              response.fileId,
+              response.executionId
+            )
+            failedUploads.push(...items.map(item => item.relativePath!))
+            success = false
+          }
+        }
+
+        const errorType =
+          failedUploads.length > 0 ? 'UploadFileError' : response.errorType
+
         this.lifecycleCallback?.({
           type: 'run-finished',
           fileId: response.fileId,
           executionId: response.executionId,
-          success: response.success,
+          success,
           outputs: response.outputs,
-          outputFiles: response.outputFiles,
+          failedUploads,
+          imports: response.imports,
+          errorType,
         })
+      }
     }
   }
 }

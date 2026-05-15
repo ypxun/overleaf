@@ -24,6 +24,7 @@ import HistoryManager from '../History/HistoryManager.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 import RedisWrapper from '../../infrastructure/RedisWrapper.mjs'
+import { getOutputFileURL } from './ClsiURLHelpers.mjs'
 
 // use the redis db with eviction policy enabled
 const rclient = RedisWrapper.client('clsi_cookie')
@@ -81,23 +82,25 @@ async function clearBaseHistoryVersion(projectId, userId) {
   await rclient.del(_baseHistoryVersionKey(projectId, userId))
 }
 
-function getNewCompileBackendClass(projectId, compileBackendClass) {
-  // Sample x% of projects to move up one bracket.
-  if (
-    SplitTestHandler.getPercentile(projectId, 'double-compile', 'release') >=
-    Settings.apis.clsi_new.sample
-  ) {
-    return null
-  }
+function getDoubleCompilePercentile(projectId) {
+  return SplitTestHandler.getPercentile(projectId, 'double-compile', 'release')
+}
 
+function getNewCompileBackendClass(projectId, compileBackendClass) {
+  let cfg
   switch (compileBackendClass) {
     case 'c3d':
-      return 'n4'
+      cfg = Settings.apis.clsi_new.doubleCompileFree
+      break
     case 'c4d':
-      return 'n4'
+      cfg = Settings.apis.clsi_new.doubleCompilePremium
+      break
     default:
       throw new Error('unknown ?compileBackendClass')
   }
+  if (!cfg.backendClass || !cfg.sample) return null
+  if (getDoubleCompilePercentile(projectId) >= cfg.sample) return null
+  return cfg.backendClass
 }
 
 /**
@@ -441,7 +444,7 @@ async function _makeRequest(
   timer.done()
   let newClsiServerId
   if (CLSI_COOKIES_ENABLED) {
-    newClsiServerId = _getClsiServerIdFromResponse(response)
+    newClsiServerId = getClsiServerIdFromResponse(response)
     await ClsiCookieManager.promises.setServerId(
       projectId,
       userId,
@@ -600,7 +603,7 @@ async function _makeNewBackendRequest(
   timer.done()
   let newClsiServerId
   if (CLSI_COOKIES_ENABLED) {
-    newClsiServerId = _getClsiServerIdFromResponse(response)
+    newClsiServerId = getClsiServerIdFromResponse(response)
     await NewBackendCloudClsiCookieManager.promises.setServerId(
       projectId,
       userId,
@@ -850,17 +853,17 @@ async function getContentFromDocUpdaterIfMatch(projectId, project, options) {
 async function getOutputFileStream(
   projectId,
   userId,
-  options,
   clsiServerId,
   buildId,
   outputFilePath
 ) {
-  const { compileBackendClass, compileGroup } = options
-  const url = new URL(Settings.apis.clsi.downloadHost)
-  url.pathname = `/project/${projectId}/user/${userId}/build/${buildId}/output/${outputFilePath}`
-  url.searchParams.set('compileBackendClass', compileBackendClass)
-  url.searchParams.set('compileGroup', compileGroup)
-  url.searchParams.set('clsiserverid', clsiServerId)
+  const url = getOutputFileURL(
+    projectId,
+    userId,
+    buildId,
+    outputFilePath,
+    clsiServerId
+  )
   try {
     const stream = await fetchStream(url, {
       signal: AbortSignal.timeout(OUTPUT_FILE_TIMEOUT_MS),
@@ -1265,7 +1268,7 @@ async function syncTeX(
   }
 }
 
-function _getClsiServerIdFromResponse(response) {
+function getClsiServerIdFromResponse(response) {
   const setCookieHeaders = response.headers.raw()['set-cookie'] ?? []
   for (const header of setCookieHeaders) {
     const cookie = Cookie.parse(header)
@@ -1304,6 +1307,8 @@ export default {
   getOutputFileStream: callbackify(getOutputFileStream),
   wordCount: callbackify(wordCount),
   syncTeX: callbackify(syncTeX),
+  getClsiServerIdFromResponse,
+  CLSI_COOKIES_ENABLED,
   promises: {
     sendRequest,
     sendExternalRequest,

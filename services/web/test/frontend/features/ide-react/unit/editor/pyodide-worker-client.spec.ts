@@ -1,11 +1,16 @@
 import { expect } from 'chai'
+import sinon from 'sinon'
 import {
   PyodideWorkerClient,
   type LifecycleCallback,
+  type OutputCallback,
 } from '@/features/ide-react/components/editor/python/pyodide-worker-client'
+import type { FileUploader } from '@/features/ide-react/components/editor/python/python-runner'
 import { WorkerMock, createWorker } from './worker-mock'
 
 const BASE_ASSET_PATH = 'https://assets.example.test/'
+
+const fileUploaderStub: FileUploader = () => Promise.resolve([])
 
 describe('PyodideWorkerClient', function () {
   beforeEach(function () {
@@ -16,6 +21,7 @@ describe('PyodideWorkerClient', function () {
     const client = new PyodideWorkerClient({
       baseAssetPath: BASE_ASSET_PATH,
       createWorker,
+      fileUploader: fileUploaderStub,
     })
     const worker = WorkerMock.instances[0]
 
@@ -50,6 +56,7 @@ describe('PyodideWorkerClient', function () {
     const client = new PyodideWorkerClient({
       baseAssetPath: BASE_ASSET_PATH,
       createWorker,
+      fileUploader: fileUploaderStub,
     })
     const worker = WorkerMock.instances[0]
     worker.emitMessage({ type: 'listening' })
@@ -78,10 +85,43 @@ describe('PyodideWorkerClient', function () {
       onLifecycle: event => {
         lifecycleEvents.push(event)
       },
+      fileUploader: fileUploaderStub,
     })
     const worker = WorkerMock.instances[0]
     worker.emitMessage({ type: 'listening' })
     return { client, worker, lifecycleEvents }
+  }
+
+  function setupClientWithUploadTracking(options: {
+    fileUploader: FileUploader
+  }) {
+    const lifecycleEvents: Parameters<LifecycleCallback>[0][] = []
+    const outputCalls: Parameters<OutputCallback>[] = []
+
+    const client = new PyodideWorkerClient({
+      baseAssetPath: BASE_ASSET_PATH,
+      createWorker,
+      onLifecycle: event => {
+        lifecycleEvents.push(event)
+      },
+      onOutput: (...args) => {
+        outputCalls.push(args)
+      },
+      fileUploader: options.fileUploader,
+    })
+    const worker = WorkerMock.instances[0]
+    worker.emitMessage({ type: 'listening' })
+    return { client, worker, lifecycleEvents, outputCalls }
+  }
+
+  async function waitFor(predicate: () => boolean, timeoutMs = 200) {
+    const deadline = Date.now() + timeoutMs
+    while (!predicate()) {
+      if (Date.now() > deadline) {
+        throw new Error('waitFor timed out')
+      }
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
   }
 
   it('emits run-finished lifecycle event from run-code-result', function () {
@@ -100,6 +140,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: ['/project/output.txt'],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -109,7 +150,9 @@ describe('PyodideWorkerClient', function () {
         executionId: 'exec-3',
         success: true,
         outputs: ['/project/output.txt'],
-        outputFiles: [],
+        failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
@@ -130,6 +173,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: ['/project/fig1.png', '/project/results/data.csv'],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -139,7 +183,9 @@ describe('PyodideWorkerClient', function () {
         executionId: 'exec-4',
         success: true,
         outputs: ['/project/fig1.png', '/project/results/data.csv'],
-        outputFiles: [],
+        failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
@@ -160,6 +206,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: [],
       outputFiles: [],
+      imports: [],
     })
 
     expect(lifecycleEvents).to.deep.equal([
@@ -169,12 +216,14 @@ describe('PyodideWorkerClient', function () {
         executionId: 'exec-5',
         success: true,
         outputs: [],
-        outputFiles: [],
+        failedUploads: [],
+        imports: [],
+        errorType: undefined,
       },
     ])
   })
 
-  it('surfaces success and outputFiles from run-code-result', function () {
+  it('surfaces success and outputFiles from run-code-result', async function () {
     const { client, worker, lifecycleEvents } =
       setupClientWithLifecycleTracking()
 
@@ -195,7 +244,12 @@ describe('PyodideWorkerClient', function () {
         { relativePath: 'data.csv', content: csvContent },
         { relativePath: 'plot.png', content: pngContent },
       ],
+      imports: [],
     })
+
+    await waitFor(() =>
+      Boolean(lifecycleEvents.find(e => e.type === 'run-finished'))
+    )
 
     const finished = lifecycleEvents.find(e => e.type === 'run-finished')
     expect(finished).to.deep.equal({
@@ -204,10 +258,42 @@ describe('PyodideWorkerClient', function () {
       executionId: 'exec-success',
       success: true,
       outputs: ['/project/data.csv', '/project/plot.png'],
-      outputFiles: [
-        { relativePath: 'data.csv', content: csvContent },
-        { relativePath: 'plot.png', content: pngContent },
-      ],
+      failedUploads: [],
+      imports: [],
+      errorType: undefined,
+    })
+  })
+
+  it('propagates ModuleNotFoundError errorType on run-finished', function () {
+    const { client, worker, lifecycleEvents } =
+      setupClientWithLifecycleTracking()
+
+    client.runCode('import nope', {
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      files: [],
+    })
+    worker.emitMessage({
+      type: 'run-code-result',
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      success: false,
+      outputs: [],
+      outputFiles: [],
+      imports: [],
+      errorType: 'ModuleNotFoundError',
+    })
+
+    const finished = lifecycleEvents.find(e => e.type === 'run-finished')
+    expect(finished).to.deep.equal({
+      type: 'run-finished',
+      fileId: 'main.py',
+      executionId: 'exec-mnfe',
+      success: false,
+      outputs: [],
+      failedUploads: [],
+      imports: [],
+      errorType: 'ModuleNotFoundError',
     })
   })
 
@@ -227,6 +313,8 @@ describe('PyodideWorkerClient', function () {
       success: false,
       outputs: [],
       outputFiles: [],
+      imports: [],
+      errorType: 'generic',
     })
 
     const finished = lifecycleEvents.find(e => e.type === 'run-finished')
@@ -236,7 +324,9 @@ describe('PyodideWorkerClient', function () {
       executionId: 'exec-error',
       success: false,
       outputs: [],
-      outputFiles: [],
+      failedUploads: [],
+      imports: [],
+      errorType: 'generic',
     })
   })
 
@@ -256,6 +346,7 @@ describe('PyodideWorkerClient', function () {
       success: true,
       outputs: [],
       outputFiles: [],
+      imports: [],
     })
 
     const finished = lifecycleEvents.find(e => e.type === 'run-finished')
@@ -265,7 +356,9 @@ describe('PyodideWorkerClient', function () {
       executionId: 'exec-nowrites',
       success: true,
       outputs: [],
-      outputFiles: [],
+      failedUploads: [],
+      imports: [],
+      errorType: undefined,
     })
   })
 
@@ -278,6 +371,7 @@ describe('PyodideWorkerClient', function () {
       onLifecycle: event => {
         lifecycleEvents.push(event)
       },
+      fileUploader: fileUploaderStub,
     })
     const worker = WorkerMock.instances[0]
 
@@ -302,6 +396,7 @@ describe('PyodideWorkerClient', function () {
     const client = new PyodideWorkerClient({
       baseAssetPath: BASE_ASSET_PATH,
       createWorker,
+      fileUploader: fileUploaderStub,
     })
     const worker = WorkerMock.instances[0]
 
@@ -314,11 +409,190 @@ describe('PyodideWorkerClient', function () {
     expect(worker.terminated).to.equal(true)
   })
 
+  context('upload behavior', function () {
+    const successResult = (name: string, relativePath: string) => ({
+      status: 'success' as const,
+      name,
+      relativePath,
+      data: { success: true },
+    })
+    const errorResult = (
+      name: string,
+      relativePath: string,
+      error: string
+    ) => ({
+      status: 'error' as const,
+      name,
+      relativePath,
+      error,
+    })
+
+    function emitRunResult(
+      worker: WorkerMock,
+      executionId: string,
+      outputFiles: Array<{ relativePath: string; content: Uint8Array }>,
+      success = true
+    ) {
+      worker.emitMessage({
+        type: 'run-code-result',
+        fileId: 'main.py',
+        executionId,
+        success,
+        outputs: [],
+        outputFiles,
+        imports: [],
+      })
+    }
+
+    const findFinished = (
+      lifecycleEvents: Parameters<LifecycleCallback>[0][]
+    ) => lifecycleEvents.find(e => e.type === 'run-finished')
+
+    it('invokes fileUploader with mapped items when run-code-result has output files', async function () {
+      const uploader = sinon
+        .stub()
+        .resolves([successResult('data.csv', 'output/data.csv')])
+      const { worker, lifecycleEvents } = setupClientWithUploadTracking({
+        fileUploader: uploader,
+      })
+
+      emitRunResult(worker, 'exec-up-1', [
+        {
+          relativePath: 'output/data.csv',
+          content: new TextEncoder().encode('a,b\n1,2'),
+        },
+      ])
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      expect(uploader.calledOnce).to.be.true
+      const [items] = uploader.firstCall.args
+      expect(items).to.have.lengthOf(1)
+      expect(items[0].name).to.equal('data.csv')
+      expect(items[0].relativePath).to.equal('output/data.csv')
+      expect(items[0].file).to.be.instanceOf(Blob)
+    })
+
+    it('emits success: true and empty failedUploads when all uploads succeed', async function () {
+      const uploader = sinon
+        .stub()
+        .resolves([
+          successResult('a.csv', 'a.csv'),
+          successResult('b.csv', 'b.csv'),
+        ])
+      const { worker, lifecycleEvents } = setupClientWithUploadTracking({
+        fileUploader: uploader,
+      })
+
+      emitRunResult(worker, 'exec-up-2', [
+        { relativePath: 'a.csv', content: new TextEncoder().encode('1') },
+        { relativePath: 'b.csv', content: new TextEncoder().encode('2') },
+      ])
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      const finished = findFinished(lifecycleEvents)
+      expect(finished).to.deep.include({ success: true, failedUploads: [] })
+    })
+
+    it('flips success to false and lists failed paths when an upload fails', async function () {
+      const uploader = sinon
+        .stub()
+        .resolves([
+          successResult('good.csv', 'good.csv'),
+          errorResult('bad.csv', 'output/bad.csv', 'duplicate_file_name'),
+        ])
+      const { worker, lifecycleEvents, outputCalls } =
+        setupClientWithUploadTracking({ fileUploader: uploader })
+
+      emitRunResult(worker, 'exec-up-3', [
+        { relativePath: 'good.csv', content: new TextEncoder().encode('1') },
+        {
+          relativePath: 'output/bad.csv',
+          content: new TextEncoder().encode('2'),
+        },
+      ])
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      const finished = findFinished(lifecycleEvents)
+      expect(finished).to.deep.include({
+        success: false,
+        failedUploads: ['output/bad.csv'],
+        errorType: 'UploadFileError',
+      })
+
+      // user-facing stderr line surfaced via outputCallback
+      expect(outputCalls).to.have.lengthOf(1)
+      const [stream, line] = outputCalls[0]
+      expect(stream).to.equal('stderr')
+      expect(line).to.include('output/bad.csv')
+      expect(line).to.include('duplicate_file_name')
+    })
+
+    it('lists every file in failedUploads and surfaces a single stderr line when fileUploader rejects', async function () {
+      const uploader = sinon.stub().rejects(new Error('network down'))
+      const { worker, lifecycleEvents, outputCalls } =
+        setupClientWithUploadTracking({ fileUploader: uploader })
+
+      emitRunResult(worker, 'exec-up-4', [
+        { relativePath: 'a.csv', content: new TextEncoder().encode('1') },
+        { relativePath: 'b.csv', content: new TextEncoder().encode('2') },
+      ])
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      const finished = findFinished(lifecycleEvents)
+      expect(finished).to.deep.include({
+        success: false,
+        errorType: 'UploadFileError',
+      })
+      expect(finished)
+        .to.have.property('failedUploads')
+        .that.has.members(['a.csv', 'b.csv'])
+
+      expect(outputCalls).to.have.lengthOf(1)
+      const [stream, line] = outputCalls[0]
+      expect(stream).to.equal('stderr')
+      expect(line).to.include('network down')
+    })
+
+    it('does not invoke fileUploader when run-code-result has success: false', async function () {
+      const uploader = sinon.stub().resolves([])
+      const { worker, lifecycleEvents } = setupClientWithUploadTracking({
+        fileUploader: uploader,
+      })
+
+      emitRunResult(
+        worker,
+        'exec-up-5',
+        [{ relativePath: 'a.csv', content: new TextEncoder().encode('1') }],
+        false
+      )
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      expect(uploader.called).to.be.false
+      expect(findFinished(lifecycleEvents)).to.deep.include({
+        success: false,
+        failedUploads: [],
+      })
+    })
+
+    it('does not invoke fileUploader when outputFiles is empty', async function () {
+      const uploader = sinon.stub().resolves([])
+      const { worker, lifecycleEvents } = setupClientWithUploadTracking({
+        fileUploader: uploader,
+      })
+
+      emitRunResult(worker, 'exec-up-6', [])
+      await waitFor(() => Boolean(findFinished(lifecycleEvents)))
+
+      expect(uploader.called).to.be.false
+    })
+  })
+
   describe('reset', function () {
     it('terminates the current worker and creates a new one', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
         createWorker,
+        fileUploader: fileUploaderStub,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
@@ -334,6 +608,7 @@ describe('PyodideWorkerClient', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
         createWorker,
+        fileUploader: fileUploaderStub,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
@@ -357,6 +632,7 @@ describe('PyodideWorkerClient', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
         createWorker,
+        fileUploader: fileUploaderStub,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })
@@ -389,6 +665,7 @@ describe('PyodideWorkerClient', function () {
       const client = new PyodideWorkerClient({
         baseAssetPath: BASE_ASSET_PATH,
         createWorker,
+        fileUploader: fileUploaderStub,
       })
       const originalWorker = WorkerMock.instances[0]
       originalWorker.emitMessage({ type: 'listening' })

@@ -22,6 +22,7 @@ const en = {
     or: 'or',
     close: 'Close',
     submit: 'Submit',
+    loading: 'Loading...',
     'add-ai-assist':
       'Add AI assist to your plan to get unlimited access to all AI tools',
     'add-unlimited-ai': 'Add unlimited AI',
@@ -101,17 +102,14 @@ const en = {
     'language-model.quota-reached.tooltip.3':
       'or upgrade now to keep checking your text.',
     'language-model.quota-reached.ai-bundle.tooltip':
-      "You've hit your quota! Upgrade for unlimited access to all AI features",
-
-    'language-model.quota-reached.ai-bundle.tooltip.fair-usage':
-      "You've reached the fair usage limit on your plan.",
-
-    'language-model.quota-reached.ai-bundle.tooltip.1': "You've hit your quota",
+      "You've hit your daily AI limit! Upgrade for unlimited access to all AI features",
+    'language-model.quota-reached.ai-bundle.tooltip.1':
+      "You've hit your daily AI limit",
     'language-model.quota-reached.ai-bundle.tooltip.2':
       'Add AI Assist for unlimited access to all Overleaf AI features,',
-
     'language-model.quota-reached.ai-bundle.tooltip.3':
       'including Writefull. Or wait for your quota to reset.',
+    'language-model.quota-reached.tooltip': "You've hit your daily AI limit",
     'language-model.use-gpt.tooltip.1':
       "Writefull's language model reviews only English texts. For non-English texts,",
     'language-model.use-gpt.tooltip.2': 'click here and select the GPT model.',
@@ -132,9 +130,6 @@ const en = {
     'unexpected-error':
       'Sorry, something went wrong. If this keeps happening, please contact us at support@writefull.com.',
     'no-results-warning': 'Sorry, we were not able to find a good response.',
-    'suggestion-card.banner.quick-guide.welcome': 'Welcome to Writefull!',
-    'suggestion-card.banner.quick-guide.start':
-      'Click here to start a quick guide',
     'suggestion-card.banner.non-english.introduction':
       "To view AI-powered language suggestions you'll need to use the GPT model.",
     'suggestion-card.banner.non-english.choose-model': 'Choose model',
@@ -149,7 +144,7 @@ const en = {
     'suggestion-card.block-edit': 'Block this edit from appearing again',
     'suggestion-card.hide-suggestions.title': 'Hide suggestions too?',
     'suggestion-card.hide-suggestions.question':
-      'Do you want to hide Writefull suggestions until your quota is reset?',
+      'Do you want to hide language suggestions until your quota is reset?',
     'suggestion-card.accept-changes': 'Accept changes',
     'ai-context-menu.ask-texgpt': 'Ask TeXGPT for help with anything',
     'ai-context-menu.title-generator': 'Title Generator',
@@ -201,9 +196,10 @@ const en = {
     'blocked-language-suggestions-modal.delete': 'Delete',
     'blocked-language-suggestions-modal.empty-state':
       'There are no blocked suggestions to display',
-    'errors.ai-bundle.quota-exceeded.heading': 'You’ve hit your quota!',
+    'errors.ai-bundle.quota-exceeded.heading':
+      'You’ve hit your daily AI limit!',
     'errors.backend-quota-exceeded-freemium.heading':
-      'You’ve hit your Writefull quota',
+      'You’ve hit your daily AI limit',
     'errors.backend-quota-exceeded-freemium.body.1':
       'To ensure fair access for all users, free accounts have a usage limit.',
     'errors.backend-quota-exceeded-freemium.body.2':
@@ -218,7 +214,7 @@ const en = {
       'Invest in your writing and stay ahead with unlimited access.',
     'errors.error-hit-limit-freemium.heading': 'You’re on fire!',
     'errors.error-hit-limit-freemium.body':
-      'You’ve hit your Writefull quota. Upgrade now for unlimited language suggestions and LaTeX support, and early access to upcoming features like TikZ generation.',
+      'You’ve hit your daily AI limit. Upgrade now for unlimited language suggestions and LaTeX support, and early access to upcoming features like TikZ generation.',
     'toolbar.abstract-generator.name': 'Abstract generator',
     'toolbar.abstract-generator.disabled_non_english':
       'You need to be writing in English to generate an abstract',
@@ -492,7 +488,7 @@ const en = {
     'citations-reviewer.chat.backend-quota-error.premium.body':
       "You've reached the fair usage limit on your plan. You can check for citations again in __remainingTime__",
     'citations-reviewer.chat.backend-quota-error.freemium.title':
-      'You’ve hit your Writefull quota',
+      'You’ve hit your daily AI limit',
     'citations-reviewer.chat.backend-quota-error.freemium.body':
       'To ensure fair access for all users, free accounts have a usage limit. You can check for citations again in __remainingTime__. Upgrade to Premium to unlock the full power of Writefull.',
     'citations-reviewer.chat.navigation.publications': 'Suggested papers',
@@ -508,11 +504,15 @@ const en = {
     'paywall.title.new-plans': 'You’ve hit your daily AI limit',
     'paywall.title.new-plans.fair-usage': 'Usage limit reached',
     'paywall.body':
-      'Upgrade for unlimited access to all AI features or check back in __hours__ hours and __minutes__ minutes for your limit to reset.',
+      'Upgrade to keep using AI features, or wait __hours__ hours and __minutes__ minutes for your limit to reset.',
     'paywall.body.legacy':
       'Upgrade for unlimited access to all AI features or check back at __date__, __time__.',
     'paywall.body.fair-usage':
       "You've reached the fair usage limit on your plan. You can continue using AI features again in __hours__ hours and __minutes__ minutes.",
+    'paywall.body.standard-group':
+      'Your limit will reset in __hours__ hours and __minutes__ minutes. Or speak to your group admin about upgrading.',
+    'paywall.body.commons':
+      'You’ve reached your AI usage limit. This will reset in __hours__ hours and __minutes__ minutes.',
     'paywall.upgrade': 'Upgrade',
     'paywall.hide': 'Hide for now',
   },
@@ -541,6 +541,7 @@ const es = {
     or: 'o',
     close: 'Cerrar',
     submit: 'Enviar',
+    loading: 'Cargando...',
     add: 'Añadir',
     'add-ai-assist':
       'Añade AI assist a tu plan para obtener acceso ilimitado a todas las herramientas AI',
@@ -625,14 +626,14 @@ const es = {
       'o actualiza ahora para seguir revisando tu texto.',
     'language-model.quota-reached.ai-bundle.tooltip':
       'Has alcanzado tu límite de uso! Actualiza para acceso ilimitado a todas las funcionalidades AI.',
-    'language-model.quota-reached.ai-bundle.tooltip.fair-usage':
-      'Has alcanzado el límite de uso justo en tu plan.',
     'language-model.quota-reached.ai-bundle.tooltip.1':
       'Has alcanzado tu límite de uso.',
     'language-model.quota-reached.ai-bundle.tooltip.2':
       'Añade AI Assist para acceso ilimitado a todas las funcionalidades AI de Overleaf,',
     'language-model.quota-reached.ai-bundle.tooltip.3':
       'incluyendo Writefull. O espera a que se reinicie tu cuota.',
+    'language-model.quota-reached.tooltip':
+      'Has alcanzado tu límite de uso diario de AI',
     'language-model.use-gpt.tooltip.1':
       'El modelo de lenguaje de Writefull revisa solo textos en inglés. Para textos no ingleses,',
     'language-model.use-gpt.tooltip.2':
@@ -656,9 +657,6 @@ const es = {
       'Lo siento, algo salió mal. Si esto sigue ocurriendo, por favor contáctanos en support@writefull.com.',
     'no-results-warning':
       'Lo siento, no pudimos encontrar una buena respuesta.',
-    'suggestion-card.banner.quick-guide.welcome': '¡Bienvenido a Writefull!',
-    'suggestion-card.banner.quick-guide.start':
-      'Haga clic aquí para una guía rápida',
     'suggestion-card.banner.non-english.introduction':
       'Para ver sugerencias de lenguaje impulsadas por IA, necesitarás usar el modelo GPT.',
     'suggestion-card.banner.non-english.choose-model': 'Elegir modelo',
@@ -677,7 +675,7 @@ const es = {
     'suggestion-card.hide-suggestions.title':
       '¿Ocultar también las sugerencias?',
     'suggestion-card.hide-suggestions.question':
-      '¿Quieres ocultar las sugerencias de Writefull hasta que se reinicie tu cuota?',
+      '¿Quieres ocultar las sugerencias de lenguaje hasta que se reinicie tu cuota?',
     'suggestion-card.accept-changes': 'Aceptar cambios',
     'ai-context-menu.ask-texgpt':
       'Pregúntale a TeXGPT para obtener ayuda con cualquier cosa',
@@ -732,9 +730,10 @@ const es = {
     'blocked-language-suggestions-modal.delete': 'Eliminar',
     'blocked-language-suggestions-modal.empty-state':
       'No hay sugerencias bloqueadas para mostrar',
-    'errors.ai-bundle.quota-exceeded.heading': '¡Has agotado tu cuota!',
+    'errors.ai-bundle.quota-exceeded.heading':
+      '¡Has agotado tu límite de uso diario de AI!',
     'errors.backend-quota-exceeded-freemium.heading':
-      'Has agotado tu cuota de Writefull',
+      'Has agotado tu límite de uso diario de AI',
     'errors.backend-quota-exceeded-freemium.body.1':
       'Para garantizar un acceso justo para todos los usuarios, las cuentas gratuitas tienen un límite de uso.',
     'errors.backend-quota-exceeded-freemium.body.2':
@@ -1046,11 +1045,15 @@ const es = {
     'paywall.title.new-plans': 'Has alcanzado tu límite de AI diario',
     'paywall.title.new-plans.fair-usage': 'Límite de uso alcanzado',
     'paywall.body':
-      'Actualiza para acceso ilimitado a todas las funciones de AI o espera __hours__ horas y __minutes__ minutos para que se reinicie tu límite.',
+      'Has alcanzado tu límite de AI diario. Mejora tu plan para continuar usando las funciones de AI o espera __hours__ horas y __minutes__ minutos para que se reinicie tu límite.',
     'paywall.body.legacy':
       'Actualiza para acceso ilimitado a todas las funciones de AI o vuelve a intentar el __date__ a las __time__.',
     'paywall.body.fair-usage':
       'Has alcanzado el límite de uso justo en tu plan. Puedes volver a buscar citas en __hours__ horas y __minutes__ minutos.',
+    'paywall.body.standard-group':
+      'Tu límite se reiniciará en __hours__ horas y __minutes__ minutos. O habla con tu administrador de grupo sobre la mejora de tu plan.',
+    'paywall.body.commons':
+      'Has alcanzado tu límite de uso diario de AI. Este se reiniciará en __hours__ horas y __minutes__ minutos.',
     'paywall.upgrade': 'Actualizar',
     'paywall.hide': 'Ocultar por ahora',
   },
