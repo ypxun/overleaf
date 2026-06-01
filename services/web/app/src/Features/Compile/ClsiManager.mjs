@@ -36,7 +36,7 @@ const NewBackendCloudClsiCookieManager = ClsiCookieManagerFactory(
   Settings.apis.clsi_new?.backendGroupName
 )
 
-const VALID_COMPILERS = ['pdflatex', 'latex', 'xelatex', 'lualatex']
+const VALID_COMPILERS = Settings.safeCompilers
 const OUTPUT_FILE_TIMEOUT_MS = 60000
 const CLSI_COOKIES_ENABLED = (Settings.clsiCookie?.key ?? '') !== ''
 
@@ -747,7 +747,7 @@ async function _buildRequest(projectId, userId, options) {
     throw new Errors.NotFoundError(`project does not exist: ${projectId}`)
   }
   if (!VALID_COMPILERS.includes(project.compiler)) {
-    project.compiler = 'pdflatex'
+    project.compiler = Settings.defaultLatexCompiler
   }
   const historyId = project.overleaf.history.id
   let { baseHistoryVersion } = options
@@ -1174,19 +1174,14 @@ function _finaliseRequest(projectId, options, project, docs, files) {
   }
 }
 
-async function buildDocumentConversionRequest(projectId) {
-  const project = await ProjectGetter.promises.getProject(projectId, {
-    compiler: 1,
-    imageName: 1,
-    'overleaf.history.id': 1,
-    rootDoc_id: 1,
-    rootFolder: 1,
+async function buildDocumentConversionRequest(projectId, userId, options) {
+  return await _buildRequest(projectId, userId, {
+    ...options,
+    // Use the history snapshot as populated on clsi-cache.
+    populateClsiCache: true,
+    // Read from mongo directly, skip redis.
+    incrementalCompilesEnabled: false,
   })
-  if (project == null) {
-    throw new Errors.NotFoundError(`project does not exist: ${projectId}`)
-  }
-  const projectStateHash = ClsiStateManager.computeHash(project, {})
-  return _buildRequestFromMongo(projectId, {}, project, projectStateHash)
 }
 
 async function wordCount(projectId, userId, file, limits, clsiserverid) {

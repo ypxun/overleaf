@@ -5,6 +5,7 @@ import Path from 'node:path'
 import CommandRunner from './CommandRunner.js'
 import LockManager from './LockManager.js'
 import OError from '@overleaf/o-error'
+import { ConversionError } from './Errors.js'
 
 const CONVERSION_CONFIGS = {
   docx: {
@@ -68,10 +69,12 @@ async function convertToLaTeX(
       Settings.pandocImage,
       Settings.conversionTimeoutSeconds * 1000,
       {},
-      'conversions'
+      'conversions',
+      null
     )
     if (exitCodePandoc !== 0) {
-      throw new OError('Non-zero exit code from pandoc', {
+      throw new ConversionError('Non-zero exit code from pandoc', {
+        type: conversionType,
         exitCode: exitCodePandoc,
         stderr: stderrPandoc,
       })
@@ -95,7 +98,8 @@ async function convertToLaTeX(
       Settings.pandocImage,
       Settings.conversionTimeoutSeconds * 1000,
       {},
-      'conversions'
+      'conversions',
+      null
     )
     if (exitCodeZip !== 0) {
       throw new OError('Non-zero exit code from pandoc', {
@@ -110,6 +114,9 @@ async function convertToLaTeX(
   } catch (error) {
     // Clean up the conversion directory on error to avoid leaving failed conversions around
     await fs.rm(conversionDir, { force: true, recursive: true }).catch(() => {})
+    if (error instanceof ConversionError) {
+      throw error
+    }
     throw new OError('pandoc conversion failed').withCause(error)
   }
 
@@ -129,21 +136,18 @@ const LATEX_EXPORT_CONFIGS = {
       'docx',
       '--citeproc',
       '--number-sections',
-      '--resource-path=.',
     ],
   },
   markdown: {
     fileExtension: 'md',
     compressOutput: true,
-    getPandocArgs: ({ outputPath, subdirName }) => [
+    getPandocArgs: ({ outputPath }) => [
       '--output',
       outputPath,
       '--from',
       'latex',
       '--to',
       'markdown',
-      '--resource-path=.',
-      `--extract-media=${subdirName}`,
     ],
   },
 }
@@ -181,43 +185,79 @@ async function convertLaTeXToDocumentInDir(
   const timeoutMs = Settings.conversionTimeoutSeconds * 1000
   const outputId = crypto.randomUUID()
 
-  let pandocOutputPath, finalOutputName
-  if (config.compressOutput) {
-    await fs.mkdir(Path.join(compileDir, outputId), { recursive: true })
-    pandocOutputPath = Path.join(outputId, `main.${config.fileExtension}`)
-    finalOutputName = outputId + '.zip'
-  } else {
-    pandocOutputPath = outputId + '.' + config.fileExtension
-    finalOutputName = pandocOutputPath
-  }
-
   logger.debug(
     { compileDir, rootDocPath, type },
     'running pandoc latex-to-document in compile dir'
   )
 
+  if (!config.compressOutput) {
+    const outputName = `${outputId}.${config.fileExtension}`
+    const { exitCode, stdout, stderr } = await CommandRunner.promises.run(
+      conversionId,
+      [
+        'pandoc',
+        rootDocPath,
+        ...config.getPandocArgs({ outputPath: outputName }),
+        '--resource-path=.',
+      ],
+      compileDir,
+      Settings.pandocImage,
+      timeoutMs,
+      {},
+      'conversions',
+      null
+    )
+
+    if (exitCode !== 0) {
+      throw new ConversionError('pandoc latex-to-document conversion failed', {
+        type,
+        exitCode,
+        stderr,
+      })
+    }
+
+    logger.debug(
+      { stdout, stderr, exitCode },
+      'pandoc latex-to-document conversion completed'
+    )
+
+    return Path.join(compileDir, outputName)
+  }
+
+  // For compressed outputs  we stage everything inside a uuid subdir so
+  // the archive root ends up flat:
+  //   - pandoc runs with cwd=<outputId>, --extract-media=. drops images flat
+  //     alongside main.<ext>, and --resource-path=.. lets it find originals
+  //     in the parent compile dir.
+  //   - zip runs with the same cwd, so `zip -r ../<id>.zip .` produces an
+  //     archive whose root is main.<ext> + the media files (no uuid leak,
+  //     no collision with anything already in compileDir).
+  await fs.mkdir(Path.join(compileDir, outputId), { recursive: true })
+
+  const outputName = `main.${config.fileExtension}`
+  const finalOutputName = `${outputId}.zip`
+
   const { exitCode, stdout, stderr } = await CommandRunner.promises.run(
     conversionId,
     [
       'pandoc',
-      rootDocPath,
-      ...config.getPandocArgs({
-        outputPath: pandocOutputPath,
-        subdirName: outputId,
-      }),
+      Path.join('..', rootDocPath),
+      ...config.getPandocArgs({ outputPath: outputName }),
+      '--resource-path=..',
+      '--extract-media=.',
     ],
     compileDir,
     Settings.pandocImage,
     timeoutMs,
     {},
-    'conversions'
+    'conversions',
+    outputId
   )
 
   if (exitCode !== 0) {
-    throw new OError('pandoc latex-to-document conversion failed', {
+    throw new ConversionError('pandoc latex-to-document conversion failed', {
       type,
       exitCode,
-      stdout,
       stderr,
     })
   }
@@ -227,22 +267,19 @@ async function convertLaTeXToDocumentInDir(
     'pandoc latex-to-document conversion completed'
   )
 
-  if (!config.compressOutput) {
-    return Path.join(compileDir, finalOutputName)
-  }
-
   const {
     exitCode: zipExitCode,
     stdout: zipStdout,
     stderr: zipStderr,
   } = await CommandRunner.promises.run(
     conversionId,
-    ['sh', '-c', `cd ${outputId} && zip -r ../${finalOutputName} .`],
+    ['zip', '-r', Path.join('..', finalOutputName), '.'],
     compileDir,
     Settings.pandocImage,
     timeoutMs,
     {},
-    'conversions'
+    'conversions',
+    outputId
   )
 
   if (zipExitCode !== 0) {

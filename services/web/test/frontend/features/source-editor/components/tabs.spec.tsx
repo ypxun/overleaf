@@ -1,4 +1,4 @@
-import React, { FC, useEffect, useRef } from 'react'
+import React, { FC, useEffect, useRef, useState } from 'react'
 import { EditorProviders } from '../../../helpers/editor-providers'
 import { TabsContainer } from '../../../../../frontend/js/features/source-editor/components/tabs/tabs-container'
 import {
@@ -11,6 +11,13 @@ import {
 } from '@/features/ide-react/context/editor-manager-context'
 import { TAB_TRANSFER_TYPE } from '@/features/ide-react/context/tabs-context'
 import { useFileTreeOpenContext } from '@/features/ide-react/context/file-tree-open-context'
+import {
+  EditorViewContext,
+  useEditorViewContext,
+} from '@/features/ide-react/context/editor-view-context'
+import { EditorView } from '@codemirror/view'
+import { EditorState, Transaction } from '@codemirror/state'
+import { tabsListener } from '@/features/source-editor/extensions/tabs-listener'
 
 const DOC_IDS = {
   main: 'doc-main-id',
@@ -120,6 +127,53 @@ function makeEditorManagerProvider() {
   return EditorManagerProvider
 }
 
+function makeEditorViewProvider() {
+  const EditorViewProvider: FC<React.PropsWithChildren> = ({ children }) => {
+    const parentRef = useRef<HTMLDivElement>(null)
+    const [view, setView] = useState<EditorView | null>(null)
+    useEffect(() => {
+      if (!parentRef.current) return
+      const editorView = new EditorView({
+        state: EditorState.create({
+          extensions: [
+            tabsListener(),
+            EditorView.contentAttributes.of({
+              'data-testid': 'mock-editor-view',
+            }),
+          ],
+        }),
+        parent: parentRef.current,
+      })
+      setView(editorView)
+      return () => editorView.destroy()
+    }, [])
+    return (
+      <EditorViewContext.Provider value={{ view, setView: () => {} }}>
+        {children}
+        <div ref={parentRef} />
+      </EditorViewContext.Provider>
+    )
+  }
+  return EditorViewProvider
+}
+
+function RemoteChangeButton() {
+  const { view } = useEditorViewContext()
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        view?.dispatch({
+          changes: { from: 0, insert: 'remote text' },
+          annotations: Transaction.remote.of(true),
+        })
+      }
+    >
+      Add a remote change
+    </button>
+  )
+}
+
 // Rendered inside the provider tree to call handleFileTreeSelect() when a
 // custom DOM event fires. Also triggers handleFileTreeInit() on mount.
 function FileSelectionDriver({
@@ -188,10 +242,12 @@ describe('File Tabs', function () {
         userSettings={options?.userSettings}
         providers={{
           EditorManagerProvider: makeEditorManagerProvider(),
+          EditorViewProvider: makeEditorViewProvider(),
         }}
       >
         <FileSelectionDriver />
         <TabsContainer />
+        <RemoteChangeButton />
       </EditorProviders>
     )
   }
@@ -216,6 +272,8 @@ describe('File Tabs', function () {
     })
 
     mountTabs()
+
+    cy.findByTestId('mock-editor-view').as('editorView')
   })
 
   describe('Initial file selection', function () {
@@ -228,6 +286,7 @@ describe('File Tabs', function () {
           rootDocId={DOC_IDS.main}
           providers={{
             EditorManagerProvider: makeEditorManagerProvider(),
+            EditorViewProvider: makeEditorViewProvider(),
           }}
         >
           <FileSelectionDriver
@@ -266,7 +325,7 @@ describe('File Tabs', function () {
       cy.findByRole('tab', { name: /main\.tex/ }).should('exist')
 
       // Make main permanent (keypress) so selecting another file doesn't replace it
-      cy.get('body').type('a')
+      cy.get('@editorView').type('a')
 
       // Select another file
       cy.then(() => selectDoc(DOC_IDS.intro))
@@ -307,7 +366,7 @@ describe('File Tabs', function () {
         'tab-temporary'
       )
 
-      cy.get('body').type('a')
+      cy.get('@editorView').type('a')
 
       cy.findByRole('tab', { name: /main\.tex/ }).should(
         'not.have.class',
@@ -321,7 +380,7 @@ describe('File Tabs', function () {
       cy.findByRole('tab', { name: /main\.tex/ }).should('exist')
 
       // Make main permanent
-      cy.get('body').type('a')
+      cy.get('@editorView').type('a')
 
       // Open intro (temporary)
       cy.then(() => selectDoc(DOC_IDS.intro))
@@ -336,6 +395,21 @@ describe('File Tabs', function () {
       cy.findByRole('tab', { name: /intro\.tex/ }).should('not.exist')
       cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
       cy.findByRole('tab', { name: /main\.tex/ }).should('exist')
+    })
+
+    it('does not make a temporary tab permanent on remote changes', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.findByRole('tab', { name: /main\.tex/ }).should(
+        'have.class',
+        'tab-temporary'
+      )
+
+      cy.findByRole('button', { name: 'Add a remote change' }).click()
+
+      cy.findByRole('tab', { name: /main\.tex/ }).should(
+        'have.class',
+        'tab-temporary'
+      )
     })
 
     it('makes a temporary tab permanent on double-click', function () {
@@ -902,7 +976,7 @@ describe('File Tabs', function () {
       for (let i = 1; i <= 10; i++) {
         const id = `ch${i}`
         cy.then(() => selectEntity(makeDocEntity(id, `chapter-${i}.tex`)))
-        cy.get('body').type('a')
+        cy.get('@editorView').type('a')
         cy.findByRole('tab', { name: new RegExp(`chapter-${i}.tex`) }).should(
           'be.visible'
         )
@@ -944,6 +1018,33 @@ describe('File Tabs', function () {
       cy.findByRole('tablist').should($el => {
         expect($el[0].scrollLeft).to.be.greaterThan(0)
       })
+    })
+  })
+
+  describe('Pruning deleted files', function () {
+    it('prunes persisted tabs whose files are no longer in the tree', function () {
+      cy.then(() => selectDoc(DOC_IDS.main))
+      cy.then(() => selectDoc(DOC_IDS.intro))
+      cy.then(() => selectDoc(DOC_IDS.appendix))
+
+      cy.findAllByRole('tab').should('have.length', 3)
+
+      // Re-mount with a tree containing only appendix.tex, then verify
+      // the last remaining tab cannot be closed
+      const trimmedRootFolder = makeRootFolder([
+        { _id: DOC_IDS.appendix, name: 'appendix.tex' },
+      ])
+      mountTabs({ rootFolder: trimmedRootFolder })
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
+
+      cy.findByRole('tab', { name: /appendix\.tex/ }).within(() => {
+        cy.findByRole('button', { name: 'Close tab' }).click()
+      })
+
+      cy.findAllByRole('tab').should('have.length', 1)
+      cy.findByRole('tab', { name: /appendix\.tex/ }).should('exist')
     })
   })
 

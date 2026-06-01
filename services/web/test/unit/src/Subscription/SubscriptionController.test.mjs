@@ -287,6 +287,10 @@ describe('SubscriptionController', function () {
           res.status(403)
           res.json({ message })
         }),
+        notFound: sinon.stub().callsFake((req, res, message) => {
+          res.status(404)
+          res.json({ message })
+        }),
       }),
     }))
 
@@ -345,20 +349,6 @@ describe('SubscriptionController', function () {
         default: (ctx.PermissionsManager = {
           promises: {
             checkUserPermissions: sinon.stub().resolves(true),
-          },
-        }),
-      })
-    )
-
-    vi.doMock(
-      '../../../../app/src/Features/Subscription/RecurlyClient',
-      () => ({
-        default: (ctx.RecurlyClient = {
-          promises: {
-            getAddOn: sinon.stub().resolves({
-              code: 'ai-assistant',
-              name: 'AI Assistant',
-            }),
           },
         }),
       })
@@ -1538,6 +1528,270 @@ describe('SubscriptionController', function () {
       expect(preview.nextInvoice.plan.name).to.equal('Professional')
       expect(preview.nextInvoice.plan.amount).to.equal(2000)
     })
+
+    describe('nextInvoice.date', function () {
+      it('uses subscription.periodEnd when cadence does not change', function (ctx) {
+        baseSubscription.pendingChange = undefined
+        baseSubscription.planCode = 'collaborator'
+        ctx.PlansLocator.findLocalPlanInSettings = sinon
+          .stub()
+          .returns({ annual: false, price_in_cents: 2300 })
+        const preview = ctx.SubscriptionController.makeChangePreview(
+          {
+            type: 'premium-subscription',
+            plan: { code: 'professional', name: 'Professional' },
+          },
+          subscriptionChange
+        )
+        expect(preview.nextInvoice.date).to.equal(
+          new Date('2027-04-29').toISOString()
+        )
+      })
+
+      it('uses now + 1 year on a monthly → annual upgrade (applied immediately)', function (ctx) {
+        baseSubscription.pendingChange = undefined
+        baseSubscription.planCode = 'student'
+        ctx.PlansLocator.findLocalPlanInSettings = sinon.stub()
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('student')
+          .returns({ annual: false, price_in_cents: 1000 })
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator-annual')
+          .returns({ annual: true, price_in_cents: 21900 })
+        subscriptionChange.nextPlanCode = 'collaborator-annual'
+
+        const before = new Date()
+        const preview = ctx.SubscriptionController.makeChangePreview(
+          {
+            type: 'premium-subscription',
+            plan: { code: 'collaborator-annual', name: 'Standard annual' },
+          },
+          subscriptionChange
+        )
+        const after = new Date()
+
+        const date = new Date(preview.nextInvoice.date)
+        const minExpected = new Date(before)
+        minExpected.setFullYear(minExpected.getFullYear() + 1)
+        const maxExpected = new Date(after)
+        maxExpected.setFullYear(maxExpected.getFullYear() + 1)
+        expect(date.getTime()).to.be.at.least(minExpected.getTime())
+        expect(date.getTime()).to.be.at.most(maxExpected.getTime())
+      })
+
+      it('uses now + 1 month on an annual → monthly cadence flip while in trial (applied immediately)', function (ctx) {
+        // shouldPlanChangeAtTermEnd returns false during a trial regardless
+        // of price direction, so the override applies and the next invoice
+        // is one new term from today.
+        baseSubscription.pendingChange = undefined
+        baseSubscription.planCode = 'collaborator-annual'
+        baseSubscription.trialPeriodEnd = new Date(
+          Date.now() + 24 * 60 * 60 * 1000
+        )
+        ctx.PlansLocator.findLocalPlanInSettings = sinon.stub()
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator-annual')
+          .returns({ annual: true, price_in_cents: 21900 })
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator')
+          .returns({ annual: false, price_in_cents: 2300 })
+        subscriptionChange.nextPlanCode = 'collaborator'
+
+        const before = new Date()
+        const preview = ctx.SubscriptionController.makeChangePreview(
+          {
+            type: 'premium-subscription',
+            plan: { code: 'collaborator', name: 'Standard' },
+          },
+          subscriptionChange
+        )
+        const after = new Date()
+
+        const date = new Date(preview.nextInvoice.date)
+        const minExpected = new Date(before)
+        minExpected.setMonth(minExpected.getMonth() + 1)
+        const maxExpected = new Date(after)
+        maxExpected.setMonth(maxExpected.getMonth() + 1)
+        expect(date.getTime()).to.be.at.least(minExpected.getTime())
+        expect(date.getTime()).to.be.at.most(maxExpected.getTime())
+      })
+
+      it('keeps subscription.periodEnd on an annual → monthly cadence flip (scheduled at term end)', function (ctx) {
+        // shouldPlanChangeAtTermEnd returns true for this case
+        // (annual yearly cents > monthly cents), so the change is deferred
+        // and the next invoice lands at the existing annual period end —
+        // not one month from now.
+        baseSubscription.pendingChange = undefined
+        baseSubscription.planCode = 'collaborator-annual'
+        ctx.PlansLocator.findLocalPlanInSettings = sinon.stub()
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator-annual')
+          .returns({ annual: true, price_in_cents: 21900 })
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator')
+          .returns({ annual: false, price_in_cents: 2300 })
+        subscriptionChange.nextPlanCode = 'collaborator'
+
+        const preview = ctx.SubscriptionController.makeChangePreview(
+          {
+            type: 'premium-subscription',
+            plan: { code: 'collaborator', name: 'Standard' },
+          },
+          subscriptionChange
+        )
+        expect(preview.nextInvoice.date).to.equal(
+          new Date('2027-04-29').toISOString()
+        )
+      })
+
+      it('falls back to subscription.periodEnd if current plan cannot be resolved', function (ctx) {
+        baseSubscription.pendingChange = undefined
+        baseSubscription.planCode = 'unknown-plan'
+        ctx.PlansLocator.findLocalPlanInSettings = sinon.stub()
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('unknown-plan')
+          .returns(null)
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('collaborator-annual')
+          .returns({ annual: true, price_in_cents: 21900 })
+        subscriptionChange.nextPlanCode = 'collaborator-annual'
+
+        const preview = ctx.SubscriptionController.makeChangePreview(
+          {
+            type: 'premium-subscription',
+            plan: { code: 'collaborator-annual', name: 'Standard annual' },
+          },
+          subscriptionChange
+        )
+        expect(preview.nextInvoice.date).to.equal(
+          new Date('2027-04-29').toISOString()
+        )
+      })
+    })
+
+    it('prefers the local plan name over the legacy payment-provider name for the future invoice', function (ctx) {
+      baseSubscription.pendingChange = undefined
+      ctx.PlansLocator.findLocalPlanInSettings
+        .withArgs('professional')
+        .returns({
+          planCode: 'professional',
+          name: 'Pro monthly',
+          annual: false,
+        })
+      const preview = ctx.SubscriptionController.makeChangePreview(
+        {
+          type: 'premium-subscription',
+          plan: { code: 'professional', name: 'Pro monthly' },
+        },
+        subscriptionChange
+      )
+      expect(preview.nextInvoice.plan.name).to.equal('Pro monthly')
+    })
+  })
+
+  describe('previewSubscription', function () {
+    beforeEach(function (ctx) {
+      ctx.req = new MockRequest(vi)
+      ctx.req.query = { planCode: 'collaborator' }
+      ctx.res = new MockResponse(vi)
+      ctx.res.render = sinon.stub()
+
+      ctx.PlansLocator.findLocalPlanInSettings.returns({
+        planCode: 'collaborator',
+        name: 'Standard monthly',
+        annual: false,
+      })
+
+      ctx.SubscriptionHandler.promises.previewSubscriptionChange = sinon
+        .stub()
+        .resolves({
+          subscription: {
+            currency: 'USD',
+            netTerms: 0,
+            periodEnd: new Date('2027-04-29'),
+            taxRate: 0,
+          },
+          nextPlanCode: 'collaborator',
+          nextPlanName: 'Standard monthly',
+          nextPlanPrice: 2300,
+          nextAddOns: [],
+          immediateCharge: { subtotal: 0, tax: 0, total: 0, discount: 0 },
+          subtotal: 2300,
+          tax: 0,
+          total: 2300,
+        })
+
+      ctx.Modules.promises.hooks.fire
+        .withArgs('getPaymentMethod')
+        .resolves(['fake-method'])
+    })
+
+    it('renders the renamed local plan name in changePreview.change.plan', async function (ctx) {
+      await ctx.SubscriptionController.previewSubscription(ctx.req, ctx.res)
+
+      expect(ctx.res.render).to.have.been.calledWith(
+        'subscriptions/preview-change',
+        sinon.match({
+          changePreview: sinon.match({
+            change: {
+              type: 'premium-subscription',
+              plan: { code: 'collaborator', name: 'Standard monthly' },
+            },
+          }),
+        })
+      )
+      expect(ctx.PlansLocator.findLocalPlanInSettings).to.have.been.calledWith(
+        'collaborator'
+      )
+    })
+
+    it('returns 404 when planCode is missing', async function (ctx) {
+      ctx.req.query = {}
+
+      await ctx.SubscriptionController.previewSubscription(ctx.req, ctx.res)
+
+      expect(ctx.HttpErrorHandler.notFound).to.have.been.calledWith(
+        ctx.req,
+        ctx.res,
+        'Missing plan code'
+      )
+      expect(ctx.res.render).not.to.have.been.called
+    })
+
+    it('returns 404 when planCode is unknown to the local plan registry', async function (ctx) {
+      ctx.req.query = { planCode: 'does-not-exist' }
+      ctx.PlansLocator.findLocalPlanInSettings.returns(null)
+
+      await ctx.SubscriptionController.previewSubscription(ctx.req, ctx.res)
+
+      expect(ctx.HttpErrorHandler.notFound).to.have.been.calledWith(
+        ctx.req,
+        ctx.res,
+        'Unknown plan: does-not-exist'
+      )
+      expect(ctx.res.render).not.to.have.been.called
+    })
+
+    it('passes trialDisabledReason to the view when the user is ineligible for a free trial', async function (ctx) {
+      ctx.req.query = { planCode: 'collaborator_free_trial_7_days' }
+      ctx.PlansLocator.findLocalPlanInSettings.returns({
+        planCode: 'collaborator_free_trial_7_days',
+        name: 'Standard monthly',
+        annual: false,
+      })
+      ctx.Modules.promises.hooks.fire
+        .withArgs('userCanStartTrial', ctx.user)
+        .resolves([{ canStartTrial: false, disabledReason: 'already-used' }])
+
+      await ctx.SubscriptionController.previewSubscription(ctx.req, ctx.res)
+
+      expect(ctx.res.render).to.have.been.calledWith(
+        'subscriptions/preview-change',
+        sinon.match({
+          trialDisabledReason: 'already-used',
+        })
+      )
+    })
   })
 
   describe('previewAddonPurchase', function () {
@@ -1635,6 +1889,11 @@ describe('SubscriptionController', function () {
         ctx.SubscriptionLocator.promises.getUsersSubscription.resolves(
           normalSubscription
         )
+        ctx.PlansLocator.findLocalPlanInSettings.withArgs('assistant').returns({
+          planCode: 'assistant',
+          name: 'AI Assist',
+          annual: false,
+        })
 
         ctx.res.render = sinon.stub()
 
@@ -1643,7 +1902,12 @@ describe('SubscriptionController', function () {
         expect(ctx.res.render).to.have.been.calledWith(
           'subscriptions/preview-change',
           sinon.match({
-            changePreview: sinon.match.object,
+            changePreview: sinon.match({
+              change: {
+                type: 'add-on-purchase',
+                addOn: { code: 'assistant', name: 'AI Assist' },
+              },
+            }),
             purchaseReferrer: 'fake-referrer',
             redirectedPaymentErrorCode: undefined,
           })
@@ -1651,6 +1915,9 @@ describe('SubscriptionController', function () {
         expect(
           ctx.SubscriptionHandler.promises.previewAddonPurchase
         ).to.have.been.calledWith(ctx.user._id, 'assistant')
+        expect(
+          ctx.PlansLocator.findLocalPlanInSettings
+        ).to.have.been.calledWith('assistant')
       })
 
       it('should pass redirectedPaymentErrorCode to the view when errorCode query param is present', async function (ctx) {
@@ -1676,6 +1943,31 @@ describe('SubscriptionController', function () {
             redirectedPaymentErrorCode: 'payment_failed',
           })
         )
+      })
+
+      it('returns 404 when the add-on code is not in the local plan registry', async function (ctx) {
+        const normalSubscription = {
+          _id: 'sub-123',
+          customAccount: false,
+          collectionMethod: 'automatic',
+        }
+        ctx.SubscriptionLocator.promises.getUsersSubscription.resolves(
+          normalSubscription
+        )
+        ctx.PlansLocator.findLocalPlanInSettings
+          .withArgs('assistant')
+          .returns(null)
+
+        ctx.res.render = sinon.stub()
+
+        await ctx.SubscriptionController.previewAddonPurchase(ctx.req, ctx.res)
+
+        expect(ctx.HttpErrorHandler.notFound).to.have.been.calledWith(
+          ctx.req,
+          ctx.res,
+          'Unknown add-on: assistant'
+        )
+        expect(ctx.res.render).not.to.have.been.called
       })
 
       it('should proceed with preview when customAccount is undefined and collectionMethod is automatic', async function (ctx) {

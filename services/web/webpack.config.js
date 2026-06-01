@@ -124,7 +124,7 @@ module.exports = {
             loader: 'babel-loader',
             options: {
               cacheDirectory: true,
-              configFile: path.join(__dirname, './babel.config.json'),
+              configFile: path.join(__dirname, './babel.config.cjs'),
             },
           },
           {
@@ -157,7 +157,7 @@ module.exports = {
               // Configure babel-loader to cache compiled output so that
               // subsequent compile runs are much faster
               cacheDirectory: true,
-              configFile: path.join(__dirname, './babel.config.json'),
+              configFile: path.join(__dirname, './babel.config.cjs'),
               plugins: [
                 process.env.REACT_REFRESH_ENABLED === 'true' &&
                   'react-refresh/babel',
@@ -307,15 +307,8 @@ module.exports = {
     ],
   },
   resolve: {
+    tsconfig: path.resolve(__dirname, 'tsconfig.json'),
     alias: {
-      // custom prefixes for import paths
-      '@': path.resolve(__dirname, './frontend/js/'),
-      '@modules': path.resolve(__dirname, './modules/'),
-      '@ol-types': path.resolve(__dirname, './types/'),
-      '@wf': path.resolve(
-        __dirname,
-        './modules/writefull/frontend/js/integration/src/'
-      ),
       // Ensure all packages use the same jQuery instance (prevents duplicate
       // copies from Yarn hoisting breaking jQuery plugins like daterangepicker)
       jquery: require.resolve('jquery'),

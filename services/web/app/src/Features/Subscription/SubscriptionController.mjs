@@ -22,7 +22,6 @@ import AuthorizationManager from '../Authorization/AuthorizationManager.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import async from 'async'
 import HttpErrorHandler from '../Errors/HttpErrorHandler.mjs'
-import RecurlyClient from './RecurlyClient.mjs'
 import {
   AI_ADD_ON_CODE,
   subscriptionChangeIsAiAssistUpgrade,
@@ -50,6 +49,8 @@ const SUBSCRIPTION_PAUSED_REDIRECT_PATH =
 
 /**
  * @typedef {import('../../../../types/subscription/currency').CurrencyCode} CurrencyCode
+ * @typedef {import('./PaymentProviderEntities.mjs').PaymentProviderSubscription} PaymentProviderSubscription
+ * @typedef {import('../../../../types/subscription/plan').Plan} Plan
  */
 
 /**
@@ -628,18 +629,17 @@ async function previewAddonPurchase(req, res) {
     throw err
   }
 
-  const subscription = subscriptionChange.subscription
-  const addOn = await RecurlyClient.promises.getAddOn(
-    subscription.planCode,
-    addOnCode
-  )
+  const addOn = PlansLocator.findLocalPlanInSettings(addOnCode)
+  if (!addOn) {
+    return HttpErrorHandler.notFound(req, res, `Unknown add-on: ${addOnCode}`)
+  }
 
   /** @type {SubscriptionChangePreview} */
   const changePreview = makeChangePreview(
     {
       type: 'add-on-purchase',
       addOn: {
-        code: addOn.code,
+        code: addOn.planCode,
         name: addOn.name,
       },
     },
@@ -868,8 +868,10 @@ async function previewSubscription(req, res, next) {
   if (!planCode) {
     return HttpErrorHandler.notFound(req, res, 'Missing plan code')
   }
-  // TODO: use PaymentService to fetch plan information
-  const plan = await RecurlyClient.promises.getPlan(planCode)
+  const plan = PlansLocator.findLocalPlanInSettings(planCode)
+  if (!plan) {
+    return HttpErrorHandler.notFound(req, res, `Unknown plan: ${planCode}`)
+  }
   const user = SessionManager.getSessionUser(req.session)
   const userId = user?._id
 
@@ -896,7 +898,7 @@ async function previewSubscription(req, res, next) {
   const changePreview = makeChangePreview(
     {
       type: 'premium-subscription',
-      plan: { code: plan.code, name: plan.name },
+      plan: { code: plan.planCode, name: plan.name },
     },
     subscriptionChange,
     paymentMethod[0]
@@ -1207,6 +1209,48 @@ function getPlanNameForDisplay(planName, planCode) {
 }
 
 /**
+ * Compute the date displayed as the user's next invoice on the preview page.
+ *
+ * Default: the current cycle's end (`subscription.periodEnd`).
+ *
+ * Exception: when the change is applied immediately AND flips cadence
+ * (monthly ↔ annual), the user starts a new term today and the next invoice
+ * lands one new-term-length from now. We reuse
+ * `SubscriptionHelper.shouldPlanChangeAtTermEnd` so the immediate-vs-deferred
+ * decision stays in step with the apply path (including the trial case).
+ *
+ * @param {PaymentProviderSubscription} subscription
+ * @param {Plan | null | undefined} currentPlan Plan settings for the current plan, or null/undefined when unknown.
+ * @param {Plan | null | undefined} nextPlan Plan settings for the post-change plan, or null/undefined when unknown.
+ * @return {Date}
+ */
+function _getNextInvoiceDate(subscription, currentPlan, nextPlan) {
+  if (currentPlan == null || nextPlan == null) {
+    return subscription.periodEnd
+  }
+  const isCadenceChange =
+    Boolean(currentPlan.annual) !== Boolean(nextPlan.annual)
+  if (!isCadenceChange) {
+    return subscription.periodEnd
+  }
+  const isAppliedImmediately = !SubscriptionHelper.shouldPlanChangeAtTermEnd(
+    currentPlan,
+    nextPlan,
+    SubscriptionHelper.isInTrial(subscription.trialPeriodEnd)
+  )
+  if (!isAppliedImmediately) {
+    return subscription.periodEnd
+  }
+  const nextInvoiceDate = new Date()
+  if (nextPlan.annual) {
+    nextInvoiceDate.setFullYear(nextInvoiceDate.getFullYear() + 1)
+  } else {
+    nextInvoiceDate.setMonth(nextInvoiceDate.getMonth() + 1)
+  }
+  return nextInvoiceDate
+}
+
+/**
  * Build a subscription change preview for display purposes
  *
  * @param {SubscriptionChangeDescription} subscriptionChangeDescription A description of the change for the frontend
@@ -1263,6 +1307,14 @@ function makeChangePreview(
   const nextPlan = PlansLocator.findLocalPlanInSettings(
     futureInvoiceChange.nextPlanCode
   )
+  const currentPlan = PlansLocator.findLocalPlanInSettings(
+    subscription.planCode
+  )
+  const nextInvoiceDate = _getNextInvoiceDate(
+    subscription,
+    currentPlan,
+    nextPlan
+  )
 
   return {
     change: subscriptionChangeDescription,
@@ -1274,10 +1326,10 @@ function makeChangePreview(
       annual: nextPlan?.annual ?? false,
     },
     nextInvoice: {
-      date: subscription.periodEnd.toISOString(),
+      date: nextInvoiceDate.toISOString(),
       plan: {
         name: getPlanNameForDisplay(
-          futureInvoiceChange.nextPlanName,
+          nextPlan?.name ?? futureInvoiceChange.nextPlanName,
           futureInvoiceChange.nextPlanCode
         ),
         amount: futureInvoiceChange.nextPlanPrice,

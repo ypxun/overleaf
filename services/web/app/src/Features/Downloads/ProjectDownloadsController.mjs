@@ -12,6 +12,7 @@ import Validation from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
 import { pipeline } from 'node:stream/promises'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
+import { DocumentConversionError } from '../Errors/Errors.js'
 
 const { z, zz, parseReq } = Validation
 
@@ -27,6 +28,7 @@ const exportProjectConversionSchema = z.object({
   }),
   query: z.object({
     responseFormat: z.enum(['json', 'stream']).optional().default('stream'),
+    rootResourcePath: zz.filepath().optional(),
   }),
 })
 
@@ -75,9 +77,16 @@ async function _streamConvertedDocumentToResponse(
 async function exportProjectConversion(req, res) {
   const { params, query } = parseReq(req, exportProjectConversionSchema)
   const { Project_id: projectId, type } = params
-  const { responseFormat } = query
+  const { responseFormat, rootResourcePath } = query
   const userId = SessionManager.getLoggedInUserId(req.session)
   Metrics.inc('document-exports', 1, { type })
+
+  const compileFromHistory = await SplitTestHandler.promises.featureFlagEnabled(
+    req,
+    res,
+    'compile-from-history',
+    { includeReferer: true }
+  )
 
   let conversionResult
   try {
@@ -85,7 +94,8 @@ async function exportProjectConversion(req, res) {
       await DocumentConversionManager.promises.convertProjectToDocument(
         projectId,
         userId,
-        type
+        type,
+        { compileFromHistory, rootResourcePath }
       )
     AnalyticsManager.recordEventForUserInBackground(userId, 'convert-format', {
       sourceFormat: 'latex',
@@ -100,6 +110,11 @@ async function exportProjectConversion(req, res) {
       status: 'failure',
       operation: 'export',
     })
+    if (error instanceof DocumentConversionError) {
+      return res.status(422).json({
+        error: error.message,
+      })
+    }
     throw error
   }
   const { conversionId, buildId, clsiServerId, file } = conversionResult

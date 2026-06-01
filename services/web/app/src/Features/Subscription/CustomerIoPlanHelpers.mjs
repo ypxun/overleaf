@@ -33,13 +33,13 @@ const INACTIVE_NEXT_RENEWAL_DATE_STATES = new Set([
 const PENDING_CANCELLATION_STATES = new Set(['canceled', 'cancelled'])
 
 /**
- * @param {MongoSubscription} subscription
+ * @param {Nullable<MongoSubscription>} [subscription]
  * @returns {string}
  */
 function getSubscriptionState(subscription) {
   return (
-    subscription.recurlyStatus?.state ||
-    subscription.paymentProvider?.state ||
+    subscription?.recurlyStatus?.state ||
+    subscription?.paymentProvider?.state ||
     ''
   )
 }
@@ -513,6 +513,34 @@ function shouldUseCommonsBestSubscription(
 }
 
 /**
+ * Determine the user's role in any group subscription they participate in.
+ *
+ * @param {MongoSubscription[]} memberGroupSubscriptions
+ * @param {MongoSubscription[]} managedGroupSubscriptions
+ * @param {string|object} userId
+ * @returns {''|'admin'|'manager'|'member'}
+ */
+function getGroupRole(
+  memberGroupSubscriptions = [],
+  managedGroupSubscriptions = [],
+  userId
+) {
+  if (
+    managedGroupSubscriptions.length === 0 &&
+    memberGroupSubscriptions.length === 0
+  ) {
+    return ''
+  }
+  const userIdStr = userId.toString()
+  const isAdmin = managedGroupSubscriptions.some(
+    sub => sub.admin_id?._id?.toString() === userIdStr
+  )
+  if (isAdmin) return 'admin'
+  if (managedGroupSubscriptions.length > 0) return 'manager'
+  return 'member'
+}
+
+/**
  * Compute plan-related user properties for sending to customer.io.
  *
  * @param {object} options
@@ -525,6 +553,7 @@ function shouldUseCommonsBestSubscription(
  * @param {boolean} options.hasCommons
  * @param {Nullable<{ isPremium?: boolean }>} [options.writefullData]
  * @param {Map<string, boolean>} [options.aiBlockedByPolicyId]
+ * @param {string|object} options.userId
  */
 function getPlanProperties({
   bestSubscription,
@@ -536,6 +565,7 @@ function getPlanProperties({
   hasCommons,
   writefullData,
   aiBlockedByPolicyId,
+  userId,
 }) {
   const planType = normalizePlanType(bestSubscription)
   const displayPlanType = getFriendlyPlanName(planType)
@@ -581,10 +611,16 @@ function getPlanProperties({
   const properties = {
     ai_plan: aiPlan,
     group: userIsMemberOfGroupSubscription,
+    group_role: getGroupRole(
+      memberGroupSubscriptions,
+      managedGroupSubscriptions,
+      userId
+    ),
     commons: Boolean(hasCommons),
     individual_subscription: Boolean(
       individualSubscription && !individualSubscription.groupPlan
     ),
+    past_due: getSubscriptionState(individualSubscription) === 'past_due',
   }
 
   if (trialEndDate != null) properties.trial_end_date = trialEndDate
@@ -619,5 +655,6 @@ export default {
   getAiPlanCadence,
   hasPlanAiEnabled,
   shouldUseCommonsBestSubscription,
+  getGroupRole,
   getPlanProperties,
 }
