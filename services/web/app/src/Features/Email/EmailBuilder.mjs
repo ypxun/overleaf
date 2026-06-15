@@ -4,12 +4,9 @@ import moment from 'moment'
 import EmailMessageHelper from './EmailMessageHelper.mjs'
 import StringHelper from '../Helpers/StringHelper.mjs'
 import BaseEmailLayout from './Layouts/BaseEmailLayout.mjs'
-import UpdatedBaseEmailLayout from './Layouts/UpdatedBaseEmailLayout.mjs'
 import SpamSafe from './SpamSafe.mjs'
 import ctaEmailBody from './Bodies/cta-email.mjs'
-import updatedCtaEmailBody from './Bodies/updated-cta-email.mjs'
 import NoCTAEmailBody from './Bodies/NoCTAEmailBody.mjs'
-import UpdatedNoCTAEmailBody from './Bodies/UpdatedNoCTAEmailBody.mjs'
 
 function _emailBodyPlainText(content, opts, ctaEmail) {
   let emailBody = `${content.greeting(opts, true)}`
@@ -79,10 +76,7 @@ function ctaTemplate(content) {
       return content.subject(opts)
     },
     layout(opts) {
-      const layoutFn = opts.useNewEmailDesign
-        ? UpdatedBaseEmailLayout
-        : BaseEmailLayout
-      return layoutFn(opts)
+      return BaseEmailLayout(opts)
     },
     footerMessage(opts) {
       return content.footerMessage(opts)
@@ -91,8 +85,7 @@ function ctaTemplate(content) {
       return _emailBodyPlainText(content, opts, true)
     },
     compiledTemplate(opts) {
-      const bodyFn = opts.useNewEmailDesign ? updatedCtaEmailBody : ctaEmailBody
-      return bodyFn({
+      return ctaEmailBody({
         title: content.title(opts),
         greeting: content.greeting(opts),
         message: content.message(opts),
@@ -118,10 +111,7 @@ function NoCTAEmailTemplate(content) {
       return content.subject(opts)
     },
     layout(opts) {
-      const layoutFn = opts.useNewEmailDesign
-        ? UpdatedBaseEmailLayout
-        : BaseEmailLayout
-      return layoutFn(opts)
+      return BaseEmailLayout(opts)
     },
     plainTextTemplate(opts) {
       return `\
@@ -134,10 +124,7 @@ The ${settings.appName} Team - ${settings.siteUrl}\
       `
     },
     compiledTemplate(opts) {
-      const bodyFn = opts.useNewEmailDesign
-        ? UpdatedNoCTAEmailBody
-        : NoCTAEmailBody
-      return bodyFn({
+      return NoCTAEmailBody({
         title:
           typeof content.title === 'function' ? content.title(opts) : undefined,
         greeting: content.greeting(opts),
@@ -271,32 +258,6 @@ templates.passwordResetRequested = ctaTemplate({
   },
 })
 
-templates.confirmEmail = ctaTemplate({
-  subject() {
-    return `Confirm email - ${settings.appName}`
-  },
-  title() {
-    return 'Confirm email'
-  },
-  message(opts) {
-    return [
-      `Please confirm that you have added a new email, ${opts.to}, to your ${settings.appName} account.`,
-    ]
-  },
-  secondaryMessage() {
-    return [
-      `If you did not request this, please let us know at <a href="mailto:${settings.adminEmail}">${settings.adminEmail}</a>.`,
-      `If you have any questions or trouble confirming your email address, please get in touch with our support team at ${settings.adminEmail}.`,
-    ]
-  },
-  ctaText() {
-    return 'Confirm email'
-  },
-  ctaURL(opts) {
-    return opts.confirmEmailUrl
-  },
-})
-
 templates.confirmCode = NoCTAEmailTemplate({
   greeting(opts) {
     return ''
@@ -388,32 +349,6 @@ templates.projectInvite = ctaTemplate({
         SpamSafe.safeProjectName(opts.project.name, 'project')
       )} at ${settings.appName}`,
     }
-  },
-})
-
-templates.reconfirmEmail = ctaTemplate({
-  subject() {
-    return `Reconfirm Email - ${settings.appName}`
-  },
-  title() {
-    return 'Reconfirm Email'
-  },
-  message(opts) {
-    return [
-      `Please reconfirm your email address, ${opts.to}, on your ${settings.appName} account.`,
-    ]
-  },
-  secondaryMessage() {
-    return [
-      'If you did not request this, you can simply ignore this message.',
-      `If you have any questions or trouble confirming your email address, please get in touch with our support team at ${settings.adminEmail}.`,
-    ]
-  },
-  ctaText() {
-    return 'Reconfirm email'
-  },
-  ctaURL(opts) {
-    return opts.confirmEmailUrl
   },
 })
 
@@ -889,6 +824,71 @@ templates.securityAlert = NoCTAEmailTemplate({
   },
 })
 
+const GIT_TOKEN_DOCS_URL =
+  'https://docs.overleaf.com/integrations-and-add-ons/git-integration-and-github-synchronization/git-integration/git-integration-authentication-tokens#how-to-generate-authentication-tokens'
+
+templates.gitTokenExpiringSoon = NoCTAEmailTemplate({
+  subject() {
+    return 'Your Overleaf token is about to expire'
+  },
+  title() {
+    return 'Your token is about to expire'
+  },
+  greeting(opts) {
+    return opts.firstName ? `Hi ${opts.firstName},` : 'Hi,'
+  },
+  message(opts, isPlainText) {
+    const settingsLink = EmailMessageHelper.displayLink(
+      'account settings',
+      `${settings.siteUrl}/user/settings`,
+      isPlainText
+    )
+    const docsLink = EmailMessageHelper.displayLink(
+      'our docs',
+      GIT_TOKEN_DOCS_URL,
+      isPlainText
+    )
+    return [
+      `One of your Git authentication tokens is about to expire. This means you won't be able to use your token to authenticate when performing git operations.`,
+      `If you haven't already, you'll need to generate a new token in your ${settingsLink}.`,
+      `Take a look at ${docsLink} if you need more help.`,
+      'All the best,',
+      'Team Overleaf',
+    ]
+  },
+})
+
+templates.gitTokenExpired = NoCTAEmailTemplate({
+  subject() {
+    return 'Your Overleaf token has expired'
+  },
+  title() {
+    return 'Token expired'
+  },
+  greeting(opts) {
+    return opts.firstName ? `Hi ${opts.firstName},` : 'Hi,'
+  },
+  message(opts, isPlainText) {
+    const settingsLink = EmailMessageHelper.displayLink(
+      'account settings',
+      `${settings.siteUrl}/user/settings`,
+      isPlainText
+    )
+    const docsLink = EmailMessageHelper.displayLink(
+      'our docs',
+      GIT_TOKEN_DOCS_URL,
+      isPlainText
+    )
+    return [
+      `One of your Git authentication tokens has expired. This means you won't be able to use it to authenticate when performing git operations.`,
+      `If you haven't already, you'll need to generate a new token in your ${settingsLink}.`,
+      `Take a look at ${docsLink} if you need more help.`,
+      'All the best,',
+      'Team Overleaf',
+    ]
+  },
+})
+
 templates.SAMLDataCleared = ctaTemplate({
   subject(opts) {
     return `Institutional Login No Longer Linked - ${settings.appName}`
@@ -914,52 +914,6 @@ templates.SAMLDataCleared = ctaTemplate({
   },
   ctaURL(opts) {
     return `${settings.siteUrl}/user/settings`
-  },
-})
-
-templates.welcome = ctaTemplate({
-  subject() {
-    return `Welcome to ${settings.appName}`
-  },
-  title() {
-    return `Welcome to ${settings.appName}`
-  },
-  greeting() {
-    return 'Hi,'
-  },
-  message(opts, isPlainText) {
-    const logInAgainDisplay = EmailMessageHelper.displayLink(
-      'log in again',
-      `${settings.siteUrl}/login`,
-      isPlainText
-    )
-    const helpGuidesDisplay = EmailMessageHelper.displayLink(
-      'Help Guides',
-      `${settings.siteUrl}/learn`,
-      isPlainText
-    )
-    const templatesDisplay = EmailMessageHelper.displayLink(
-      'Templates',
-      `${settings.siteUrl}/templates`,
-      isPlainText
-    )
-
-    return [
-      `Thanks for signing up to ${settings.appName}! If you ever get lost, you can ${logInAgainDisplay} with the email address '${opts.to}'.`,
-      `If you're new to LaTeX, take a look at our ${helpGuidesDisplay} and ${templatesDisplay}.`,
-      `Please also take a moment to confirm your email address for ${settings.appName}:`,
-    ]
-  },
-  secondaryMessage() {
-    return [
-      `PS. We love talking to our users about ${settings.appName}. Reply to this email to get in touch with us directly, whatever the reason. Questions, comments, problems, suggestions, all welcome!`,
-    ]
-  },
-  ctaText() {
-    return 'Confirm email'
-  },
-  ctaURL(opts) {
-    return opts.confirmEmailUrl
   },
 })
 
@@ -1083,6 +1037,36 @@ templates.groupMemberLimitWarning = ctaTemplate({
   },
   ctaURL() {
     return `${settings.siteUrl}/user/subscription/group/add-users`
+  },
+})
+
+templates.groupDomainCapturedByGroupChanged = ctaTemplate({
+  subject(opts) {
+    return opts.domainCapturedByGroup
+      ? `Domain capture now active for ${opts.domain}`
+      : `Domain capture now inactive for ${opts.domain}`
+  },
+  title(opts) {
+    return opts.domainCapturedByGroup
+      ? `Domain capture is active for ${_.escape(opts.domain)}`
+      : `Domain capture is inactive for ${_.escape(opts.domain)}`
+  },
+  message(opts) {
+    if (opts.domainCapturedByGroup) {
+      return [
+        `Users with a <b>${_.escape(opts.domain)}</b> email address on their account will be able to join your group through domain capture.`,
+      ]
+    }
+    return [
+      `Users with a <b>${_.escape(opts.domain)}</b> email address on their account will no longer be able to join your group through domain capture. Anyone already in your group is unaffected.`,
+      `If you didn't expect this or want to re-enable it, please contact ${settings.adminEmail}.`,
+    ]
+  },
+  ctaText() {
+    return 'Manage domains'
+  },
+  ctaURL(opts) {
+    return `${settings.siteUrl}/manage/groups/${opts.groupId}/settings`
   },
 })
 

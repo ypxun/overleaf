@@ -467,6 +467,20 @@ describe('ProjectListController', function () {
       await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
     })
 
+    it('should look up geo IP in saas', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.res.render = () => {}
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+      expect(ctx.GeoIpLookup.promises.getCurrencyCode).to.have.been.calledOnce
+    })
+
+    it('should not look up geo IP in a non-saas environment', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(false)
+      ctx.res.render = () => {}
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+      expect(ctx.GeoIpLookup.promises.getCurrencyCode).to.not.have.been.called
+    })
+
     it('should send groupRole to customer.io for group admins', async function (ctx) {
       ctx.Features.hasFeature.withArgs('saas').returns(true)
       ctx.SubscriptionViewModelBuilder.promises.getUsersSubscriptionDetails.resolves(
@@ -550,6 +564,107 @@ describe('ProjectListController', function () {
         sinon.match({
           group_role: 'member',
         })
+      )
+    })
+
+    it('should send enterprise_commons=true when user has commons from an enterprise_commons institution', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.UserGetter.promises.getUserFullEmails.resolves([
+        {
+          email: 'test@overleaf.com',
+          emailHasInstitutionLicence: true,
+          affiliation: {
+            institution: {
+              id: 1,
+              name: 'Overleaf',
+              commonsAccount: true,
+              enterpriseCommons: true,
+            },
+          },
+        },
+      ])
+      ctx.res.render = () => {}
+
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+
+      expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'setUserProperties',
+        ctx.user._id,
+        sinon.match({ enterprise_commons: true })
+      )
+    })
+
+    it('should send enterprise_commons=false when affiliated with an enterprise_commons institution but without active commons access', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.UserGetter.promises.getUserFullEmails.resolves([
+        {
+          email: 'test@overleaf.com',
+          emailHasInstitutionLicence: false,
+          affiliation: {
+            institution: {
+              id: 1,
+              name: 'Overleaf',
+              commonsAccount: true,
+              enterpriseCommons: true,
+            },
+          },
+        },
+      ])
+      ctx.res.render = () => {}
+
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+
+      expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'setUserProperties',
+        ctx.user._id,
+        sinon.match({ enterprise_commons: false })
+      )
+    })
+
+    it('should send domain_capture=true when user has an affiliation with domain capture enabled', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.UserGetter.promises.getUserFullEmails.resolves([
+        {
+          email: 'test@overleaf.com',
+          affiliation: {
+            institution: { id: 1, name: 'Overleaf' },
+            group: {
+              _id: 'g1',
+              domainCaptureEnabled: true,
+              managedUsersEnabled: false,
+            },
+          },
+        },
+      ])
+      ctx.res.render = () => {}
+
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+
+      expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'setUserProperties',
+        ctx.user._id,
+        sinon.match({ domain_capture: true })
+      )
+    })
+
+    it('should send domain_capture=false when no affiliation has domain capture enabled', async function (ctx) {
+      ctx.Features.hasFeature.withArgs('saas').returns(true)
+      ctx.UserGetter.promises.getUserFullEmails.resolves([
+        {
+          email: 'test@overleaf.com',
+          affiliation: {
+            institution: { id: 1, name: 'Overleaf' },
+          },
+        },
+      ])
+      ctx.res.render = () => {}
+
+      await ctx.ProjectListController.projectListPage(ctx.req, ctx.res)
+
+      expect(ctx.Modules.promises.hooks.fire).to.have.been.calledWith(
+        'setUserProperties',
+        ctx.user._id,
+        sinon.match({ domain_capture: false })
       )
     })
 

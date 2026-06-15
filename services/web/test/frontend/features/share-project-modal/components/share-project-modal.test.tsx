@@ -253,7 +253,7 @@ describe('<ShareProjectModal/>', function () {
     renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
       ...createContextProps({ publicAccessLevel: 'tokenBased', invites }),
       user: {
-        id: 'non-project-owner',
+        id: 'non-project-owner' as UserId,
         email: 'non-project-owner@example.com',
       },
     })
@@ -283,7 +283,7 @@ describe('<ShareProjectModal/>', function () {
     renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
       ...createContextProps({ publicAccessLevel: 'private', invites }),
       user: {
-        id: 'non-project-owner',
+        id: 'non-project-owner' as UserId,
         email: 'non-project-owner@example.com',
       },
     })
@@ -998,6 +998,144 @@ describe('<ShareProjectModal/>', function () {
     })
   })
 
+  describe('sharing-updates feature flag enabled', function () {
+    beforeEach(function () {
+      window.metaAttributesCache.set('ol-splitTestVariants', {
+        'sharing-updates': 'enabled',
+      })
+    })
+
+    afterEach(function () {
+      window.metaAttributesCache.delete('ol-splitTestVariants')
+    })
+
+    it('sets "Via sharing links (legacy)" when `publicAccessLevel` is `tokenBased`', async function () {
+      fetchMock.get(`/project/${shareModalProjectDefaults._id}/tokens`, {})
+
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'tokenBased' })
+      )
+
+      await screen.findByText('Via sharing links (legacy)')
+    })
+
+    it('sets "Only invited people" when sharing-link returns 404', async function () {
+      fetchMock.get(
+        `/project/${shareModalProjectDefaults._id}/sharing-link`,
+        404
+      )
+
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'private' })
+      )
+
+      await screen.findByText('Only invited people')
+    })
+
+    it('sets "Anyone with the link" when sharing-link returns a link without `subscriptionId`', async function () {
+      fetchMock.get(`/project/${shareModalProjectDefaults._id}/sharing-link`, {
+        _id: 'link-id',
+        token: 'abc123',
+        privileges: 'readOnly',
+      })
+
+      renderWithEditorContext(
+        <ShareProjectModal {...modalProps} />,
+        createContextProps({ publicAccessLevel: 'private' })
+      )
+
+      await screen.findByText('Anyone with the link')
+    })
+
+    it('sets "Anyone in your group with the link" when sharing-link returns a link with subscriptionId', async function () {
+      fetchMock.get(`/project/${shareModalProjectDefaults._id}/sharing-link`, {
+        _id: 'link-id',
+        token: 'abc123',
+        privileges: 'readOnly',
+        subscriptionId: 'sub-123',
+      })
+
+      renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
+        ...createContextProps({ publicAccessLevel: 'private' }),
+        user: {
+          id: USER_ID,
+          email: USER_EMAIL,
+          activeGroupSubscriptions: [{ _id: 'sub-123' }],
+        },
+      })
+
+      await screen.findByText('Anyone in your group with the link')
+    })
+
+    describe('copy link button', function () {
+      let clipboardWriteTextStub: sinon.SinonStub
+
+      beforeEach(function () {
+        clipboardWriteTextStub = sinon.stub().resolves()
+        Object.defineProperty(navigator, 'clipboard', {
+          value: { writeText: clipboardWriteTextStub },
+          configurable: true,
+          writable: true,
+        })
+      })
+
+      afterEach(function () {
+        window.metaAttributesCache.delete('ol-splitTestVariants')
+        delete (navigator as any).clipboard
+      })
+
+      it('shows a disabled copy sharing link button when access is "Only invited people"', async function () {
+        fetchMock.get('express:/project/:projectId/sharing-link', 404)
+
+        renderWithEditorContext(
+          <ShareProjectModal {...modalProps} />,
+          createContextProps()
+        )
+
+        const copyButton: HTMLButtonElement = await screen.findByRole(
+          'button',
+          {
+            name: /copy sharing link/i,
+          }
+        )
+        expect(copyButton.disabled).to.be.true
+      })
+
+      it('enables the copy sharing link button when access is "Anyone with the link" and copies the correct URL on click', async function () {
+        const sharingLinkToken = 'abc123token'
+        fetchMock.get('express:/project/:projectId/sharing-link', {
+          _id: 'invite-id',
+          token: sharingLinkToken,
+          privileges: 'readAndWrite',
+        })
+
+        renderWithEditorContext(
+          <ShareProjectModal {...modalProps} />,
+          createContextProps()
+        )
+
+        const copyButton: HTMLButtonElement = await screen.findByRole(
+          'button',
+          {
+            name: /copy sharing link/i,
+          }
+        )
+        expect(copyButton.disabled).to.be.false
+
+        await userEvent.click(copyButton)
+
+        expect(clipboardWriteTextStub.calledOnce).to.be.true
+        expect(clipboardWriteTextStub.firstCall.args[0]).to.equal(
+          `${window.location.origin}/project/${shareModalProjectDefaults._id}/share#${sharingLinkToken}`
+        )
+
+        await screen.findByText(/link copied/i)
+      })
+    })
+  })
+
   it('allows an email address to be selected, removed, then re-added', async function () {
     renderWithEditorContext(
       <ShareProjectModal {...modalProps} />,
@@ -1197,7 +1335,7 @@ describe('<ShareProjectModal/>', function () {
       renderWithEditorContext(<ShareProjectModal {...modalProps} />, {
         ...createContextProps(),
         user: {
-          id: 'non-project-owner',
+          id: 'non-project-owner' as UserId,
           email: 'non-project-owner@example.com',
         },
       })

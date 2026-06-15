@@ -244,9 +244,10 @@ module.exports = {
     },
     clsi: {
       url: `http://${process.env.CLSI_HOST || '127.0.0.1'}:3013`,
-      downloadHost: process.env.CLSI_LB_IP
-        ? `http://${process.env.CLSI_LB_IP}:80`
-        : `http://${process.env.DOWNLOAD_HOST || '127.0.0.1'}:8080`,
+      downloadHost:
+        process.env.CLSI_LB_IP || process.env.CLSI_LB_HOST
+          ? `http://${process.env.CLSI_LB_IP || process.env.CLSI_LB_HOST}:80`
+          : `http://${process.env.DOWNLOAD_HOST || '127.0.0.1'}:8080`,
       backendGroupName: undefined,
       submissionBackendClass:
         process.env.CLSI_SUBMISSION_BACKEND_CLASS || 'c3d',
@@ -424,6 +425,15 @@ module.exports = {
   }),
 
   // featuresEpoch: 'YYYY-MM-DD',
+
+  personalAccessTokens: {
+    expiry: {
+      warningWindowDays: intFromEnv(
+        'PERSONAL_ACCESS_TOKEN_WARNING_WINDOW_DAYS',
+        2
+      ),
+    },
+  },
 
   features: {
     personal: defaultFeatures,
@@ -1017,6 +1027,7 @@ module.exports = {
     tprFileViewNotOriginalImporter: [],
     contactUsModal: [],
     sourceEditorExtensions: [],
+    sourceEditorMarkdownExtensions: [],
     sourceEditorComponents: [],
     pdfLogEntryHeaderActionComponents: [],
     pdfLogEntryComponents: [],
@@ -1025,11 +1036,13 @@ module.exports = {
     diagnosticActions: [],
     sourceEditorCompletionSources: [],
     sourceEditorSymbolPalette: [],
+    sourceEditorToolbarButtonGroups: [],
     sourceEditorToolbarComponents: [],
     sourceEditorToolbarEndButtons: [],
     rootContextProviders: [],
     mainEditorLayoutModals: [],
     mainEditorLayoutPanels: [],
+    pythonRunner: [],
     langFeedbackLinkingWidgets: [],
     labsExperiments: [],
     integrationLinkingWidgets: [],
@@ -1039,6 +1052,7 @@ module.exports = {
     editorLeftMenuSync: [],
     editorLeftMenuManageTemplate: [],
     menubarExtraComponents: [],
+    insertMenuSections: [],
     oauth2Server: [],
     managedGroupSubscriptionEnrollmentNotification: [],
     managedGroupEnrollmentInvite: [],
@@ -1079,6 +1093,7 @@ module.exports = {
     integrationPanelComponents: [],
     referenceSearchSetting: [],
     settingsModalEditorTabSections: [],
+    settingsModalSpellcheckSections: [],
     errorLogsComponents: [],
     referenceIndices: [],
     railEntries: [],

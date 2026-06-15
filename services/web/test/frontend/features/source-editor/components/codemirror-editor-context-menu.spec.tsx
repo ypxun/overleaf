@@ -83,6 +83,15 @@ const grantClipboardPermissions = () => {
       },
     })
   )
+
+  cy.wrap(
+    Cypress.automation('remote:debugger:protocol', {
+      command: 'Emulation.setFocusEmulationEnabled',
+      params: {
+        enabled: true,
+      },
+    })
+  )
 }
 
 describe('editor context menu', { scrollBehavior: false }, function () {
@@ -663,7 +672,7 @@ describe('editor context menu', { scrollBehavior: false }, function () {
   })
 
   describe('when a user does not have edit permissions', function () {
-    it('should only show Copy and Comment (hidden Cut, Paste, Delete, Suggest edits)', function () {
+    it('should only show Copy, Select all, Comment (hidden Cut, Paste, Delete, Suggest edits)', function () {
       const scope = mockScope()
       scope.permissions.write = false
       scope.permissions.trackedWrite = false
@@ -701,6 +710,7 @@ describe('editor context menu', { scrollBehavior: false }, function () {
       cy.findByRole('menu').within(() => {
         cy.findByRole('menuitem', { name: /cut/i }).should('not.exist')
         cy.findByRole('menuitem', { name: /copy/i }).should('be.enabled')
+        cy.findByRole('menuitem', { name: /select all/i }).should('be.enabled')
         cy.findByRole('menuitem', { name: pasteLabelMatcher }).should(
           'not.exist'
         )

@@ -28,6 +28,7 @@ import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import SplitTestSessionHandler from '../SplitTests/SplitTestSessionHandler.mjs'
 import TutorialHandler from '../Tutorial/TutorialHandler.mjs'
 import SubscriptionHelper from '../Subscription/SubscriptionHelper.mjs'
+import CustomerIoPlanHelpers from '../Subscription/CustomerIoPlanHelpers.mjs'
 import PermissionsManager from '../Authorization/PermissionsManager.mjs'
 import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
 import { OnboardingDataCollection } from '../../models/OnboardingDataCollection.mjs'
@@ -201,7 +202,14 @@ async function projectListPage(req, res, next) {
   let role
 
   if (isSaas) {
-    if (user.isAdmin) await _checkForOldDebugProjects(userId)
+    if (user.isAdmin) {
+      await _checkForOldDebugProjects(userId).catch(err => {
+        logger.warn(
+          { err, userId },
+          'failed to check old debug projects/managing notifications'
+        )
+      })
+    }
 
     await SplitTestSessionHandler.promises.sessionMaintenance(req, user)
 
@@ -493,8 +501,13 @@ async function projectListPage(req, res, next) {
   let showInrGeoBanner = false
   let showLATAMBanner = false
   let recommendedCurrency
-  const { countryCode, currencyCode } =
-    await GeoIpLookup.promises.getCurrencyCode(req.ip)
+  let countryCode
+  let currencyCode
+  if (isSaas) {
+    const currencyData = await GeoIpLookup.promises.getCurrencyCode(req.ip)
+    countryCode = currencyData.countryCode
+    currencyCode = currencyData.currencyCode
+  }
 
   if (
     usersBestSubscription?.type === 'free' ||
@@ -585,6 +598,7 @@ async function projectListPage(req, res, next) {
       ...(usedLatex && { used_latex: usedLatex }),
       ...(countryCode && { country: countryCode }),
       ...(commonsInstitution && { commons_institution: commonsInstitution }),
+      ...CustomerIoPlanHelpers.getAffiliationProperties(userEmails),
       ...(groupRole && { group_role: groupRole }),
       is_managed_user: Boolean(user.enrollment?.managedBy),
       ...(user.email && { email: user.email }),

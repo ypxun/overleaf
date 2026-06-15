@@ -34,6 +34,9 @@ import classNames from 'classnames'
 import { useUserSettingsContext } from '@/shared/context/user-settings-context'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
+import { useLayoutContext } from '@/shared/context/layout-context'
+import ReviewPanelHeaderBuffer from '@/features/review-panel/components/review-panel-header-buffer'
+import { useAreTabsEnabled } from '@/features/ide-react/hooks/use-are-tabs-enabled'
 
 const sourceEditorToolbarComponents = importOverleafModules(
   'sourceEditorToolbarComponents'
@@ -62,6 +65,7 @@ const Toolbar = memo(function Toolbar() {
     userSettings: { breadcrumbs },
   } = useUserSettingsContext()
   const visualPreviewEnabled = useFeatureFlag('visual-preview')
+  const { focusMode } = useLayoutContext()
 
   const [overflowed, setOverflowed] = useState(false)
 
@@ -121,12 +125,20 @@ const Toolbar = memo(function Toolbar() {
     if (resizeRef.current) {
       buildOverflow(resizeRef.current.element)
     }
-  }, [buildOverflow, languageName, resizeRef, visual])
+  }, [buildOverflow, languageName, listDepth, resizeRef, visual])
 
-  // calculate overflow when buttons change
+  // calculate overflow when toolbar content changes
   const observerRef = useRef<MutationObserver | null>(null)
-  const handleButtons = useCallback(
+  const handleToolbar = useCallback(
     (node: HTMLDivElement) => {
+      // register the resize observer on the toolbar node
+      elementRef(node)
+
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+        observerRef.current = null
+      }
+
       if (!('MutationObserver' in window)) {
         return
       }
@@ -138,12 +150,10 @@ const Toolbar = memo(function Toolbar() {
           }
         })
 
-        observerRef.current.observe(node, { childList: true })
-      } else if (observerRef.current) {
-        observerRef.current.disconnect()
+        observerRef.current.observe(node, { childList: true, subtree: true })
       }
     },
-    [buildOverflow, resizeRef]
+    [buildOverflow, elementRef, resizeRef]
   )
 
   // calculate overflow when active element changes to/from inside a table
@@ -157,10 +167,16 @@ const Toolbar = memo(function Toolbar() {
   }, [buildOverflow, insideTable, resizeRef])
 
   const showActions = !state.readOnly && !insideTable
+  const tabsVisible = useAreTabsEnabled()
+
+  if (focusMode) {
+    return null
+  }
 
   return (
     <>
-      {showReviewPanelHeader && <ReviewPanelHeader />}
+      {showReviewPanelHeader &&
+        (tabsVisible ? <ReviewPanelHeaderBuffer /> : <ReviewPanelHeader />)}
       <div
         id="ol-cm-toolbar-wrapper"
         className={classNames('ol-cm-toolbar-wrapper', {
@@ -171,9 +187,8 @@ const Toolbar = memo(function Toolbar() {
           role="toolbar"
           aria-label={t('toolbar_editor')}
           className="ol-cm-toolbar toolbar-editor"
-          ref={elementRef}
+          ref={handleToolbar}
         >
-          {!visualPreviewEnabled && <EditorSwitch />}
           {showActions && (
             <ToolbarItems
               state={state}
@@ -202,10 +217,8 @@ const Toolbar = memo(function Toolbar() {
             )}
           </div>
 
-          <div
-            className="ol-cm-toolbar-button-group ol-cm-toolbar-end"
-            ref={handleButtons}
-          >
+          <div className="ol-cm-toolbar-button-group ol-cm-toolbar-end">
+            {!visualPreviewEnabled && <EditorSwitch />}
             {sourceEditorToolbarEndButtons.map(
               ({ import: { default: Component }, path }) => (
                 <Component key={path} />

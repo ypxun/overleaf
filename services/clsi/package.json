@@ -11,8 +11,8 @@
     "test:unit:_run": "vitest --config ./vitest.config.unit.cjs",
     "test:unit": "yarn run test:unit:_run",
     "nodemon": "node --watch app.js",
-    "lint": "eslint --cache --cache-location ../../node_modules/.cache/eslint/ --max-warnings 0 --format unix .",
-    "lint:fix": "eslint --cache --cache-location ../../node_modules/.cache/eslint/ --fix .",
+    "lint": "eslint --cache --cache-location ../../.cache/eslint/ --max-warnings 0 --format unix .",
+    "lint:fix": "eslint --cache --cache-location ../../.cache/eslint/ --fix .",
     "types:check": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "@overleaf/promise-utils": "workspace:*",
     "@overleaf/settings": "workspace:*",
     "@overleaf/stream-utils": "workspace:*",
+    "@overleaf/validation-tools": "workspace:*",
     "archiver": "5.3.2",
     "async": "^3.2.5",
     "body-parser": "1.20.4",
@@ -45,7 +46,6 @@
     "mocha": "^11.1.0",
     "mocha-junit-reporter": "^2.2.1",
     "mocha-multi-reporters": "^1.5.1",
-    "mock-fs": "^5.1.2",
     "node-fetch": "^2.7.0",
     "nyc": "^17.1.0",
     "sinon": "~9.0.1",
