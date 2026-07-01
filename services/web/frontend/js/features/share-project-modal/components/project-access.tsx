@@ -29,6 +29,9 @@ import {
 } from '@/features/share-project-modal/components/share-project-modal'
 import { ExcludeStrict } from '@ol-types/utils'
 import getMeta from '@/utils/meta'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
+import { sendMB } from '@/infrastructure/event-tracking'
+import { debugConsole } from '@/utils/debugging'
 
 type ProjectAccessProps = {
   setIsInvitedPeopleScreen: React.Dispatch<React.SetStateAction<boolean>>
@@ -49,7 +52,8 @@ function ProjectAccess({
     null
   )
   const { isProjectOwner } = useEditorContext()
-  const { activeGroupSubscriptions } = getMeta('ol-user')
+  const { activeProfessionalGroupSubscriptions } = getMeta('ol-user')
+  const groupSharingEnabled = useFeatureFlag('group-link-sharing')
 
   const {
     monitorRequest,
@@ -89,11 +93,18 @@ function ProjectAccess({
       }
 
       return data
-    }).then(data => {
-      setSharingLinkData(data)
-      setProjectAccess(newAccess)
-      setSuccessActionMessage(t('access_updated'))
     })
+      .then(data => {
+        setSharingLinkData(data)
+        setProjectAccess(newAccess)
+        setSuccessActionMessage(t('access_updated'))
+        sendMB('sharing-link-set-permissions', {
+          project_id: projectId,
+          access_level: newAccess.split('.')[0],
+          ...reqBody,
+        })
+      })
+      .catch(debugConsole.error)
   }
 
   const onAccessSelect = (eventKey: ProjectAccessType) => {
@@ -117,21 +128,31 @@ function ProjectAccess({
         privileges: eventKey,
         subscriptionId: sharingLinkData?.subscriptionId,
       })
-    ).then(data => {
-      setSharingLinkData(data)
-      setSuccessActionMessage(t('access_updated'))
-    })
+    )
+      .then(data => {
+        setSharingLinkData(data)
+        setSuccessActionMessage(t('access_updated'))
+        sendMB('sharing-link-set-permissions', {
+          project_id: projectId,
+          access_level: projectAccess?.split('.')[0],
+          privileges: eventKey,
+          subscriptionId: data.subscriptionId,
+        })
+      })
+      .catch(debugConsole.error)
   }
 
   const getGroupLinkText = (id?: string) => {
     if (
       !id ||
-      !activeGroupSubscriptions ||
-      activeGroupSubscriptions.length === 0
+      !activeProfessionalGroupSubscriptions ||
+      activeProfessionalGroupSubscriptions.length === 0
     ) {
       return ''
     }
-    const subscription = activeGroupSubscriptions.find(sub => sub._id === id)
+    const subscription = activeProfessionalGroupSubscriptions.find(
+      sub => sub._id === id
+    )
     if (subscription?.teamName) {
       return t('anyone_in_x_with_the_link', {
         groupName: subscription.teamName,
@@ -165,7 +186,9 @@ function ProjectAccess({
         <div className="d-inline-flex align-items-center h5 m-0 gap-2">
           <MaterialIcon type="group" unfilled />
           <div className="px-2 fw-normal">
-            {t('x_people_invited', { count: invitedPeopleCount })}
+            {invitedPeopleCount > 1
+              ? t('x_people_invited', { count: invitedPeopleCount })
+              : t('no_one_invited_yet')}
           </div>
         </div>
         <OLButton
@@ -235,8 +258,9 @@ function ProjectAccess({
                     {t('only_invited_people')}
                   </DropdownItem>
                 </DropdownListItem>
-                {activeGroupSubscriptions &&
-                  activeGroupSubscriptions.map(subscription => (
+                {groupSharingEnabled &&
+                  activeProfessionalGroupSubscriptions &&
+                  activeProfessionalGroupSubscriptions.map(subscription => (
                     <DropdownListItem
                       className="d-flex align-items-center"
                       key={subscription._id}

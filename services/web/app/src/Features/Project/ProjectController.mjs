@@ -495,6 +495,8 @@ const _ProjectController = {
       'editor-upgrade-button-relocation',
       'markdown-visual',
       'ai-disabled-collaborators',
+      'group-link-sharing',
+      'compile-with-checkpoint',
     ].filter(Boolean)
 
     const getUserValues = async userId =>
@@ -572,19 +574,22 @@ const _ProjectController = {
                 )
               ).isMember)()
           : false,
-        activeGroupSubscriptions:
-          SubscriptionLocator.promises.getUserActiveGroupSubscriptions(userId, {
-            _id: 1,
-            teamName: 1,
-            sharingPermissions: 1,
-          }),
+        activeProfessionalGroupSubscriptions:
+          SubscriptionLocator.promises.getUserActiveProfessionalGroupSubscriptions(
+            userId,
+            {
+              _id: 1,
+              teamName: 1,
+              sharingPermissions: 1,
+            }
+          ),
       })
 
       const {
         project,
         userValues,
         userIsMemberOfGroupSubscription,
-        activeGroupSubscriptions,
+        activeProfessionalGroupSubscriptions,
       } = responses
 
       await Promise.all([
@@ -646,7 +651,11 @@ const _ProjectController = {
         req,
         projectId
       )
-      const imageNames = await ProjectHelper.getAllowedImagesForUser(user)
+      const imageNames = await ProjectHelper.getAllowedImagesForUser(
+        req,
+        res,
+        user
+      )
 
       const privilegeLevel =
         await AuthorizationManager.promises.getPrivilegeLevelForProject(
@@ -756,8 +765,8 @@ const _ProjectController = {
           planLimit,
           exceedAtLimit,
         }
-        AnalyticsManager.recordEventForUserInBackground(
-          userId,
+        AnalyticsManager.recordEventForSession(
+          req.session,
           'project-opened',
           projectOpenedSegmentation
         )
@@ -843,8 +852,8 @@ const _ProjectController = {
         userIsMemberOfGroupSubscription
       )
 
-      AnalyticsManager.setUserPropertyForUserInBackground(
-        userId,
+      AnalyticsManager.setUserPropertyForSessionInBackground(
+        req.session,
         'customer-io-integration',
         true
       )
@@ -970,7 +979,7 @@ const _ProjectController = {
           ),
           isMemberOfGroupSubscription: userIsMemberOfGroupSubscription,
           hasInstitutionLicence: userHasInstitutionLicence,
-          activeGroupSubscriptions,
+          activeProfessionalGroupSubscriptions,
         },
         initialLoadingScreenTheme,
         userSettings,
